@@ -1,0 +1,27 @@
+:root{--gap:10px;--bg:#0f1720;--card:#0b1220;--accent:#ffcc00;--text:#e6eef8}
+*{box-sizing:border-box}
+body{margin:0;font-family:system-ui,-apple-system,Segoe UI,Roboto,'Helvetica Neue',Arial;background:var(--bg);color:var(--text)}
+header{display:flex;align-items:center;justify-content:space-between;padding:12px 16px;border-bottom:1px solid rgba(255,255,255,0.04)}
+.title-group{display:flex;align-items:center;gap:10px}
+.header-links{display:flex;gap:6px;flex-wrap:wrap;max-width:60vw}
+.header-link{font-size:12px;padding:4px 10px;background:rgba(255,255,255,0.08);border:1px solid rgba(255,255,255,0.08);border-radius:999px;color:var(--text);text-decoration:none}
+.controls{display:flex;gap:8px;align-items:center}
+button{background:transparent;border:1px solid rgba(255,255,255,0.06);color:var(--text);padding:6px 10px;border-radius:6px;cursor:pointer}
+button.selected{background:var(--accent);color:#000;border-color:transparent}
+#sections{padding:12px;display:flex;flex-direction:column;gap:18px}
+.section{display:flex;flex-direction:column;gap:10px}
+.section h2{margin:0 0 4px 4px;font-size:14px;color:#cfe1ff}
+.grid{display:grid;grid-template-columns:repeat(6,1fr);gap:var(--gap)}
+.item{background:var(--card);border-radius:6px;overflow:hidden;cursor:pointer;display:flex;flex-direction:column;min-height:190px}
+.thumb{width:100%;height:120px;object-fit:cover;display:block}
+.meta{display:flex;align-items:flex-start;justify-content:space-between;padding:6px;min-height:44px}
+.title{font-size:10px;line-height:1.3;color:var(--text);flex:1;margin-right:6px;display:block;overflow:hidden;white-space:normal;max-height:2.6em}
+.actions{display:flex;gap:6px;align-items:flex-start}
+.actions button{width:20px;height:20px;padding:0;border-radius:4px;font-size:12px;line-height:1;display:flex;align-items:center;justify-content:center}
+.star{background:transparent;color:var(--accent);border-color:transparent;width:16px;height:16px;font-size:12px;padding:0 !important}
+.star .icon{font-size:12px}
+.delete{background:#ff3b3b;color:#fff;border-color:transparent;width:16px;height:16px;font-size:12px;padding:0 !important}
+.actions button{min-width:16px;min-height:16px}
+
+@media (max-width:1200px){.grid{grid-template-columns:repeat(4,1fr)}.thumb{height:110px}}
+@media (max-width:800px){.grid{grid-template-columns:repeat(2,1fr)}.thumb{height:140px}}

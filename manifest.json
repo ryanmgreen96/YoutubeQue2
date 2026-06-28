@@ -1,0 +1,19 @@
+{
+  "manifest_version": 3,
+  "name": "YouTube Queue QuickAdd",
+  "version": "0.1",
+  "description": "Right-click to queue a YouTube video into your hosted queue app.",
+  "permissions": ["contextMenus","scripting","tabs","activeTab","storage"],
+  "background": {"service_worker": "background.js"},
+  "host_permissions": ["<all_urls>"],
+  "content_scripts": [
+    {
+      "matches": [
+        "https://ryanmgreen0-svg.github.io/youtubeQue2/*",
+        "http://localhost:8000/*"
+      ],
+      "js": ["contentScript.js"],
+      "run_at": "document_idle"
+    }
+  ]
+}
