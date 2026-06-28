@@ -1,19 +1,24 @@
 const APP_KEY = 'ytQueueItems_v1'
+const SAVED_LINKS_APP_KEY = 'ytSavedVideos_v1'
 const HEADER_LINKS_KEY = 'ytHeaderLinks_v1'
 const APP_TITLE = document.getElementById('view-title')
 const homeBtn = document.getElementById('home-btn')
 const favBtn = document.getElementById('fav-btn')
 const addBtn = document.getElementById('add-btn')
 const sections = document.getElementById('sections')
+const savedLinksEl = document.getElementById('saved-links')
 const headerLinksEl = document.getElementById('header-links')
 const template = document.getElementById('item-template')
 
 let items = load()
+let savedLinks = loadSavedLinks()
 let headerLinks = loadHeaderLinks()
 let view = 'home'
 
 function save(){ localStorage.setItem(APP_KEY, JSON.stringify(items)) }
 function load(){ try{ return JSON.parse(localStorage.getItem(APP_KEY)||'[]') }catch(e){return[]}}
+function loadSavedLinks(){ try{ return JSON.parse(localStorage.getItem(SAVED_LINKS_APP_KEY)||'[]') }catch(e){return[]}}
+function saveSavedLinks(){ localStorage.setItem(SAVED_LINKS_APP_KEY, JSON.stringify(savedLinks)) }
 
 function uid(){ return Date.now().toString(36)+Math.random().toString(36).slice(2,8) }
 
@@ -82,6 +87,36 @@ function render(){ sections.innerHTML=''
   if(!groups.today.length && !groups.yesterday.length && !groups.earlier.length){ sections.innerHTML='<p style="padding:12px;color:#9fb0d6">No items</p>' }
 }
 
+function renderSavedLinks(){
+  if(!savedLinksEl) return
+  if(!savedLinks.length){
+    savedLinksEl.innerHTML = ''
+    return
+  }
+
+  const title = document.createElement('div')
+  title.className = 'saved-links-title'
+  title.textContent = 'Saved videos'
+
+  const list = document.createElement('ul')
+  list.className = 'saved-links-list'
+
+  savedLinks.forEach((link)=>{
+    const li = document.createElement('li')
+    const a = document.createElement('a')
+    a.href = link.url
+    a.target = '_blank'
+    a.rel = 'noopener noreferrer'
+    a.textContent = link.title || link.url
+    li.appendChild(a)
+    list.appendChild(li)
+  })
+
+  savedLinksEl.innerHTML = ''
+  savedLinksEl.appendChild(title)
+  savedLinksEl.appendChild(list)
+}
+
 function renderSection(title, list){
   const s = document.createElement('div'); s.className='section'
   const h = document.createElement('h2'); h.textContent=title; s.appendChild(h)
@@ -131,4 +166,4 @@ function handleParams(){ const p = new URLSearchParams(location.search); if(p.ha
   history.replaceState({},document.title,location.pathname)
 }}
 
-window.addEventListener('load', ()=>{ renderHeaderLinks(); handleParams(); render() })
+window.addEventListener('load', ()=>{ renderHeaderLinks(); handleParams(); savedLinks = loadSavedLinks(); renderSavedLinks(); render() })

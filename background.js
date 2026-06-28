@@ -1,4 +1,5 @@
 const APP_URL = 'https://ryanmgreen96.github.io/YoutubeQue2/' // GitHub Pages URL for your repo
+const SAVED_LINKS_KEY = 'savedVideoLinks'
 
 chrome.runtime.onInstalled.addListener(()=>{
   chrome.contextMenus.create({
@@ -76,6 +77,47 @@ chrome.contextMenus.onClicked.addListener((info, tab)=>{
       openQueueTabFor(targetUrl || (tab && tab.url) || null, pageTitle)
     }catch(e){ openQueueTabFor(targetUrl || (tab && tab.url) || null, null) }
   })()
+})
+
+function extractVideoUrlFromTab(tabUrl){
+  try{
+    const u = new URL(tabUrl)
+    const host = u.hostname.replace(/^www\./, '')
+
+    if(host === 'youtube.com' || host.endsWith('.youtube.com')){
+      if(u.pathname === '/watch' && u.searchParams.has('v')){
+        return `https://www.youtube.com/watch?v=${u.searchParams.get('v')}`
+      }
+      if(u.pathname.startsWith('/shorts/')){
+        const id = u.pathname.split('/').filter(Boolean)[1]
+        if(id) return `https://www.youtube.com/watch?v=${id}`
+      }
+      return null
+    }
+
+    if(host === 'youtu.be'){
+      const id = u.pathname.split('/').filter(Boolean)[0]
+      if(id) return `https://www.youtube.com/watch?v=${id}`
+    }
+  }catch(e){
+    return null
+  }
+  return null
+}
+
+chrome.action.onClicked.addListener((tab)=>{
+  const videoUrl = extractVideoUrlFromTab(tab && tab.url)
+  if(!videoUrl) return
+
+  const cleanTitle = ((tab && tab.title) || '').replace(/\s*-\s*YouTube\s*$/i, '').trim() || 'YouTube video'
+  const item = { id: uid(), url: videoUrl, title: cleanTitle, created: new Date().toISOString() }
+
+  chrome.storage.local.get({[SAVED_LINKS_KEY]:[]}, (res)=>{
+    const current = res[SAVED_LINKS_KEY] || []
+    const deduped = current.filter((link)=>link.url !== item.url)
+    deduped.unshift(item)
+    chrome.storage.local.set({[SAVED_LINKS_KEY]: deduped})
+  })
 })
 
 function uid(){ return Date.now().toString(36)+Math.random().toString(36).slice(2,8) }

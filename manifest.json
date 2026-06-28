@@ -4,6 +4,9 @@
   "version": "0.1",
   "description": "Right-click to queue a YouTube video into your hosted queue app.",
   "permissions": ["contextMenus","scripting","tabs","activeTab","storage"],
+  "action": {
+    "default_title": "Save current YouTube video"
+  },
   "background": {"service_worker": "background.js"},
   "host_permissions": ["<all_urls>"],
   "content_scripts": [
