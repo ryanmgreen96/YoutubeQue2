@@ -8,6 +8,9 @@ header{display:flex;align-items:center;justify-content:space-between;padding:12p
 .controls{display:flex;gap:8px;align-items:center}
 button{background:transparent;border:1px solid rgba(255,255,255,0.06);color:var(--text);padding:6px 10px;border-radius:6px;cursor:pointer}
 button.selected{background:var(--accent);color:#000;border-color:transparent}
+main{display:grid;grid-template-columns:10% 80% 10%;min-height:calc(100vh - 63px)}
+.side-bar{min-height:100%;background:rgba(255,255,255,0.02)}
+.content-area{min-width:0}
 #sections{padding:12px;display:flex;flex-direction:column;gap:18px}
 .section{display:flex;flex-direction:column;gap:10px}
 .section h2{margin:0 0 4px 4px;font-size:14px;color:#cfe1ff}
@@ -24,4 +27,4 @@ button.selected{background:var(--accent);color:#000;border-color:transparent}
 .actions button{min-width:16px;min-height:16px}
 
 @media (max-width:1200px){.grid{grid-template-columns:repeat(4,1fr)}.thumb{height:110px}}
-@media (max-width:800px){.grid{grid-template-columns:repeat(2,1fr)}.thumb{height:140px}}
+@media (max-width:800px){main{grid-template-columns:0 1fr 0}.side-bar{display:none}.grid{grid-template-columns:repeat(2,1fr)}.thumb{height:140px}}
