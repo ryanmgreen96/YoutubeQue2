@@ -1,4 +1,4 @@
-const APP_URL = 'https://ryanmgreen0-svg.github.io/youtubeQue2/' // GitHub Pages URL for your repo
+const APP_URL = 'https://ryanmgreen96.github.io/YoutubeQue2/' // GitHub Pages URL for your repo
 
 chrome.runtime.onInstalled.addListener(()=>{
   chrome.contextMenus.create({

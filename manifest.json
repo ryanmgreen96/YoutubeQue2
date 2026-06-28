@@ -9,7 +9,7 @@
   "content_scripts": [
     {
       "matches": [
-        "https://ryanmgreen0-svg.github.io/youtubeQue2/*",
+        "https://ryanmgreen96.github.io/YoutubeQue2/*",
         "http://localhost:8000/*"
       ],
       "js": ["contentScript.js"],
