@@ -201,6 +201,9 @@ function renderLeftNav(){
   leftNavEl.appendChild(homeButton)
 
   pages.forEach(page=>{
+    const row = document.createElement('div')
+    row.className = 'page-link-row'
+
     const button = document.createElement('button')
     button.type = 'button'
     button.className = `page-link${currentPageId===page.id ? ' selected' : ''}`
@@ -218,7 +221,24 @@ function renderLeftNav(){
       setCurrentPage(page.id)
     })
     attachLongPressDelete(button, ()=>removePage(page.id))
-    leftNavEl.appendChild(button)
+    row.appendChild(button)
+
+    const addTabButton = document.createElement('button')
+    addTabButton.type = 'button'
+    addTabButton.className = 'page-link-addtab'
+    addTabButton.textContent = '+'
+    addTabButton.title = `Add tab to ${page.title}`
+    addTabButton.addEventListener('click', (ev)=>{
+      ev.stopPropagation()
+      const fallbackTitle = `Tab ${Array.isArray(page.tabs) ? page.tabs.length + 1 : 1}`
+      const tabTitle = window.prompt(`Tab title for ${page.title}`, fallbackTitle)
+      if(tabTitle === null) return
+      const tab = addTab(page.id, tabTitle)
+      if(tab) setCurrentPage(page.id, tab.id)
+    })
+    row.appendChild(addTabButton)
+
+    leftNavEl.appendChild(row)
   })
 }
 
