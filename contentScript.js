@@ -149,7 +149,6 @@
       }
 
       document.addEventListener('contextmenu', (ev)=>{ handleQueueClick(ev) }, true)
-      document.addEventListener('pointerdown', (ev)=>{ handleQueueClick(ev) }, true)
 
       chrome.storage.onChanged.addListener((changes, area)=>{
         if(area !== 'local' || !changes[QUEUE_MODE_KEY]) return
