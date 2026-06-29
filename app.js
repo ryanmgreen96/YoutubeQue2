@@ -211,6 +211,7 @@ function renderLeftNav(){
       }
       setCurrentPage(page.id)
     })
+    attachLongPressDelete(button, ()=>removePage(page.id))
     leftNavEl.appendChild(button)
   })
 }
@@ -251,9 +252,7 @@ function renderPageHeader(page){
   titleButton.className = 'page-heading'
   titleButton.textContent = page.title
   titleButton.title = 'Click to return to the main page'
-  titleButton.addEventListener('click', ()=>{
-    if(currentTabId) setCurrentPage(page.id, null)
-  })
+  titleButton.addEventListener('click', ()=>{ setCurrentPage(page.id, null) })
   attachLongPressDelete(titleButton, ()=>removePage(page.id))
   topRow.appendChild(titleButton)
 
@@ -263,24 +262,16 @@ function renderPageHeader(page){
   addTabButton.textContent = '+'
   addTabButton.title = 'Add tab'
   addTabButton.addEventListener('click', ()=>{
-    const tabTitle = prompt(`Tab title for ${page.title}`, `Tab ${page.tabs.length + 1}`)
+    const fallbackTitle = `Tab ${page.tabs.length + 1}`
+    const tabTitle = prompt(`Tab title for ${page.title}`, fallbackTitle)
     if(tabTitle === null) return
-    const tab = addTab(page.id, tabTitle)
+    const tab = addTab(page.id, tabTitle || fallbackTitle)
     if(tab) setCurrentPage(page.id, tab.id)
   })
   topRow.appendChild(addTabButton)
 
-  header.appendChild(topRow)
-
   const tabsRow = document.createElement('div')
   tabsRow.className = 'page-tabs'
-
-  const mainTab = document.createElement('button')
-  mainTab.type = 'button'
-  mainTab.className = `page-tab${currentTabId===null ? ' selected' : ''}`
-  mainTab.textContent = 'Main'
-  mainTab.addEventListener('click', ()=>setCurrentPage(page.id, null))
-  tabsRow.appendChild(mainTab)
 
   page.tabs.forEach((tab)=>{
     const tabButton = document.createElement('button')
@@ -292,7 +283,8 @@ function renderPageHeader(page){
     tabsRow.appendChild(tabButton)
   })
 
-  header.appendChild(tabsRow)
+  topRow.appendChild(tabsRow)
+  header.appendChild(topRow)
   return header
 }
 
