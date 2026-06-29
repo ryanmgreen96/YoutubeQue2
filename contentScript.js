@@ -129,7 +129,9 @@
 
       const handleQueueClick = (ev)=>{
         if(!queueModeEnabled) return
-        if(ev.button !== 0 || ev.defaultPrevented || ev.metaKey || ev.ctrlKey || ev.shiftKey || ev.altKey) return
+        if(ev.defaultPrevented || ev.metaKey || ev.ctrlKey || ev.shiftKey || ev.altKey) return
+        if(ev.type === 'pointerdown' && ev.button !== 2) return
+        if(ev.type === 'contextmenu' && ev.button !== 2 && ev.button !== 0) return
 
         const target = findVideoLinkElement(ev.target)
         if(!target) return
@@ -146,6 +148,7 @@
         chrome.runtime.sendMessage({type:'queue-video-url', url: videoUrl, title})
       }
 
+      document.addEventListener('contextmenu', (ev)=>{ handleQueueClick(ev) }, true)
       document.addEventListener('pointerdown', (ev)=>{ handleQueueClick(ev) }, true)
 
       chrome.storage.onChanged.addListener((changes, area)=>{
