@@ -1,5 +1,7 @@
 const APP_KEY = 'ytQueueItems_v1'
 const PAGE_KEY = 'ytQueuePages_v1'
+const PAGE_TABS_KEY = 'ytPageTabs_v1'
+const ACTIVE_TAB_KEY = 'ytActiveTabs_v1'
 const SAVED_LINKS_APP_KEY = 'ytSavedVideos_v1'
 const HEADER_LINKS_KEY = 'ytHeaderLinks_v1'
 const APP_TITLE = document.getElementById('view-title')
@@ -12,6 +14,8 @@ const template = document.getElementById('item-template')
 
 let items = load()
 let pages = loadPages()
+let pageTabs = loadPageTabs()
+let activeTabs = loadActiveTabs()
 let savedLinks = loadSavedLinks()
 let headerLinks = loadHeaderLinks()
 let currentPageId = 'home'
@@ -28,6 +32,10 @@ function loadPages(){
   }catch(e){return[]}
 }
 function savePages(){ localStorage.setItem(PAGE_KEY, JSON.stringify(pages)) }
+function loadPageTabs(){ try{ return JSON.parse(localStorage.getItem(PAGE_TABS_KEY)||'{}') }catch(e){ return {} } }
+function savePageTabs(){ localStorage.setItem(PAGE_TABS_KEY, JSON.stringify(pageTabs)) }
+function loadActiveTabs(){ try{ return JSON.parse(localStorage.getItem(ACTIVE_TAB_KEY)||'{}') }catch(e){ return {} } }
+function saveActiveTabs(){ localStorage.setItem(ACTIVE_TAB_KEY, JSON.stringify(activeTabs)) }
 function loadSavedLinks(){ try{ return JSON.parse(localStorage.getItem(SAVED_LINKS_APP_KEY)||'[]') }catch(e){return[]}}
 function saveSavedLinks(){ localStorage.setItem(SAVED_LINKS_APP_KEY, JSON.stringify(savedLinks)) }
 function removeSavedLink(id){ savedLinks = savedLinks.filter(link=>link.id!==id); saveSavedLinks(); renderSavedLinks() }
@@ -35,20 +43,64 @@ function removeSavedLink(id){ savedLinks = savedLinks.filter(link=>link.id!==id)
 function uid(){ return Date.now().toString(36)+Math.random().toString(36).slice(2,8) }
 
 function normalizePageId(pageId){ return pageId || 'home' }
+function normalizeTabId(tabId){ return tabId || 'default' }
 function getPageTitle(pageId){ if(pageId==='home') return 'Home'; const page = pages.find(item=>item.id===pageId); return page ? page.title : 'Home' }
+function getDefaultTab(){ return {id:'default', title:'Main'} }
+function getPageTabs(pageId){
+  const pid = normalizePageId(pageId)
+  const list = pageTabs[pid]
+  if(Array.isArray(list) && list.length) return list
+  const fallback = [getDefaultTab()]
+  pageTabs[pid] = fallback
+  savePageTabs()
+  return fallback
+}
+function getActiveTabId(pageId){
+  const pid = normalizePageId(pageId)
+  const tabs = getPageTabs(pid)
+  const selected = normalizeTabId(activeTabs[pid])
+  const exists = tabs.some(tab=>tab.id===selected)
+  if(exists) return selected
+  const fallback = tabs[0].id
+  activeTabs[pid] = fallback
+  saveActiveTabs()
+  return fallback
+}
+function setActiveTab(pageId, tabId){
+  const pid = normalizePageId(pageId)
+  activeTabs[pid] = normalizeTabId(tabId)
+  saveActiveTabs()
+  render()
+}
+function addTabToPage(pageId, title){
+  const tabTitle = (title || '').trim()
+  if(!tabTitle) return
+  const pid = normalizePageId(pageId)
+  const tabs = getPageTabs(pid).slice()
+  const tab = {id: uid(), title: tabTitle}
+  tabs.push(tab)
+  pageTabs[pid] = tabs
+  savePageTabs()
+  setActiveTab(pid, tab.id)
+}
 function addPage(title){
   const pageTitle = (title || '').trim()
   if(!pageTitle) return
   const page = {id: uid(), title: pageTitle, created: new Date().toISOString()}
   pages.push(page)
   savePages()
+  pageTabs[page.id] = [getDefaultTab()]
+  activeTabs[page.id] = 'default'
+  savePageTabs()
+  saveActiveTabs()
   setCurrentPage(page.id)
   renderLeftNav()
 }
 function moveSelectedItemsToPage(pageId){
   const targetPageId = normalizePageId(pageId)
+  const targetTabId = getActiveTabId(targetPageId)
   if(!selectedItemIds.size) return
-  items = items.map(item=>selectedItemIds.has(item.id) ? {...item, pageId: targetPageId} : item)
+  items = items.map(item=>selectedItemIds.has(item.id) ? {...item, pageId: targetPageId, tabId: targetTabId} : item)
   selectedItemIds.clear()
   editMode = false
   currentPageId = targetPageId
@@ -68,6 +120,8 @@ function selectItem(id){
 }
 function setCurrentPage(pageId){
   currentPageId = normalizePageId(pageId)
+  getPageTabs(currentPageId)
+  getActiveTabId(currentPageId)
   editMode = false
   selectedItemIds.clear()
   renderLeftNav()
@@ -88,9 +142,9 @@ function extractVideoId(url){
 
 function makeThumbUrl(vid){ return `https://i.ytimg.com/vi/${vid}/hqdefault.jpg` }
 
-function addItem({url,title,videoId,favorite=false,pageId='home',created=new Date().toISOString()}){
+function addItem({url,title,videoId,favorite=false,pageId='home',tabId='default',created=new Date().toISOString()}){
   const id = uid()
-  const item = {id, url, title, videoId, favorite, pageId: normalizePageId(pageId), created, publishedAt: ''}
+  const item = {id, url, title, videoId, favorite, pageId: normalizePageId(pageId), tabId: normalizeTabId(tabId), created, publishedAt: ''}
   items.unshift(item)
   save()
   render()
@@ -149,8 +203,41 @@ function renderLeftNav(){
   })
 }
 
+function renderTabBar(pageId){
+  const tabs = getPageTabs(pageId)
+  const activeTabId = getActiveTabId(pageId)
+  const row = document.createElement('div')
+  row.className = 'tab-row'
+
+  tabs.forEach(tab=>{
+    const button = document.createElement('button')
+    button.type = 'button'
+    button.className = `main-tab${activeTabId===tab.id ? ' selected' : ''}`
+    button.textContent = tab.title
+    button.title = tab.title
+    button.addEventListener('click', ()=>setActiveTab(pageId, tab.id))
+    row.appendChild(button)
+  })
+
+  const add = document.createElement('button')
+  add.type = 'button'
+  add.className = 'main-tab add-tab'
+  add.title = 'Add tab'
+  add.textContent = '+'
+  add.addEventListener('click', ()=>{
+    const title = prompt('Tab title')
+    if(!title) return
+    addTabToPage(pageId, title)
+  })
+  row.appendChild(add)
+
+  sections.appendChild(row)
+}
+
 function render(){ sections.innerHTML=''
-  const list = items.filter(i=>normalizePageId(i.pageId)===currentPageId)
+  renderTabBar(currentPageId)
+  const activeTabId = getActiveTabId(currentPageId)
+  const list = items.filter(i=>normalizePageId(i.pageId)===currentPageId && normalizeTabId(i.tabId)===activeTabId)
   const groups = {today:[], yesterday:[], earlier:[]}
   const now = new Date();
 
@@ -290,6 +377,8 @@ window.addEventListener('load', ()=>{
     pages = []
     savePages()
   }
+  getPageTabs('home')
+  getActiveTabId('home')
   currentPageId = 'home'
   APP_TITLE.textContent = 'Home'
   renderLeftNav()
