@@ -161,6 +161,12 @@ function render(){ sections.innerHTML=''
     heading.className = 'page-heading'
     heading.textContent = getPageTitle(currentPageId)
     sections.appendChild(heading)
+    if(list.length){
+      renderSection('', list, false)
+    }else{
+      sections.innerHTML += '<p style="padding:12px;color:#9fb0d6">No items</p>'
+    }
+    return
   }
 
   list.forEach(it=>{
@@ -213,18 +219,20 @@ function renderSavedLinks(){
 
 function renderSection(title, list){
   const s = document.createElement('div'); s.className='section'
-  const header = document.createElement('div')
-  header.className = 'section-header'
-  const h = document.createElement('h2'); h.textContent=title; header.appendChild(h)
-  if(title==='Today' && currentPageId==='home'){
-    const editButton = document.createElement('button')
-    editButton.type = 'button'
-    editButton.className = 'edit-mode-btn'
-    editButton.textContent = editMode ? `Done${selectedItemIds.size ? ` (${selectedItemIds.size})` : ''}` : 'Edit'
-    editButton.addEventListener('click', toggleEditMode)
-    header.appendChild(editButton)
+  if(title){
+    const header = document.createElement('div')
+    header.className = 'section-header'
+    const h = document.createElement('h2'); h.textContent=title; header.appendChild(h)
+    if(title==='Today' && currentPageId==='home'){
+      const editButton = document.createElement('button')
+      editButton.type = 'button'
+      editButton.className = 'edit-mode-btn'
+      editButton.textContent = editMode ? `Done${selectedItemIds.size ? ` (${selectedItemIds.size})` : ''}` : 'Edit'
+      editButton.addEventListener('click', toggleEditMode)
+      header.appendChild(editButton)
+    }
+    s.appendChild(header)
   }
-  s.appendChild(header)
   const g = document.createElement('div'); g.className='grid'
   list.forEach(it=>{
     const node = template.content.cloneNode(true)
