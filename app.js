@@ -69,6 +69,38 @@ function addTab(pageId, title){
   renderLeftNav()
   return tab
 }
+function removePage(pageId){
+  const page = getPageById(pageId)
+  if(!page) return
+  const ok = confirm(`Delete page "${page.title}"? Videos on this page will move back to Home.`)
+  if(!ok) return
+  items = items.map(item=>normalizePageId(item.pageId)===pageId ? {...item, pageId:'home', tabId:null} : item)
+  pages = pages.filter(item=>item.id!==pageId)
+  if(currentPageId === pageId){
+    currentPageId = 'home'
+    currentTabId = null
+  }
+  save()
+  savePages()
+  renderLeftNav()
+  render()
+}
+function removeTab(pageId, tabId){
+  const page = getPageById(pageId)
+  const tab = getTabById(page, tabId)
+  if(!page || !tab) return
+  const ok = confirm(`Delete tab "${tab.title}" from "${page.title}"? Videos in this tab will move to the page main view.`)
+  if(!ok) return
+  items = items.map(item=>normalizePageId(item.pageId)===pageId && normalizeTabId(item.tabId)===tabId ? {...item, tabId:null} : item)
+  page.tabs = page.tabs.filter(item=>item.id!==tabId)
+  if(currentPageId === pageId && currentTabId === tabId){
+    currentTabId = null
+  }
+  save()
+  savePages()
+  renderLeftNav()
+  render()
+}
 function moveSelectedItemsToDestination(pageId, tabId=null){
   const targetPageId = normalizePageId(pageId)
   const targetTabId = normalizeTabId(tabId)
@@ -222,6 +254,7 @@ function renderPageHeader(page){
   titleButton.addEventListener('click', ()=>{
     if(currentTabId) setCurrentPage(page.id, null)
   })
+  attachLongPressDelete(titleButton, ()=>removePage(page.id))
   topRow.appendChild(titleButton)
 
   const addTabButton = document.createElement('button')
@@ -230,8 +263,8 @@ function renderPageHeader(page){
   addTabButton.textContent = '+'
   addTabButton.title = 'Add tab'
   addTabButton.addEventListener('click', ()=>{
-    const tabTitle = prompt(`Tab title for ${page.title}`)
-    if(!tabTitle) return
+    const tabTitle = prompt(`Tab title for ${page.title}`, `Tab ${page.tabs.length + 1}`)
+    if(tabTitle === null) return
     const tab = addTab(page.id, tabTitle)
     if(tab) setCurrentPage(page.id, tab.id)
   })
@@ -255,11 +288,36 @@ function renderPageHeader(page){
     tabButton.className = `page-tab${currentTabId===tab.id ? ' selected' : ''}`
     tabButton.textContent = tab.title
     tabButton.addEventListener('click', ()=>setCurrentPage(page.id, tab.id))
+    attachLongPressDelete(tabButton, ()=>removeTab(page.id, tab.id))
     tabsRow.appendChild(tabButton)
   })
 
   header.appendChild(tabsRow)
   return header
+}
+
+function attachLongPressDelete(button, onDelete){
+  let pressTimer = null
+  let suppressNextClick = false
+  const clear = ()=>{ if(pressTimer){ clearTimeout(pressTimer); pressTimer = null } }
+  button.addEventListener('pointerdown', (ev)=>{
+    if(ev.button !== 0) return
+    clear()
+    pressTimer = setTimeout(()=>{
+      pressTimer = null
+      suppressNextClick = true
+      onDelete()
+    }, 650)
+  })
+  button.addEventListener('pointerup', clear)
+  button.addEventListener('pointerleave', clear)
+  button.addEventListener('pointercancel', clear)
+  button.addEventListener('click', (ev)=>{
+    if(!suppressNextClick) return
+    suppressNextClick = false
+    ev.preventDefault()
+    ev.stopImmediatePropagation()
+  }, true)
 }
 
 function render(){ sections.innerHTML=''
