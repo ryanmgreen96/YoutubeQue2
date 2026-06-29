@@ -14,7 +14,7 @@ main{display:grid;grid-template-columns:10% 75% 15%;min-height:calc(100vh - 63px
 .saved-links{padding:12px;display:flex;flex-direction:column;gap:8px}
 .saved-links-title{font-size:11px;letter-spacing:0.03em;text-transform:uppercase;color:#9fb0d6}
 .saved-links-list{margin:0;padding:0;list-style:none;display:flex;flex-direction:column;gap:6px}
-.saved-links-list a{font-size:11px;line-height:1.25;color:#bcd1f2;text-decoration:none;word-break:break-word}
+.saved-links-list a{font-size:10px;line-height:1.2;color:#bcd1f2;text-decoration:none;word-break:break-word;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
 .saved-links-list a:hover{text-decoration:underline;color:#e6eef8}
 #sections{padding:12px;display:flex;flex-direction:column;gap:18px}
 .section{display:flex;flex-direction:column;gap:10px}
