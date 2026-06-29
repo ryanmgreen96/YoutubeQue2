@@ -15,6 +15,7 @@ let pages = loadPages()
 let savedLinks = loadSavedLinks()
 let headerLinks = loadHeaderLinks()
 let currentPageId = 'home'
+let currentTabId = null
 let editMode = false
 let selectedItemIds = new Set()
 
@@ -24,7 +25,14 @@ function loadPages(){
   try{
     const stored = JSON.parse(localStorage.getItem(PAGE_KEY)||'[]')
     if(!Array.isArray(stored)) return []
-    return stored.filter(page=>page && page.id && page.title)
+    return stored
+      .filter(page=>page && page.id && page.title)
+      .map(page=>({
+        ...page,
+        tabs: Array.isArray(page.tabs)
+          ? page.tabs.filter(tab=>tab && tab.id && tab.title).map(tab=>({...tab}))
+          : []
+      }))
   }catch(e){return[]}
 }
 function savePages(){ localStorage.setItem(PAGE_KEY, JSON.stringify(pages)) }
@@ -35,23 +43,41 @@ function removeSavedLink(id){ savedLinks = savedLinks.filter(link=>link.id!==id)
 function uid(){ return Date.now().toString(36)+Math.random().toString(36).slice(2,8) }
 
 function normalizePageId(pageId){ return pageId || 'home' }
+function normalizeTabId(tabId){ return tabId || null }
 function getPageTitle(pageId){ if(pageId==='home') return 'Home'; const page = pages.find(item=>item.id===pageId); return page ? page.title : 'Home' }
+function getPageById(pageId){ return pages.find(page=>page.id===pageId) || null }
+function getTabById(page, tabId){ return page && Array.isArray(page.tabs) ? page.tabs.find(tab=>tab.id===tabId) || null : null }
+function getCurrentPage(){ return currentPageId==='home' ? null : getPageById(currentPageId) }
+function getCurrentTab(){ const page = getCurrentPage(); return page ? getTabById(page, currentTabId) : null }
 function addPage(title){
   const pageTitle = (title || '').trim()
   if(!pageTitle) return
-  const page = {id: uid(), title: pageTitle, created: new Date().toISOString()}
+  const page = {id: uid(), title: pageTitle, created: new Date().toISOString(), tabs: []}
   pages.push(page)
   savePages()
   setCurrentPage(page.id)
   renderLeftNav()
 }
-function moveSelectedItemsToPage(pageId){
+function addTab(pageId, title){
+  const page = getPageById(pageId)
+  const tabTitle = (title || '').trim()
+  if(!page || !tabTitle) return null
+  const tab = {id: uid(), title: tabTitle, created: new Date().toISOString()}
+  page.tabs = Array.isArray(page.tabs) ? page.tabs : []
+  page.tabs.push(tab)
+  savePages()
+  renderLeftNav()
+  return tab
+}
+function moveSelectedItemsToDestination(pageId, tabId=null){
   const targetPageId = normalizePageId(pageId)
+  const targetTabId = normalizeTabId(tabId)
   if(!selectedItemIds.size) return
-  items = items.map(item=>selectedItemIds.has(item.id) ? {...item, pageId: targetPageId} : item)
+  items = items.map(item=>selectedItemIds.has(item.id) ? {...item, pageId: targetPageId, tabId: targetTabId} : item)
   selectedItemIds.clear()
   editMode = false
   currentPageId = targetPageId
+  currentTabId = targetTabId
   save()
   renderLeftNav()
   render()
@@ -66,8 +92,9 @@ function selectItem(id){
   else selectedItemIds.add(id)
   render()
 }
-function setCurrentPage(pageId){
+function setCurrentPage(pageId, tabId=null){
   currentPageId = normalizePageId(pageId)
+  currentTabId = normalizeTabId(tabId)
   editMode = false
   selectedItemIds.clear()
   renderLeftNav()
@@ -88,9 +115,9 @@ function extractVideoId(url){
 
 function makeThumbUrl(vid){ return `https://i.ytimg.com/vi/${vid}/hqdefault.jpg` }
 
-function addItem({url,title,videoId,favorite=false,pageId='home',created=new Date().toISOString()}){
+function addItem({url,title,videoId,favorite=false,pageId='home',tabId=null,created=new Date().toISOString()}){
   const id = uid()
-  const item = {id, url, title, videoId, favorite, pageId: normalizePageId(pageId), created, publishedAt: ''}
+  const item = {id, url, title, videoId, favorite, pageId: normalizePageId(pageId), tabId: normalizeTabId(tabId), created, publishedAt: ''}
   items.unshift(item)
   save()
   render()
@@ -142,30 +169,116 @@ function renderLeftNav(){
     button.textContent = page.title
     button.title = page.title
     button.addEventListener('click', ()=>{
-      if(editMode && selectedItemIds.size){ moveSelectedItemsToPage(page.id); return }
+      if(editMode && selectedItemIds.size){
+        if(Array.isArray(page.tabs) && page.tabs.length){
+          promptDestinationForPage(page)
+          return
+        }
+        moveSelectedItemsToDestination(page.id, null)
+        return
+      }
       setCurrentPage(page.id)
     })
     leftNavEl.appendChild(button)
   })
 }
 
+function promptDestinationForPage(page){
+  const tabs = Array.isArray(page.tabs) ? page.tabs : []
+  if(!tabs.length){
+    moveSelectedItemsToDestination(page.id, null)
+    return
+  }
+
+  const options = ['0. Main page']
+  tabs.forEach((tab, index)=>{ options.push(`${index + 1}. ${tab.title}`) })
+  const response = prompt(`Move selected videos into ${page.title}\n${options.join('\n')}`, '0')
+  if(response === null) return
+
+  const choice = Number.parseInt(response, 10)
+  if(Number.isNaN(choice)) return
+  if(choice === 0){
+    moveSelectedItemsToDestination(page.id, null)
+    return
+  }
+
+  const chosenTab = tabs[choice - 1]
+  if(!chosenTab) return
+  moveSelectedItemsToDestination(page.id, chosenTab.id)
+}
+
+function renderPageHeader(page){
+  const header = document.createElement('div')
+  header.className = 'page-header'
+
+  const topRow = document.createElement('div')
+  topRow.className = 'page-header-row'
+
+  const titleButton = document.createElement('button')
+  titleButton.type = 'button'
+  titleButton.className = 'page-heading'
+  titleButton.textContent = page.title
+  titleButton.title = 'Click to return to the main page'
+  titleButton.addEventListener('click', ()=>{
+    if(currentTabId) setCurrentPage(page.id, null)
+  })
+  topRow.appendChild(titleButton)
+
+  const addTabButton = document.createElement('button')
+  addTabButton.type = 'button'
+  addTabButton.className = 'page-tab-add'
+  addTabButton.textContent = '+'
+  addTabButton.title = 'Add tab'
+  addTabButton.addEventListener('click', ()=>{
+    const tabTitle = prompt(`Tab title for ${page.title}`)
+    if(!tabTitle) return
+    const tab = addTab(page.id, tabTitle)
+    if(tab) setCurrentPage(page.id, tab.id)
+  })
+  topRow.appendChild(addTabButton)
+
+  header.appendChild(topRow)
+
+  const tabsRow = document.createElement('div')
+  tabsRow.className = 'page-tabs'
+
+  const mainTab = document.createElement('button')
+  mainTab.type = 'button'
+  mainTab.className = `page-tab${currentTabId===null ? ' selected' : ''}`
+  mainTab.textContent = 'Main'
+  mainTab.addEventListener('click', ()=>setCurrentPage(page.id, null))
+  tabsRow.appendChild(mainTab)
+
+  page.tabs.forEach((tab)=>{
+    const tabButton = document.createElement('button')
+    tabButton.type = 'button'
+    tabButton.className = `page-tab${currentTabId===tab.id ? ' selected' : ''}`
+    tabButton.textContent = tab.title
+    tabButton.addEventListener('click', ()=>setCurrentPage(page.id, tab.id))
+    tabsRow.appendChild(tabButton)
+  })
+
+  header.appendChild(tabsRow)
+  return header
+}
+
 function render(){ sections.innerHTML=''
-  const list = items.filter(i=>normalizePageId(i.pageId)===currentPageId)
+  const list = items.filter(i=>normalizePageId(i.pageId)===currentPageId && normalizeTabId(i.tabId)===currentTabId)
   const groups = {today:[], yesterday:[], earlier:[]}
   const now = new Date();
 
   APP_TITLE.textContent = getPageTitle(currentPageId)
 
   if(currentPageId !== 'home'){
+    const page = getCurrentPage()
+    if(page){
+      sections.appendChild(renderPageHeader(page))
+    }
     const sortedList = list.slice().sort((a, b)=>{
       const aDate = new Date(a.publishedAt || a.created || 0).getTime()
       const bDate = new Date(b.publishedAt || b.created || 0).getTime()
       return aDate - bDate
     })
-    const heading = document.createElement('div')
-    heading.className = 'page-heading'
-    heading.textContent = getPageTitle(currentPageId)
-    sections.appendChild(heading)
     if(sortedList.length){
       renderSection('', sortedList)
     }else{
@@ -280,7 +393,7 @@ addPageBtn.addEventListener('click', ()=>{
 function handleParams(){ const p = new URLSearchParams(location.search); if(p.has('videoId')){
   const videoId = p.get('videoId'); const title = p.get('title')? decodeURIComponent(p.get('title')) : '';
   const url = `https://www.youtube.com/watch?v=${videoId}`
-  addItem({url,title:title||`YouTube video ${videoId}`,videoId,pageId:'home',created:new Date().toISOString()})
+  addItem({url,title:title||`YouTube video ${videoId}`,videoId,pageId:'home',tabId:null,created:new Date().toISOString()})
   // remove params from url
   history.replaceState({},document.title,location.pathname)
 }}
