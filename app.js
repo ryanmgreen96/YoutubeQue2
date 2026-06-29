@@ -32,9 +32,19 @@ function loadPages(){
   }catch(e){return[]}
 }
 function savePages(){ localStorage.setItem(PAGE_KEY, JSON.stringify(pages)) }
-function loadPageTabs(){ try{ return JSON.parse(localStorage.getItem(PAGE_TABS_KEY)||'{}') }catch(e){ return {} } }
+function loadPageTabs(){
+  try{
+    const parsed = JSON.parse(localStorage.getItem(PAGE_TABS_KEY)||'{}')
+    return parsed && typeof parsed === 'object' && !Array.isArray(parsed) ? parsed : {}
+  }catch(e){ return {} }
+}
 function savePageTabs(){ localStorage.setItem(PAGE_TABS_KEY, JSON.stringify(pageTabs)) }
-function loadActiveTabs(){ try{ return JSON.parse(localStorage.getItem(ACTIVE_TAB_KEY)||'{}') }catch(e){ return {} } }
+function loadActiveTabs(){
+  try{
+    const parsed = JSON.parse(localStorage.getItem(ACTIVE_TAB_KEY)||'{}')
+    return parsed && typeof parsed === 'object' && !Array.isArray(parsed) ? parsed : {}
+  }catch(e){ return {} }
+}
 function saveActiveTabs(){ localStorage.setItem(ACTIVE_TAB_KEY, JSON.stringify(activeTabs)) }
 function loadSavedLinks(){ try{ return JSON.parse(localStorage.getItem(SAVED_LINKS_APP_KEY)||'[]') }catch(e){return[]}}
 function saveSavedLinks(){ localStorage.setItem(SAVED_LINKS_APP_KEY, JSON.stringify(savedLinks)) }
@@ -215,7 +225,9 @@ function selectItem(id){
   render()
 }
 function setCurrentPage(pageId){
-  currentPageId = normalizePageId(pageId)
+  const pid = normalizePageId(pageId)
+  const known = pid === 'home' || pages.some(page=>page.id===pid)
+  currentPageId = known ? pid : 'home'
   getPageTabs(currentPageId)
   getActiveTabId(currentPageId)
   editMode = false
@@ -320,8 +332,9 @@ function renderLeftNav(){
 }
 
 function renderTabBar(pageId){
-  const tabs = getPageTabs(pageId)
-  const activeTabId = getActiveTabId(pageId)
+  const pid = normalizePageId(pageId)
+  const tabs = getPageTabs(pid)
+  const activeTabId = getActiveTabId(pid)
   const row = document.createElement('div')
   row.className = 'tab-row'
 
@@ -334,7 +347,7 @@ function renderTabBar(pageId){
     button.className = `main-tab${activeTabId===tab.id ? ' selected' : ''}`
     button.textContent = tab.title
     button.title = tab.title
-    button.addEventListener('click', ()=>setActiveTab(pageId, tab.id))
+    button.addEventListener('click', ()=>setActiveTab(pid, tab.id))
 
     const del = document.createElement('button')
     del.type = 'button'
@@ -344,7 +357,7 @@ function renderTabBar(pageId){
     del.addEventListener('click', (ev)=>{
       ev.stopPropagation()
       if(!confirm(`Delete tab "${tab.title}"? Videos in it will move to another tab on this page.`)) return
-      deleteTabFromPage(pageId, tab.id)
+      deleteTabFromPage(pid, tab.id)
     })
 
     wrap.appendChild(button)
@@ -360,7 +373,7 @@ function renderTabBar(pageId){
   add.addEventListener('click', ()=>{
     const title = prompt('Tab title')
     if(!title) return
-    addTabToPage(pageId, title)
+    addTabToPage(pid, title)
   })
   row.appendChild(add)
 
