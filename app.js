@@ -1,27 +1,78 @@
 const APP_KEY = 'ytQueueItems_v1'
+const PAGE_KEY = 'ytQueuePages_v1'
 const SAVED_LINKS_APP_KEY = 'ytSavedVideos_v1'
 const HEADER_LINKS_KEY = 'ytHeaderLinks_v1'
 const APP_TITLE = document.getElementById('view-title')
-const homeBtn = document.getElementById('home-btn')
-const favBtn = document.getElementById('fav-btn')
-const addBtn = document.getElementById('add-btn')
 const sections = document.getElementById('sections')
+const leftNavEl = document.getElementById('left-nav')
+const addPageBtn = document.getElementById('add-page-btn')
 const savedLinksEl = document.getElementById('saved-links')
 const headerLinksEl = document.getElementById('header-links')
 const template = document.getElementById('item-template')
 
 let items = load()
+let pages = loadPages()
 let savedLinks = loadSavedLinks()
 let headerLinks = loadHeaderLinks()
-let view = 'home'
+let currentPageId = 'home'
+let editMode = false
+let selectedItemIds = new Set()
 
 function save(){ localStorage.setItem(APP_KEY, JSON.stringify(items)) }
 function load(){ try{ return JSON.parse(localStorage.getItem(APP_KEY)||'[]') }catch(e){return[]}}
+function loadPages(){
+  try{
+    const stored = JSON.parse(localStorage.getItem(PAGE_KEY)||'[]')
+    if(!Array.isArray(stored)) return []
+    return stored.filter(page=>page && page.id && page.title)
+  }catch(e){return[]}
+}
+function savePages(){ localStorage.setItem(PAGE_KEY, JSON.stringify(pages)) }
 function loadSavedLinks(){ try{ return JSON.parse(localStorage.getItem(SAVED_LINKS_APP_KEY)||'[]') }catch(e){return[]}}
 function saveSavedLinks(){ localStorage.setItem(SAVED_LINKS_APP_KEY, JSON.stringify(savedLinks)) }
 function removeSavedLink(id){ savedLinks = savedLinks.filter(link=>link.id!==id); saveSavedLinks(); renderSavedLinks() }
 
 function uid(){ return Date.now().toString(36)+Math.random().toString(36).slice(2,8) }
+
+function normalizePageId(pageId){ return pageId || 'home' }
+function getPageTitle(pageId){ if(pageId==='home') return 'Home'; const page = pages.find(item=>item.id===pageId); return page ? page.title : 'Home' }
+function addPage(title){
+  const pageTitle = (title || '').trim()
+  if(!pageTitle) return
+  const page = {id: uid(), title: pageTitle, created: new Date().toISOString()}
+  pages.push(page)
+  savePages()
+  renderLeftNav()
+}
+function moveSelectedItemsToPage(pageId){
+  const targetPageId = normalizePageId(pageId)
+  if(!selectedItemIds.size) return
+  items = items.map(item=>selectedItemIds.has(item.id) ? {...item, pageId: targetPageId} : item)
+  selectedItemIds.clear()
+  editMode = false
+  currentPageId = targetPageId
+  save()
+  renderLeftNav()
+  render()
+}
+function toggleEditMode(){
+  editMode = !editMode
+  if(!editMode) selectedItemIds.clear()
+  render()
+}
+function selectItem(id){
+  if(selectedItemIds.has(id)) selectedItemIds.delete(id)
+  else selectedItemIds.add(id)
+  render()
+}
+function setCurrentPage(pageId){
+  currentPageId = normalizePageId(pageId)
+  editMode = false
+  selectedItemIds.clear()
+  APP_TITLE.textContent = getPageTitle(currentPageId)
+  renderLeftNav()
+  render()
+}
 
 function extractVideoId(url){
   try{
@@ -37,15 +88,15 @@ function extractVideoId(url){
 
 function makeThumbUrl(vid){ return `https://i.ytimg.com/vi/${vid}/hqdefault.jpg` }
 
-function addItem({url,title,videoId,favorite=false,created=new Date().toISOString()}){
+function addItem({url,title,videoId,favorite=false,pageId='home',created=new Date().toISOString()}){
   const id = uid()
-  const item = {id, url, title, videoId, favorite, created}
+  const item = {id, url, title, videoId, favorite, pageId: normalizePageId(pageId), created}
   items.unshift(item)
   save()
   render()
 }
 
-function removeItem(id){ items = items.filter(i=>i.id!==id); save(); render() }
+function removeItem(id){ items = items.filter(i=>i.id!==id); selectedItemIds.delete(id); save(); render() }
 
 function toggleFav(id){ const it = items.find(i=>i.id===id); if(!it) return; it.favorite=!it.favorite; save(); render() }
 
@@ -70,8 +121,36 @@ function renderHeaderLinks(){ headerLinksEl.innerHTML = ''; headerLinks.forEach(
 
 function editItem(id){ const it = items.find(i=>i.id===id); if(!it) return; const newUrl = prompt('Edit URL', it.url); if(!newUrl) return; const newTitle = prompt('Edit title', it.title)||it.title; const vid = extractVideoId(newUrl)||it.videoId; it.url=newUrl; it.title=newTitle; it.videoId=vid; save(); render() }
 
+function renderLeftNav(){
+  if(!leftNavEl) return
+  leftNavEl.innerHTML = ''
+
+  const homeButton = document.createElement('button')
+  homeButton.type = 'button'
+  homeButton.className = `page-link${currentPageId==='home' ? ' selected' : ''}`
+  homeButton.textContent = 'Home'
+  homeButton.addEventListener('click', ()=>{
+    if(editMode && selectedItemIds.size){ moveSelectedItemsToPage('home'); return }
+    setCurrentPage('home')
+  })
+  leftNavEl.appendChild(homeButton)
+
+  pages.forEach(page=>{
+    const button = document.createElement('button')
+    button.type = 'button'
+    button.className = `page-link${currentPageId===page.id ? ' selected' : ''}`
+    button.textContent = page.title
+    button.title = page.title
+    button.addEventListener('click', ()=>{
+      if(editMode && selectedItemIds.size){ moveSelectedItemsToPage(page.id); return }
+      setCurrentPage(page.id)
+    })
+    leftNavEl.appendChild(button)
+  })
+}
+
 function render(){ sections.innerHTML=''
-  const list = view==='favorites' ? items.filter(i=>i.favorite) : items.filter(i=>!i.favorite)
+  const list = items.filter(i=>normalizePageId(i.pageId)===currentPageId)
   const groups = {today:[], yesterday:[], earlier:[]}
   const now = new Date();
   list.forEach(it=>{
@@ -124,7 +203,18 @@ function renderSavedLinks(){
 
 function renderSection(title, list){
   const s = document.createElement('div'); s.className='section'
-  const h = document.createElement('h2'); h.textContent=title; s.appendChild(h)
+  const header = document.createElement('div')
+  header.className = 'section-header'
+  const h = document.createElement('h2'); h.textContent=title; header.appendChild(h)
+  if(title==='Today' && currentPageId==='home'){
+    const editButton = document.createElement('button')
+    editButton.type = 'button'
+    editButton.className = 'edit-mode-btn'
+    editButton.textContent = editMode ? `Done${selectedItemIds.size ? ` (${selectedItemIds.size})` : ''}` : 'Edit'
+    editButton.addEventListener('click', toggleEditMode)
+    header.appendChild(editButton)
+  }
+  s.appendChild(header)
   const g = document.createElement('div'); g.className='grid'
   list.forEach(it=>{
     const node = template.content.cloneNode(true)
@@ -136,13 +226,18 @@ function renderSection(title, list){
     img.src = it.videoId ? makeThumbUrl(it.videoId) : ''
     ttl.textContent = it.title || it.url
     starBtn.textContent = it.favorite ? '★' : '☆'
+    el.classList.toggle('is-editing', editMode)
+    el.classList.toggle('is-selected', selectedItemIds.has(it.id))
     starBtn.addEventListener('click', (ev)=>{ ev.stopPropagation(); toggleFav(it.id) })
     delBtn.addEventListener('click', (ev)=>{ ev.stopPropagation(); removeItem(it.id) })
-    el.addEventListener('click', ()=>{ removeItem(it.id); window.open(it.url, '_blank') })
+    el.addEventListener('click', ()=>{
+      if(editMode){ selectItem(it.id); return }
+      removeItem(it.id); window.open(it.url, '_blank')
+    })
 
     // long-press to edit
     let pressTimer = null
-    el.addEventListener('mousedown', ()=>{ pressTimer = setTimeout(()=>{ editItem(it.id) },600) })
+    el.addEventListener('mousedown', ()=>{ if(editMode) return; pressTimer = setTimeout(()=>{ editItem(it.id) },600) })
     el.addEventListener('mouseup', ()=>{ clearTimeout(pressTimer) })
     el.addEventListener('mouseleave', ()=>{ clearTimeout(pressTimer) })
 
@@ -152,23 +247,32 @@ function renderSection(title, list){
   sections.appendChild(s)
 }
 
-homeBtn.addEventListener('click', ()=>{ view='home'; homeBtn.classList.add('selected'); favBtn.classList.remove('selected'); APP_TITLE.textContent='Home'; render() })
-favBtn.addEventListener('click', ()=>{ view='favorites'; favBtn.classList.add('selected'); homeBtn.classList.remove('selected'); APP_TITLE.textContent='Favorites'; render() })
-addBtn.addEventListener('click', ()=>{
-  const label = prompt('Text label for header link')
+addPageBtn.addEventListener('click', ()=>{
+  const label = prompt('Page title')
   if(!label) return
-  const url = prompt('Link URL')
-  if(!url) return
-  addHeaderLink({title: label, url})
+  addPage(label)
 })
 
 // handle url params (extension will open app with params)
 function handleParams(){ const p = new URLSearchParams(location.search); if(p.has('videoId')){
   const videoId = p.get('videoId'); const title = p.get('title')? decodeURIComponent(p.get('title')) : '';
   const url = `https://www.youtube.com/watch?v=${videoId}`
-  addItem({url,title:title||`YouTube video ${videoId}`,videoId,created:new Date().toISOString()})
+  addItem({url,title:title||`YouTube video ${videoId}`,videoId,pageId:'home',created:new Date().toISOString()})
   // remove params from url
   history.replaceState({},document.title,location.pathname)
 }}
 
-window.addEventListener('load', ()=>{ renderHeaderLinks(); handleParams(); savedLinks = loadSavedLinks(); renderSavedLinks(); render() })
+window.addEventListener('load', ()=>{
+  if(!pages.length){
+    pages = []
+    savePages()
+  }
+  currentPageId = 'home'
+  APP_TITLE.textContent = 'Home'
+  renderLeftNav()
+  renderHeaderLinks()
+  handleParams()
+  savedLinks = loadSavedLinks()
+  renderSavedLinks()
+  render()
+})

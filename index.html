@@ -12,15 +12,16 @@
       <h1 id="view-title">Home</h1>
       <div id="header-links" class="header-links"></div>
     </div>
-    <div class="controls">
-      <button id="home-btn" class="selected">Home</button>
-      <button id="fav-btn">Favorites</button>
-      <button id="add-btn" title="Add header link">+</button>
-    </div>
   </header>
 
   <main>
-    <aside class="side-bar left-bar" aria-hidden="true"></aside>
+    <aside class="side-bar left-bar">
+      <div class="left-bar-panel">
+        <div class="left-bar-title">Pages</div>
+        <div id="left-nav" class="left-nav"></div>
+        <button id="add-page-btn" class="left-add" title="Add page">+</button>
+      </div>
+    </aside>
     <section class="content-area">
       <div id="sections"></div>
     </section>
