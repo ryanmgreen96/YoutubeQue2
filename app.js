@@ -114,6 +114,9 @@ function moveSelectedItemsToDestination(pageId, tabId=null){
   renderLeftNav()
   render()
 }
+function moveSelectedItemsToPage(pageId){
+  moveSelectedItemsToDestination(pageId, null)
+}
 function toggleEditMode(){
   editMode = !editMode
   if(!editMode) selectedItemIds.clear()
@@ -270,9 +273,6 @@ function renderPageHeader(page){
   })
   topRow.appendChild(addTabButton)
 
-  const tabsRow = document.createElement('div')
-  tabsRow.className = 'page-tabs'
-
   page.tabs.forEach((tab)=>{
     const tabButton = document.createElement('button')
     tabButton.type = 'button'
@@ -280,10 +280,9 @@ function renderPageHeader(page){
     tabButton.textContent = tab.title
     tabButton.addEventListener('click', ()=>setCurrentPage(page.id, tab.id))
     attachLongPressDelete(tabButton, ()=>removeTab(page.id, tab.id))
-    tabsRow.appendChild(tabButton)
+    topRow.appendChild(tabButton)
   })
 
-  topRow.appendChild(tabsRow)
   header.appendChild(topRow)
   return header
 }
