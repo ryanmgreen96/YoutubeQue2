@@ -2,16 +2,26 @@
   "manifest_version": 3,
   "name": "YouTube Queue QuickAdd",
   "version": "0.1",
-  "description": "Right-click to queue a YouTube video into your hosted queue app.",
+  "description": "Toggle click-to-queue mode for YouTube pages and send videos into your hosted queue app.",
   "permissions": ["contextMenus","scripting","tabs","activeTab","storage"],
   "action": {
     "default_title": "Save current YouTube video"
   },
   "background": {"service_worker": "background.js"},
   "host_permissions": ["<all_urls>"],
+  "commands": {
+    "toggle-queue-mode": {
+      "suggested_key": {
+        "default": "Ctrl+Shift+Y"
+      },
+      "description": "Toggle click-to-queue mode"
+    }
+  },
   "content_scripts": [
     {
       "matches": [
+        "*://*.youtube.com/*",
+        "*://youtu.be/*",
         "https://ryanmgreen96.github.io/YoutubeQue2/*",
         "http://localhost:8000/*"
       ],

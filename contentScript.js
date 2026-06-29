@@ -2,6 +2,63 @@
   const APP_KEY = 'ytQueueItems_v1'
   const SAVED_LINKS_APP_KEY = 'ytSavedVideos_v1'
   const SAVED_LINKS_EXT_KEY = 'savedVideoLinks'
+  const QUEUE_MODE_KEY = 'ytQueueClickMode'
+  const host = location.hostname.replace(/^www\./, '')
+
+  function isYouTubeHost(){
+    return host === 'youtube.com' || host.endsWith('.youtube.com') || host === 'youtu.be'
+  }
+
+  function isAppHost(){
+    return host === 'ryanmgreen96.github.io' || host === 'localhost'
+  }
+
+  async function getQueueMode(){
+    const res = await chrome.storage.local.get({[QUEUE_MODE_KEY]: false})
+    return !!res[QUEUE_MODE_KEY]
+  }
+
+  function videoUrlFromHref(href){
+    try{
+      const url = new URL(href, location.href)
+      const cleanHost = url.hostname.replace(/^www\./, '')
+      if(cleanHost === 'youtu.be'){
+        const id = url.pathname.split('/').filter(Boolean)[0]
+        return id ? `https://www.youtube.com/watch?v=${id}` : ''
+      }
+      if(cleanHost === 'youtube.com' || cleanHost.endsWith('.youtube.com')){
+        if(url.pathname === '/watch' && url.searchParams.has('v')) return `https://www.youtube.com/watch?v=${url.searchParams.get('v')}`
+        if(url.pathname.startsWith('/shorts/')){
+          const id = url.pathname.split('/').filter(Boolean)[1]
+          return id ? `https://www.youtube.com/watch?v=${id}` : ''
+        }
+      }
+    }catch(e){ }
+    return ''
+  }
+
+  function queueTitleFromElement(el){
+    const label = (el && (el.getAttribute && (el.getAttribute('aria-label') || el.getAttribute('title')))) || ''
+    if(label.trim()) return label.trim()
+    const titleNode = el && el.closest && el.closest('ytd-rich-item-renderer, ytd-video-renderer, ytd-compact-video-renderer, ytd-grid-video-renderer, ytd-reel-item-renderer')?.querySelector('#video-title, a#video-title, [title]')
+    const text = (titleNode && (titleNode.getAttribute && (titleNode.getAttribute('aria-label') || titleNode.getAttribute('title')) || titleNode.textContent)) || el?.textContent || ''
+    return text.trim()
+  }
+
+  function renderQueueModeBanner(enabled){
+    const existing = document.getElementById('yt-queue-mode-banner')
+    if(!enabled){
+      if(existing) existing.remove()
+      return
+    }
+    if(existing) return
+
+    const banner = document.createElement('div')
+    banner.id = 'yt-queue-mode-banner'
+    banner.textContent = 'Queue mode on: click videos to queue'
+    banner.style.cssText = 'position:fixed;top:12px;right:12px;z-index:2147483647;background:#ffcc00;color:#000;padding:8px 10px;border-radius:999px;font:600 12px/1.2 system-ui,-apple-system,Segoe UI,Roboto,Arial;box-shadow:0 8px 24px rgba(0,0,0,0.25)'
+    document.documentElement.appendChild(banner)
+  }
 
   function mergeUniqueByUrl(incoming, existing){
     const seen = new Set()
@@ -17,6 +74,7 @@
   }
 
   try{
+    if(isAppHost()){
     chrome.storage.local.get(['queuedItems', SAVED_LINKS_EXT_KEY], (res)=>{
       const q = res.queuedItems || []
       const savedLinks = res[SAVED_LINKS_EXT_KEY] || []
@@ -54,6 +112,42 @@
         if(changed) location.reload()
       })
     })
+      return
+    }
+
+    if(!isYouTubeHost()) return
+
+    const installQueueClickMode = async ()=>{
+      const enabled = await getQueueMode()
+      renderQueueModeBanner(enabled)
+
+      document.addEventListener('click', async (ev)=>{
+        const mode = await getQueueMode()
+        if(!mode) return
+        if(ev.button !== 0 || ev.defaultPrevented || ev.metaKey || ev.ctrlKey || ev.shiftKey || ev.altKey) return
+
+        const target = ev.target && ev.target.closest ? ev.target.closest('a[href], [href], ytd-thumbnail, ytd-playlist-thumbnail, #video-title') : null
+        if(!target) return
+
+        const hrefSource = target.getAttribute && (target.getAttribute('href') || target.getAttribute('data-href')) || target.href || ''
+        const videoUrl = videoUrlFromHref(hrefSource)
+        if(!videoUrl) return
+
+        ev.preventDefault()
+        ev.stopPropagation()
+        if(ev.stopImmediatePropagation) ev.stopImmediatePropagation()
+
+        const title = queueTitleFromElement(target)
+        chrome.runtime.sendMessage({type:'queue-video-url', url: videoUrl, title})
+      }, true)
+
+      chrome.storage.onChanged.addListener((changes, area)=>{
+        if(area !== 'local' || !changes[QUEUE_MODE_KEY]) return
+        renderQueueModeBanner(!!changes[QUEUE_MODE_KEY].newValue)
+      })
+    }
+
+    installQueueClickMode()
   }catch(e){
     // no chrome APIs available
   }

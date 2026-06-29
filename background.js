@@ -1,5 +1,27 @@
 const APP_URL = 'https://ryanmgreen96.github.io/YoutubeQue2/' // GitHub Pages URL for your repo
 const SAVED_LINKS_KEY = 'savedVideoLinks'
+const QUEUE_MODE_KEY = 'ytQueueClickMode'
+
+async function getQueueMode(){
+  const res = await chrome.storage.local.get({[QUEUE_MODE_KEY]: false})
+  return !!res[QUEUE_MODE_KEY]
+}
+
+async function setQueueMode(enabled){
+  await chrome.storage.local.set({[QUEUE_MODE_KEY]: !!enabled})
+  await updateQueueModeBadge(!!enabled)
+}
+
+async function updateQueueModeBadge(enabled){
+  if(enabled){
+    await chrome.action.setBadgeText({text: 'Q'})
+    await chrome.action.setBadgeBackgroundColor({color: '#ffcc00'})
+    await chrome.action.setTitle({title: 'Click-to-queue mode: ON'})
+  }else{
+    await chrome.action.setBadgeText({text: ''})
+    await chrome.action.setTitle({title: 'Save current YouTube video'})
+  }
+}
 
 chrome.runtime.onInstalled.addListener(()=>{
   chrome.contextMenus.create({
@@ -7,6 +29,11 @@ chrome.runtime.onInstalled.addListener(()=>{
     title:'Add to queue',
     contexts:['page','link','image','video']
   })
+  getQueueMode().then(updateQueueModeBadge)
+})
+
+chrome.runtime.onStartup.addListener(()=>{
+  getQueueMode().then(updateQueueModeBadge)
 })
 
 function extractUrlFromInfo(info, tab){
@@ -120,6 +147,11 @@ chrome.action.onClicked.addListener((tab)=>{
   })
 })
 
+chrome.commands.onCommand.addListener((command)=>{
+  if(command !== 'toggle-queue-mode') return
+  getQueueMode().then((enabled)=>setQueueMode(!enabled))
+})
+
 function uid(){ return Date.now().toString(36)+Math.random().toString(36).slice(2,8) }
 async function fetchPageTitle(url){
   try{
@@ -204,3 +236,10 @@ function openQueueTabFor(href, title){
     }
   })()
 }
+
+chrome.runtime.onMessage.addListener((message, sender, sendResponse)=>{
+  if(!message || message.type !== 'queue-video-url') return
+  openQueueTabFor(message.url, message.title || '')
+  sendResponse({ok:true})
+  return true
+})
