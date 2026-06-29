@@ -19,6 +19,7 @@ function save(){ localStorage.setItem(APP_KEY, JSON.stringify(items)) }
 function load(){ try{ return JSON.parse(localStorage.getItem(APP_KEY)||'[]') }catch(e){return[]}}
 function loadSavedLinks(){ try{ return JSON.parse(localStorage.getItem(SAVED_LINKS_APP_KEY)||'[]') }catch(e){return[]}}
 function saveSavedLinks(){ localStorage.setItem(SAVED_LINKS_APP_KEY, JSON.stringify(savedLinks)) }
+function removeSavedLink(id){ savedLinks = savedLinks.filter(link=>link.id!==id); saveSavedLinks(); renderSavedLinks() }
 
 function uid(){ return Date.now().toString(36)+Math.random().toString(36).slice(2,8) }
 
@@ -111,10 +112,13 @@ function renderSavedLinks(){
     const li = document.createElement('li')
     const a = document.createElement('a')
     a.href = link.url
-    a.target = '_blank'
-    a.rel = 'noopener noreferrer'
     a.textContent = shortenText(link.title || link.url, 35)
     a.title = link.title || link.url
+    a.addEventListener('click', (ev)=>{
+      ev.preventDefault()
+      window.open(link.url, '_blank', 'noopener,noreferrer')
+      removeSavedLink(link.id)
+    })
     li.appendChild(a)
     list.appendChild(li)
   })
