@@ -83,6 +83,28 @@ function addTabToPage(pageId, title){
   savePageTabs()
   setActiveTab(pid, tab.id)
 }
+function deleteTabFromPage(pageId, tabId){
+  const pid = normalizePageId(pageId)
+  const tid = normalizeTabId(tabId)
+  const tabs = getPageTabs(pid).slice()
+  if(tabs.length <= 1) return
+
+  const nextTabs = tabs.filter(tab=>tab.id !== tid)
+  if(nextTabs.length === tabs.length) return
+  const fallbackTabId = nextTabs[0].id
+
+  items = items.map(item=>{
+    if(normalizePageId(item.pageId)!==pid || normalizeTabId(item.tabId)!==tid) return item
+    return {...item, tabId: fallbackTabId}
+  })
+
+  pageTabs[pid] = nextTabs
+  if(normalizeTabId(activeTabs[pid])===tid) activeTabs[pid] = fallbackTabId
+  savePageTabs()
+  saveActiveTabs()
+  save()
+  render()
+}
 function addPage(title){
   const pageTitle = (title || '').trim()
   if(!pageTitle) return
@@ -95,6 +117,83 @@ function addPage(title){
   saveActiveTabs()
   setCurrentPage(page.id)
   renderLeftNav()
+}
+function deletePage(pageId){
+  const pid = normalizePageId(pageId)
+  if(pid === 'home') return
+
+  pages = pages.filter(page=>page.id !== pid)
+  delete pageTabs[pid]
+  delete activeTabs[pid]
+
+  items = items.map(item=>{
+    if(normalizePageId(item.pageId)!==pid) return item
+    return {...item, pageId:'home', tabId:getActiveTabId('home')}
+  })
+
+  savePages()
+  savePageTabs()
+  saveActiveTabs()
+  save()
+
+  if(currentPageId===pid){
+    setCurrentPage('home')
+    return
+  }
+  renderLeftNav()
+  render()
+}
+function ensurePageTabIntegrity(){
+  let changedTabs = false
+  let changedActive = false
+  let changedItems = false
+
+  getPageTabs('home')
+  getActiveTabId('home')
+
+  const validPageIds = new Set(['home', ...pages.map(page=>page.id)])
+
+  Object.keys(pageTabs).forEach(pid=>{
+    if(!validPageIds.has(pid)){
+      delete pageTabs[pid]
+      changedTabs = true
+    }
+  })
+
+  Object.keys(activeTabs).forEach(pid=>{
+    if(!validPageIds.has(pid)){
+      delete activeTabs[pid]
+      changedActive = true
+    }
+  })
+
+  validPageIds.forEach(pid=>{
+    const tabs = pageTabs[pid]
+    if(!Array.isArray(tabs) || !tabs.length){
+      pageTabs[pid] = [getDefaultTab()]
+      changedTabs = true
+    }
+    const tabIds = new Set(pageTabs[pid].map(tab=>tab.id))
+    const activeId = normalizeTabId(activeTabs[pid])
+    if(!tabIds.has(activeId)){
+      activeTabs[pid] = pageTabs[pid][0].id
+      changedActive = true
+    }
+  })
+
+  items = items.map(item=>{
+    const nextPageId = validPageIds.has(normalizePageId(item.pageId)) ? normalizePageId(item.pageId) : 'home'
+    const tabs = pageTabs[nextPageId] || [getDefaultTab()]
+    const tabIds = new Set(tabs.map(tab=>tab.id))
+    const nextTabId = tabIds.has(normalizeTabId(item.tabId)) ? normalizeTabId(item.tabId) : tabs[0].id
+    if(nextPageId===normalizePageId(item.pageId) && nextTabId===normalizeTabId(item.tabId)) return item
+    changedItems = true
+    return {...item, pageId: nextPageId, tabId: nextTabId}
+  })
+
+  if(changedTabs) savePageTabs()
+  if(changedActive) saveActiveTabs()
+  if(changedItems) save()
 }
 function moveSelectedItemsToPage(pageId){
   const targetPageId = normalizePageId(pageId)
@@ -179,6 +278,8 @@ function renderLeftNav(){
   if(!leftNavEl) return
   leftNavEl.innerHTML = ''
 
+  const homeRow = document.createElement('div')
+  homeRow.className = 'page-link-row'
   const homeButton = document.createElement('button')
   homeButton.type = 'button'
   homeButton.className = `page-link${currentPageId==='home' ? ' selected' : ''}`
@@ -187,9 +288,13 @@ function renderLeftNav(){
     if(editMode && selectedItemIds.size){ moveSelectedItemsToPage('home'); return }
     setCurrentPage('home')
   })
-  leftNavEl.appendChild(homeButton)
+  homeRow.appendChild(homeButton)
+  leftNavEl.appendChild(homeRow)
 
   pages.forEach(page=>{
+    const row = document.createElement('div')
+    row.className = 'page-link-row'
+
     const button = document.createElement('button')
     button.type = 'button'
     button.className = `page-link${currentPageId===page.id ? ' selected' : ''}`
@@ -199,7 +304,21 @@ function renderLeftNav(){
       if(editMode && selectedItemIds.size){ moveSelectedItemsToPage(page.id); return }
       setCurrentPage(page.id)
     })
-    leftNavEl.appendChild(button)
+
+    const del = document.createElement('button')
+    del.type = 'button'
+    del.className = 'page-delete'
+    del.title = 'Delete page'
+    del.textContent = '×'
+    del.addEventListener('click', (ev)=>{
+      ev.stopPropagation()
+      if(!confirm(`Delete page "${page.title}"? Videos in it will move to Home.`)) return
+      deletePage(page.id)
+    })
+
+    row.appendChild(button)
+    row.appendChild(del)
+    leftNavEl.appendChild(row)
   })
 }
 
@@ -210,13 +329,30 @@ function renderTabBar(pageId){
   row.className = 'tab-row'
 
   tabs.forEach(tab=>{
+    const wrap = document.createElement('div')
+    wrap.className = 'main-tab-wrap'
+
     const button = document.createElement('button')
     button.type = 'button'
     button.className = `main-tab${activeTabId===tab.id ? ' selected' : ''}`
     button.textContent = tab.title
     button.title = tab.title
     button.addEventListener('click', ()=>setActiveTab(pageId, tab.id))
-    row.appendChild(button)
+
+    const del = document.createElement('button')
+    del.type = 'button'
+    del.className = 'tab-delete'
+    del.title = 'Delete tab'
+    del.textContent = '×'
+    del.addEventListener('click', (ev)=>{
+      ev.stopPropagation()
+      if(!confirm(`Delete tab "${tab.title}"? Videos in it will move to another tab on this page.`)) return
+      deleteTabFromPage(pageId, tab.id)
+    })
+
+    wrap.appendChild(button)
+    wrap.appendChild(del)
+    row.appendChild(wrap)
   })
 
   const add = document.createElement('button')
@@ -377,8 +513,7 @@ window.addEventListener('load', ()=>{
     pages = []
     savePages()
   }
-  getPageTabs('home')
-  getActiveTabId('home')
+  ensurePageTabIntegrity()
   currentPageId = 'home'
   APP_TITLE.textContent = 'Home'
   renderLeftNav()
