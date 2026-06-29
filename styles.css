@@ -8,7 +8,7 @@ header{display:flex;align-items:center;justify-content:space-between;padding:12p
 .controls{display:flex;gap:8px;align-items:center}
 button{background:transparent;border:1px solid rgba(255,255,255,0.06);color:var(--text);padding:6px 10px;border-radius:6px;cursor:pointer}
 button.selected{background:var(--accent);color:#000;border-color:transparent}
-main{display:grid;grid-template-columns:10% 80% 10%;min-height:calc(100vh - 63px)}
+main{display:grid;grid-template-columns:10% 75% 15%;min-height:calc(100vh - 63px)}
 .side-bar{min-height:100%;background:rgba(255,255,255,0.02)}
 .content-area{min-width:0}
 .saved-links{padding:12px;display:flex;flex-direction:column;gap:8px}

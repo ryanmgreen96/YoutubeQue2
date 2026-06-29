@@ -22,6 +22,12 @@ function saveSavedLinks(){ localStorage.setItem(SAVED_LINKS_APP_KEY, JSON.string
 
 function uid(){ return Date.now().toString(36)+Math.random().toString(36).slice(2,8) }
 
+function shortenText(text, maxLength = 35){
+  const value = (text || '').trim()
+  if(value.length <= maxLength) return value
+  return `${value.slice(0, maxLength - 1).trimEnd()}…`
+}
+
 function extractVideoId(url){
   try{
     const u = new URL(url)
@@ -107,7 +113,8 @@ function renderSavedLinks(){
     a.href = link.url
     a.target = '_blank'
     a.rel = 'noopener noreferrer'
-    a.textContent = link.title || link.url
+    a.textContent = shortenText(link.title || link.url, 35)
+    a.title = link.title || link.url
     li.appendChild(a)
     list.appendChild(li)
   })
