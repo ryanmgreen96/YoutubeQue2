@@ -42,6 +42,7 @@ function addPage(title){
   const page = {id: uid(), title: pageTitle, created: new Date().toISOString()}
   pages.push(page)
   savePages()
+  setCurrentPage(page.id)
   renderLeftNav()
 }
 function moveSelectedItemsToPage(pageId){
