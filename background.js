@@ -110,7 +110,7 @@ chrome.action.onClicked.addListener((tab)=>{
   if(!videoUrl) return
 
   const cleanTitle = ((tab && tab.title) || '').replace(/\s*-\s*YouTube\s*$/i, '').trim() || 'YouTube video'
-  const item = { id: uid(), url: videoUrl, title: cleanTitle, created: new Date().toISOString() }
+  const item = { id: uid(), url: videoUrl, title: cleanTitle, created: new Date().toISOString(), publishedAt: '' }
 
   chrome.storage.local.get({[SAVED_LINKS_KEY]:[]}, (res)=>{
     const current = res[SAVED_LINKS_KEY] || []
@@ -140,24 +140,61 @@ async function fetchPageTitle(url){
   }catch(e){ return '' }
 }
 
+async function fetchPagePublishedAt(url){
+  try{
+    const res = await fetch(url)
+    const txt = await res.text()
+    let doc
+    try{ doc = new DOMParser().parseFromString(txt, 'text/html') }catch(e){ doc = null }
+    if(!doc) return ''
+
+    const metaCandidates = [
+      doc.querySelector('meta[property="article:published_time"]')?.getAttribute('content'),
+      doc.querySelector('meta[property="og:published_time"]')?.getAttribute('content'),
+      doc.querySelector('meta[itemprop="datePublished"]')?.getAttribute('content'),
+      doc.querySelector('meta[property="datePublished"]')?.getAttribute('content')
+    ].filter(Boolean)
+
+    for(const candidate of metaCandidates){
+      const parsed = Date.parse(candidate)
+      if(!Number.isNaN(parsed)) return new Date(parsed).toISOString()
+    }
+
+    const jsonLdBlocks = Array.from(doc.querySelectorAll('script[type="application/ld+json"]')).map(node=>node.textContent || '')
+    for(const block of jsonLdBlocks){
+      try{
+        const data = JSON.parse(block)
+        const entries = Array.isArray(data) ? data : [data]
+        for(const entry of entries){
+          const candidate = entry && (entry.uploadDate || entry.datePublished || entry.dateCreated)
+          const parsed = candidate ? Date.parse(candidate) : NaN
+          if(!Number.isNaN(parsed)) return new Date(parsed).toISOString()
+        }
+      }catch(e){ }
+    }
+  }catch(e){ }
+  return ''
+}
+
 function openQueueTabFor(href, title){
   // fetch the page title when possible to ensure queued item title matches the target
   (async ()=>{
     try{
       const fetched = await fetchPageTitle(href)
+      const publishedAt = await fetchPagePublishedAt(href)
       const finalTitle = fetched || title || ''
-      console.debug('openQueueTabFor', {href, title, fetched, finalTitle})
+      console.debug('openQueueTabFor', {href, title, fetched, publishedAt, finalTitle})
       const u = new URL(href)
       let vid = u.searchParams.get('v')
       if(!vid){ const parts = u.pathname.split('/').filter(Boolean); vid = parts.pop() }
-      const item = { id: uid(), url: href, title: finalTitle, videoId: vid, favorite:false, created: new Date().toISOString() }
+      const item = { id: uid(), url: href, title: finalTitle, videoId: vid, favorite:false, created: new Date().toISOString(), publishedAt }
       chrome.storage.local.get({queuedItems:[]}, (res)=>{
         const arr = res.queuedItems || []
         arr.unshift(item)
         chrome.storage.local.set({queuedItems: arr})
       })
     }catch(e){
-      const item = { id: uid(), url: href||APP_URL, title: title||'', videoId: null, favorite:false, created: new Date().toISOString() }
+      const item = { id: uid(), url: href||APP_URL, title: title||'', videoId: null, favorite:false, created: new Date().toISOString(), publishedAt: '' }
       console.debug('openQueueTabFor fallback item', item)
       chrome.storage.local.get({queuedItems:[]}, (res)=>{
         const arr = res.queuedItems || []

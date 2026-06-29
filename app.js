@@ -90,7 +90,7 @@ function makeThumbUrl(vid){ return `https://i.ytimg.com/vi/${vid}/hqdefault.jpg`
 
 function addItem({url,title,videoId,favorite=false,pageId='home',created=new Date().toISOString()}){
   const id = uid()
-  const item = {id, url, title, videoId, favorite, pageId: normalizePageId(pageId), created}
+  const item = {id, url, title, videoId, favorite, pageId: normalizePageId(pageId), created, publishedAt: ''}
   items.unshift(item)
   save()
   render()
@@ -157,12 +157,17 @@ function render(){ sections.innerHTML=''
   APP_TITLE.textContent = getPageTitle(currentPageId)
 
   if(currentPageId !== 'home'){
+    const sortedList = list.slice().sort((a, b)=>{
+      const aDate = new Date(a.publishedAt || a.created || 0).getTime()
+      const bDate = new Date(b.publishedAt || b.created || 0).getTime()
+      return aDate - bDate
+    })
     const heading = document.createElement('div')
     heading.className = 'page-heading'
     heading.textContent = getPageTitle(currentPageId)
     sections.appendChild(heading)
-    if(list.length){
-      renderSection('', list, false)
+    if(sortedList.length){
+      renderSection('', sortedList)
     }else{
       sections.innerHTML += '<p style="padding:12px;color:#9fb0d6">No items</p>'
     }
