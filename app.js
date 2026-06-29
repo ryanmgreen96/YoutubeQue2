@@ -389,7 +389,11 @@ function render(){ sections.innerHTML=''
     if(sortedList.length){
       renderSection('', sortedList)
     }else{
-      sections.innerHTML += '<p style="padding:12px;color:#9fb0d6">No items</p>'
+      const empty = document.createElement('p')
+      empty.style.padding = '12px'
+      empty.style.color = '#9fb0d6'
+      empty.textContent = 'No items'
+      sections.appendChild(empty)
     }
     return
   }
