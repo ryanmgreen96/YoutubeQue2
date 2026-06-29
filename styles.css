@@ -15,6 +15,7 @@ main{display:grid;grid-template-columns:16% 69% 15%;min-height:calc(100vh - 63px
 .left-bar-title{font-size:11px;letter-spacing:0.08em;text-transform:uppercase;color:#9fb0d6}
 .left-nav{display:flex;flex-direction:column;gap:6px}
 .page-link{font-size:13px;line-height:1.2;text-align:left;padding:6px 4px;border-radius:0;border:none;color:#cfe1ff;background:transparent;white-space:normal}
+.left-nav .page-link.selected{background:transparent;color:#e6eef8;border:none}
 .page-link.selected{color:#e6eef8}
 .left-add{font-size:16px;line-height:1;width:24px;height:24px;padding:0;border-radius:999px;color:#ffdf8a;border:1px solid rgba(255,204,0,0.18);background:rgba(255,204,0,0.05)}
 .content-area{min-width:0}
