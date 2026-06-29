@@ -408,7 +408,13 @@ function render(){ sections.innerHTML=''
   if(groups.today.length) renderSection('Today', groups.today)
   if(groups.yesterday.length) renderSection('Yesterday', groups.yesterday)
   if(groups.earlier.length) renderSection('Earlier', groups.earlier)
-  if(!groups.today.length && !groups.yesterday.length && !groups.earlier.length){ sections.innerHTML='<p style="padding:12px;color:#9fb0d6">No items</p>' }
+  if(!groups.today.length && !groups.yesterday.length && !groups.earlier.length){
+    const empty = document.createElement('p')
+    empty.style.padding = '12px'
+    empty.style.color = '#9fb0d6'
+    empty.textContent = 'No items'
+    sections.appendChild(empty)
+  }
 }
 
 function renderSavedLinks(){
