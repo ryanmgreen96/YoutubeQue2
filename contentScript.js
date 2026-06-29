@@ -59,6 +59,12 @@
     banner.style.cssText = 'position:fixed;top:12px;right:12px;z-index:2147483647;background:#ffcc00;color:#000;padding:8px 10px;border-radius:999px;font:600 12px/1.2 system-ui,-apple-system,Segoe UI,Roboto,Arial;box-shadow:0 8px 24px rgba(0,0,0,0.25)'
     document.documentElement.appendChild(banner)
   }
+  let queueModeEnabled = false
+
+  function findVideoLinkElement(start){
+    if(!start || !start.closest) return null
+    return start.closest('a[href], [href], ytd-thumbnail, ytd-playlist-thumbnail, #video-title, ytd-rich-item-renderer, ytd-video-renderer, ytd-compact-video-renderer, ytd-grid-video-renderer, ytd-reel-item-renderer')
+  }
 
   function mergeUniqueByUrl(incoming, existing){
     const seen = new Set()
@@ -118,15 +124,14 @@
     if(!isYouTubeHost()) return
 
     const installQueueClickMode = async ()=>{
-      const enabled = await getQueueMode()
-      renderQueueModeBanner(enabled)
+      queueModeEnabled = await getQueueMode()
+      renderQueueModeBanner(queueModeEnabled)
 
-      document.addEventListener('click', async (ev)=>{
-        const mode = await getQueueMode()
-        if(!mode) return
+      const handleQueueClick = (ev)=>{
+        if(!queueModeEnabled) return
         if(ev.button !== 0 || ev.defaultPrevented || ev.metaKey || ev.ctrlKey || ev.shiftKey || ev.altKey) return
 
-        const target = ev.target && ev.target.closest ? ev.target.closest('a[href], [href], ytd-thumbnail, ytd-playlist-thumbnail, #video-title') : null
+        const target = findVideoLinkElement(ev.target)
         if(!target) return
 
         const hrefSource = target.getAttribute && (target.getAttribute('href') || target.getAttribute('data-href')) || target.href || ''
@@ -139,11 +144,14 @@
 
         const title = queueTitleFromElement(target)
         chrome.runtime.sendMessage({type:'queue-video-url', url: videoUrl, title})
-      }, true)
+      }
+
+      document.addEventListener('pointerdown', (ev)=>{ handleQueueClick(ev) }, true)
 
       chrome.storage.onChanged.addListener((changes, area)=>{
         if(area !== 'local' || !changes[QUEUE_MODE_KEY]) return
-        renderQueueModeBanner(!!changes[QUEUE_MODE_KEY].newValue)
+        queueModeEnabled = !!changes[QUEUE_MODE_KEY].newValue
+        renderQueueModeBanner(queueModeEnabled)
       })
     }
 

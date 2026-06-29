@@ -212,8 +212,10 @@ function openQueueTabFor(href, title){
   // fetch the page title when possible to ensure queued item title matches the target
   (async ()=>{
     try{
-      const fetched = await fetchPageTitle(href)
-      const publishedAt = await fetchPagePublishedAt(href)
+      const [fetched, publishedAt] = await Promise.all([
+        fetchPageTitle(href),
+        fetchPagePublishedAt(href)
+      ])
       const finalTitle = fetched || title || ''
       console.debug('openQueueTabFor', {href, title, fetched, publishedAt, finalTitle})
       const u = new URL(href)
