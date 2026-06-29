@@ -126,10 +126,7 @@ function deletePage(pageId){
   delete pageTabs[pid]
   delete activeTabs[pid]
 
-  items = items.map(item=>{
-    if(normalizePageId(item.pageId)!==pid) return item
-    return {...item, pageId:'home', tabId:getActiveTabId('home')}
-  })
+  items = items.filter(item=>normalizePageId(item.pageId)!==pid)
 
   savePages()
   savePageTabs()
@@ -312,7 +309,7 @@ function renderLeftNav(){
     del.textContent = '×'
     del.addEventListener('click', (ev)=>{
       ev.stopPropagation()
-      if(!confirm(`Delete page "${page.title}"? Videos in it will move to Home.`)) return
+      if(!confirm(`Delete page "${page.title}" and all videos in it?`)) return
       deletePage(page.id)
     })
 
