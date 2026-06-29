@@ -368,7 +368,12 @@ function renderSection(title, list){
     delBtn.addEventListener('click', (ev)=>{ ev.stopPropagation(); removeItem(it.id) })
     el.addEventListener('click', ()=>{
       if(editMode){ selectItem(it.id); return }
-      removeItem(it.id); window.open(it.url, '_blank')
+      if(currentPageId === 'home'){
+        removeItem(it.id)
+        window.open(it.url, '_blank')
+        return
+      }
+      window.open(it.url, '_blank')
     })
 
     // long-press to edit
