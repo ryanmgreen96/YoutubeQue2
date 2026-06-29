@@ -70,7 +70,6 @@ function setCurrentPage(pageId){
   currentPageId = normalizePageId(pageId)
   editMode = false
   selectedItemIds.clear()
-  APP_TITLE.textContent = getPageTitle(currentPageId)
   renderLeftNav()
   render()
 }
@@ -154,6 +153,16 @@ function render(){ sections.innerHTML=''
   const list = items.filter(i=>normalizePageId(i.pageId)===currentPageId)
   const groups = {today:[], yesterday:[], earlier:[]}
   const now = new Date();
+
+  APP_TITLE.textContent = getPageTitle(currentPageId)
+
+  if(currentPageId !== 'home'){
+    const heading = document.createElement('div')
+    heading.className = 'page-heading'
+    heading.textContent = getPageTitle(currentPageId)
+    sections.appendChild(heading)
+  }
+
   list.forEach(it=>{
     const d = new Date(it.created)
     const diff = Math.floor((now - d)/(1000*60*60*24))

@@ -15,7 +15,7 @@ main{display:grid;grid-template-columns:16% 69% 15%;min-height:calc(100vh - 63px
 .left-bar-title{font-size:11px;letter-spacing:0.08em;text-transform:uppercase;color:#9fb0d6}
 .left-nav{display:flex;flex-direction:column;gap:6px}
 .page-link{font-size:13px;line-height:1.2;text-align:left;padding:6px 4px;border-radius:0;border:none;color:#e3bc59;background:transparent;white-space:normal}
-.page-link.selected{color:#ffdf8a;text-shadow:0 0 10px rgba(255,223,138,0.15)}
+.page-link.selected{color:#e6eef8}
 .left-add{font-size:16px;line-height:1;width:24px;height:24px;padding:0;border-radius:999px;color:#ffdf8a;border:1px solid rgba(255,204,0,0.18);background:rgba(255,204,0,0.05)}
 .content-area{min-width:0}
 .saved-links{padding:12px;display:flex;flex-direction:column;gap:8px}
@@ -24,6 +24,7 @@ main{display:grid;grid-template-columns:16% 69% 15%;min-height:calc(100vh - 63px
 .saved-links-list a{font-size:10px;line-height:1.2;color:#bcd1f2;text-decoration:none;word-break:break-word;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
 .saved-links-list a:hover{text-decoration:underline;color:#e6eef8}
 #sections{padding:12px;display:flex;flex-direction:column;gap:18px}
+.page-heading{margin:0 0 6px 4px;font-size:16px;line-height:1.2;color:#ffdf8a;font-weight:600}
 .section{display:flex;flex-direction:column;gap:10px}
 .section-header{display:flex;align-items:center;gap:8px;margin:0 0 4px 4px}
 .section h2{margin:0;font-size:14px;color:#cfe1ff}
