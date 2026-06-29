@@ -60,8 +60,9 @@ function addPage(title){
 }
 function addTab(pageId, title){
   const page = getPageById(pageId)
-  const tabTitle = (title || '').trim()
-  if(!page || !tabTitle) return null
+  const fallbackTitle = `Tab ${page && Array.isArray(page.tabs) ? page.tabs.length + 1 : 1}`
+  const tabTitle = (title || '').trim() || fallbackTitle
+  if(!page) return null
   const tab = {id: uid(), title: tabTitle, created: new Date().toISOString()}
   page.tabs = Array.isArray(page.tabs) ? page.tabs : []
   page.tabs.push(tab)
@@ -268,7 +269,7 @@ function renderPageHeader(page){
     const fallbackTitle = `Tab ${page.tabs.length + 1}`
     const tabTitle = prompt(`Tab title for ${page.title}`, fallbackTitle)
     if(tabTitle === null) return
-    const tab = addTab(page.id, tabTitle || fallbackTitle)
+    const tab = addTab(page.id, tabTitle)
     if(tab) setCurrentPage(page.id, tab.id)
   })
   topRow.appendChild(addTabButton)
