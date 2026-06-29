@@ -72,65 +72,6 @@ function addTab(pageId, title){
   renderLeftNav()
   return tab
 }
-
-function openTextDialog({title, initialValue='', confirmLabel='Create'}){
-  return new Promise((resolve)=>{
-    if(promptLayerEl) promptLayerEl.remove()
-
-    const layer = document.createElement('div')
-    layer.className = 'prompt-layer'
-
-    const dialog = document.createElement('div')
-    dialog.className = 'prompt-dialog'
-
-    const heading = document.createElement('div')
-    heading.className = 'prompt-title'
-    heading.textContent = title
-
-    const input = document.createElement('input')
-    input.type = 'text'
-    input.className = 'prompt-input'
-    input.value = initialValue
-
-    const actions = document.createElement('div')
-    actions.className = 'prompt-actions'
-
-    const cancelButton = document.createElement('button')
-    cancelButton.type = 'button'
-    cancelButton.className = 'prompt-cancel'
-    cancelButton.textContent = 'Cancel'
-
-    const okButton = document.createElement('button')
-    okButton.type = 'button'
-    okButton.className = 'prompt-ok'
-    okButton.textContent = confirmLabel
-
-    const close = (value)=>{
-      layer.remove()
-      promptLayerEl = null
-      resolve(value)
-    }
-
-    cancelButton.addEventListener('click', ()=>close(null))
-    okButton.addEventListener('click', ()=>close(input.value))
-    layer.addEventListener('click', (ev)=>{ if(ev.target===layer) close(null) })
-    input.addEventListener('keydown', (ev)=>{
-      if(ev.key === 'Enter') close(input.value)
-      if(ev.key === 'Escape') close(null)
-    })
-
-    actions.appendChild(cancelButton)
-    actions.appendChild(okButton)
-    dialog.appendChild(heading)
-    dialog.appendChild(input)
-    dialog.appendChild(actions)
-    layer.appendChild(dialog)
-    document.body.appendChild(layer)
-    promptLayerEl = layer
-    input.focus()
-    input.select()
-  })
-}
 function removePage(pageId){
   const page = getPageById(pageId)
   if(!page) return
@@ -326,9 +267,9 @@ function renderPageHeader(page){
   addTabButton.className = 'page-tab-add'
   addTabButton.textContent = '+'
   addTabButton.title = 'Add tab'
-  addTabButton.addEventListener('click', async ()=>{
+  addTabButton.addEventListener('click', ()=>{
     const fallbackTitle = `Tab ${page.tabs.length + 1}`
-    const tabTitle = await openTextDialog({title: `Tab title for ${page.title}`, initialValue: fallbackTitle, confirmLabel: 'Add'})
+    const tabTitle = window.prompt(`Tab title for ${page.title}`, fallbackTitle)
     if(tabTitle === null) return
     const tab = addTab(page.id, tabTitle)
     if(tab) setCurrentPage(page.id, tab.id)
@@ -500,10 +441,9 @@ function renderSection(title, list){
 }
 
 addPageBtn.addEventListener('click', ()=>{
-  openTextDialog({title: 'Page title', initialValue: `Page ${pages.length + 1}`, confirmLabel: 'Add'}).then((label)=>{
-    if(label === null) return
-    addPage(label)
-  })
+  const label = window.prompt('Page title', `Page ${pages.length + 1}`)
+  if(label === null) return
+  addPage(label)
 })
 
 // handle url params (extension will open app with params)
