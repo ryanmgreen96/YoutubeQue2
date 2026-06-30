@@ -31,6 +31,8 @@ let headerLinks = loadHeaderLinks()
 let currentPageId = 'home'
 let editMode = false
 let selectedItemIds = new Set()
+let rangeFlagStartId = null
+let rangeFlagEndId = null
 let holdDialogState = null
 let titleFilterOverlayPageId = null
 
@@ -84,6 +86,21 @@ function normalizeUrl(value){
 }
 
 function uid(){ return Date.now().toString(36)+Math.random().toString(36).slice(2,8) }
+function clearRangeFlags(){
+  rangeFlagStartId = null
+  rangeFlagEndId = null
+}
+function applyRangeSelectionFromList(list){
+  if(!rangeFlagStartId || !rangeFlagEndId || !Array.isArray(list)) return
+  const startIndex = list.findIndex(item=>item.id===rangeFlagStartId)
+  const endIndex = list.findIndex(item=>item.id===rangeFlagEndId)
+  if(startIndex<0 || endIndex<0) return
+  const from = Math.min(startIndex, endIndex)
+  const to = Math.max(startIndex, endIndex)
+  for(let index = from; index <= to; index += 1){
+    selectedItemIds.add(list[index].id)
+  }
+}
 function escapeRegExp(value){ return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') }
 function normalizePhrase(value){ return (value || '').trim().replace(/\s+/g, ' ') }
 function getPageTitleFilters(pageId){
@@ -540,6 +557,7 @@ function moveSelectedItemsToPage(pageId){
   if(!selectedItemIds.size) return
   items = items.map(item=>selectedItemIds.has(item.id) ? {...item, pageId: targetPageId, tabId: targetTabId} : item)
   selectedItemIds.clear()
+  clearRangeFlags()
   editMode = false
   currentPageId = targetPageId
   save()
@@ -549,11 +567,38 @@ function moveSelectedItemsToPage(pageId){
 function toggleEditMode(){
   editMode = !editMode
   if(!editMode) selectedItemIds.clear()
+  clearRangeFlags()
   render()
 }
-function selectItem(id){
-  if(selectedItemIds.has(id)) selectedItemIds.delete(id)
-  else selectedItemIds.add(id)
+function selectItem(id, list){
+  if(!selectedItemIds.has(id)){
+    selectedItemIds.add(id)
+    render()
+    return
+  }
+
+  if(!rangeFlagStartId){
+    rangeFlagStartId = id
+    rangeFlagEndId = null
+    render()
+    return
+  }
+
+  if(rangeFlagStartId===id && !rangeFlagEndId){
+    rangeFlagStartId = null
+    render()
+    return
+  }
+
+  if(!rangeFlagEndId){
+    rangeFlagEndId = id
+    applyRangeSelectionFromList(list)
+    render()
+    return
+  }
+
+  rangeFlagStartId = id
+  rangeFlagEndId = null
   render()
 }
 function setCurrentPage(pageId){
@@ -566,6 +611,7 @@ function setCurrentPage(pageId){
   getActiveTabId(currentPageId)
   editMode = false
   selectedItemIds.clear()
+  clearRangeFlags()
   renderLeftNav()
   render()
 }
@@ -920,8 +966,9 @@ function renderSection(title, list){
     ttl.textContent = currentPageId==='home' ? rawTitle : applyPageTitleFilters(rawTitle, currentPageId)
     el.classList.toggle('is-editing', editMode)
     el.classList.toggle('is-selected', selectedItemIds.has(it.id))
+    el.classList.toggle('is-range-flag', rangeFlagStartId===it.id || rangeFlagEndId===it.id)
     el.addEventListener('click', ()=>{
-      if(editMode){ selectItem(it.id); return }
+      if(editMode){ selectItem(it.id, list); return }
       if(currentPageId==='home') removeItem(it.id)
       window.open(it.url, '_blank')
     })
