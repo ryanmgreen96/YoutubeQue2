@@ -11,7 +11,7 @@ main{display:grid;grid-template-columns:16% 69% 15%;min-height:calc(100vh - 63px
 .side-bar{min-height:100%;background:rgba(255,255,255,0.02)}
 .left-bar{padding:12px}
 .left-bar-panel{display:flex;flex-direction:column;gap:10px;height:100%}
-.left-bar-header{display:flex;align-items:center;justify-content:flex-end;gap:8px}
+.left-bar-header{display:flex;align-items:center;justify-content:flex-start;gap:8px}
 .left-bar-actions{display:flex;align-items:center;gap:6px}
 .left-bar-title{font-size:11px;letter-spacing:0.08em;text-transform:uppercase;color:#9fb0d6}
 .left-nav{display:flex;flex-direction:column;gap:6px;max-height:calc(100vh - 145px);overflow:auto;padding-right:2px}

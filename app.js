@@ -16,6 +16,7 @@ const template = document.getElementById('item-template')
 const holdDialogEl = document.getElementById('hold-action-dialog')
 const holdDialogBackdropEl = holdDialogEl ? holdDialogEl.querySelector('.hold-dialog-backdrop') : null
 const holdDialogTitleEl = document.getElementById('hold-dialog-title')
+const holdEditBtn = document.getElementById('hold-edit-btn')
 const holdMoveUpBtn = document.getElementById('hold-move-up-btn')
 const holdMoveDownBtn = document.getElementById('hold-move-down-btn')
 const holdDeleteBtn = document.getElementById('hold-delete-btn')
@@ -213,6 +214,28 @@ function moveTabInPage(pageId, tabId, delta){
   render()
   return true
 }
+function moveHeaderLink(linkId, delta){
+  const index = headerLinks.findIndex(link=>link.id===linkId)
+  if(index<0) return false
+  const nextIndex = index + delta
+  if(nextIndex<0 || nextIndex>=headerLinks.length) return false
+  const copy = headerLinks.slice()
+  const [link] = copy.splice(index, 1)
+  copy.splice(nextIndex, 0, link)
+  headerLinks = copy
+  saveHeaderLinks()
+  renderLeftNav()
+  return true
+}
+function deleteHeaderLink(id){
+  const link = headerLinks.find(item=>item.id===id)
+  if(!link) return false
+  if(!confirm(`Delete link "${link.title}"?`)) return false
+  headerLinks = headerLinks.filter(item=>item.id!==id)
+  saveHeaderLinks()
+  renderLeftNav()
+  return true
+}
 function getHoldDialogModel(){
   if(!holdDialogState) return null
 
@@ -222,9 +245,11 @@ function getHoldDialogModel(){
     const index = pages.findIndex(item=>item.id===page.id)
     return {
       title: `Page: ${page.title}`,
+      canEdit: false,
       canMoveUp: index > 0,
       canMoveDown: index < pages.length - 1,
       canDelete: true,
+      onEdit: null,
       onMoveUp: ()=>{ movePage(page.id, -1); renderHoldDialog() },
       onMoveDown: ()=>{ movePage(page.id, 1); renderHoldDialog() },
       onDelete: ()=>{
@@ -243,9 +268,11 @@ function getHoldDialogModel(){
     const index = tabs.findIndex(item=>item.id===tab.id)
     return {
       title: `Tab: ${tab.title}`,
+      canEdit: false,
       canMoveUp: index > 0,
       canMoveDown: index < tabs.length - 1,
       canDelete: tabs.length > 1,
+      onEdit: null,
       onMoveUp: ()=>{ moveTabInPage(pid, tab.id, -1); renderHoldDialog() },
       onMoveDown: ()=>{ moveTabInPage(pid, tab.id, 1); renderHoldDialog() },
       onDelete: ()=>{
@@ -256,10 +283,33 @@ function getHoldDialogModel(){
     }
   }
 
+  if(holdDialogState.type==='link'){
+    const link = headerLinks.find(item=>item.id===holdDialogState.linkId)
+    if(!link) return null
+    const index = headerLinks.findIndex(item=>item.id===link.id)
+    return {
+      title: `Link: ${link.title}`,
+      canEdit: true,
+      canMoveUp: index > 0,
+      canMoveDown: index < headerLinks.length - 1,
+      canDelete: true,
+      onEdit: ()=>{
+        editHeaderLink(link.id)
+        renderHoldDialog()
+      },
+      onMoveUp: ()=>{ moveHeaderLink(link.id, -1); renderHoldDialog() },
+      onMoveDown: ()=>{ moveHeaderLink(link.id, 1); renderHoldDialog() },
+      onDelete: ()=>{
+        const deleted = deleteHeaderLink(link.id)
+        if(deleted) closeHoldDialog()
+      }
+    }
+  }
+
   return null
 }
 function renderHoldDialog(){
-  if(!holdDialogEl || !holdDialogTitleEl || !holdMoveUpBtn || !holdMoveDownBtn || !holdDeleteBtn) return
+  if(!holdDialogEl || !holdDialogTitleEl || !holdEditBtn || !holdMoveUpBtn || !holdMoveDownBtn || !holdDeleteBtn) return
   const model = getHoldDialogModel()
   if(!model){
     closeHoldDialog()
@@ -267,10 +317,13 @@ function renderHoldDialog(){
   }
 
   holdDialogTitleEl.textContent = model.title
+  holdEditBtn.disabled = !model.canEdit
+  holdEditBtn.style.display = model.canEdit ? '' : 'none'
   holdMoveUpBtn.disabled = !model.canMoveUp
   holdMoveDownBtn.disabled = !model.canMoveDown
   holdDeleteBtn.disabled = !model.canDelete
 
+  holdEditBtn.onclick = model.onEdit
   holdMoveUpBtn.onclick = model.onMoveUp
   holdMoveDownBtn.onclick = model.onMoveDown
   holdDeleteBtn.onclick = model.onDelete
@@ -284,6 +337,10 @@ function openPageHoldDialog(pageId){
 }
 function openTabHoldDialog(pageId, tabId){
   holdDialogState = {type:'tab', pageId: normalizePageId(pageId), tabId: normalizeTabId(tabId)}
+  renderHoldDialog()
+}
+function openLinkHoldDialog(linkId){
+  holdDialogState = {type:'link', linkId}
   renderHoldDialog()
 }
 
@@ -566,7 +623,7 @@ function renderLeftNav(){
     button.textContent = link.title
     button.title = link.url
 
-    const holdPress = attachLongPress(button, ()=>editHeaderLink(link.id))
+    const holdPress = attachLongPress(button, ()=>openLinkHoldDialog(link.id))
     button.addEventListener('click', ()=>{
       if(holdPress.consume()) return
       window.open(link.url, '_blank', 'noopener,noreferrer')
@@ -610,8 +667,9 @@ function renderTabBar(pageId){
     const button = document.createElement('button')
     button.type = 'button'
     button.className = `main-tab${activeTabId===tab.id ? ' selected' : ''}`
-    button.textContent = tab.title
-    button.title = tab.title
+    const tabLabel = (pid!=='home' && tab.id==='default') ? getPageTitle(pid) : tab.title
+    button.textContent = tabLabel
+    button.title = tabLabel
     const holdPress = attachLongPress(button, ()=>openTabHoldDialog(pid, tab.id))
     button.addEventListener('click', ()=>{
       if(holdPress.consume()) return
@@ -761,10 +819,6 @@ function render(){ sections.innerHTML=''
       const bDate = new Date(b.publishedAt || b.created || 0).getTime()
       return aDate - bDate
     })
-    const heading = document.createElement('div')
-    heading.className = 'page-heading'
-    heading.textContent = getPageTitle(currentPageId)
-    sections.appendChild(heading)
     if(sortedList.length){
       renderSection('', sortedList)
     }else{
