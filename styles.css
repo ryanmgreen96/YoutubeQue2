@@ -55,5 +55,16 @@ main{display:grid;grid-template-columns:16% 69% 15%;min-height:calc(100vh - 63px
 .delete{background:#ff3b3b;color:#fff;border-color:transparent;width:16px;height:16px;font-size:12px;padding:0 !important}
 .actions button{min-width:16px;min-height:16px}
 
+.hold-dialog.hidden{display:none}
+.hold-dialog{position:fixed;inset:0;z-index:2000;display:flex;align-items:center;justify-content:center}
+.hold-dialog-backdrop{position:absolute;inset:0;background:rgba(2,6,14,0.62)}
+.hold-dialog-panel{position:relative;z-index:1;width:min(360px,92vw);padding:14px;border-radius:12px;border:1px solid rgba(255,255,255,0.14);background:#0d1628;box-shadow:0 20px 55px rgba(0,0,0,0.45);display:flex;flex-direction:column;gap:10px}
+.hold-dialog-title{margin:0;font-size:14px;color:#ffe09b}
+.hold-dialog-actions{display:grid;grid-template-columns:1fr;gap:8px}
+.hold-dialog-actions button{font-size:13px;padding:8px 10px;border-radius:8px;border:1px solid rgba(255,255,255,0.12);background:rgba(255,255,255,0.04);color:#e6eef8;text-align:left}
+.hold-dialog-actions button:disabled{opacity:0.45;cursor:not-allowed}
+.hold-dialog-actions .danger{color:#ffd5d5;border-color:rgba(255,122,122,0.42);background:rgba(150,20,20,0.2)}
+.hold-exit-btn{margin-top:2px;font-size:12px;padding:7px 10px;border-radius:999px;color:#d8e7ff}
+
 @media (max-width:1200px){main{grid-template-columns:18% 64% 18%}.grid{grid-template-columns:repeat(4,1fr)}.thumb{height:110px}}
 @media (max-width:800px){main{grid-template-columns:0 1fr 0}.side-bar{display:none}.grid{grid-template-columns:repeat(2,1fr)}.thumb{height:140px}}

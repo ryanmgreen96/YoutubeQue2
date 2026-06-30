@@ -11,6 +11,13 @@ const addPageBtn = document.getElementById('add-page-btn')
 const savedLinksEl = document.getElementById('saved-links')
 const headerLinksEl = document.getElementById('header-links')
 const template = document.getElementById('item-template')
+const holdDialogEl = document.getElementById('hold-action-dialog')
+const holdDialogBackdropEl = holdDialogEl ? holdDialogEl.querySelector('.hold-dialog-backdrop') : null
+const holdDialogTitleEl = document.getElementById('hold-dialog-title')
+const holdMoveUpBtn = document.getElementById('hold-move-up-btn')
+const holdMoveDownBtn = document.getElementById('hold-move-down-btn')
+const holdDeleteBtn = document.getElementById('hold-delete-btn')
+const holdExitBtn = document.getElementById('hold-exit-btn')
 
 let items = load()
 let pages = loadPages()
@@ -21,6 +28,7 @@ let headerLinks = loadHeaderLinks()
 let currentPageId = 'home'
 let editMode = false
 let selectedItemIds = new Set()
+let holdDialogState = null
 
 function save(){ localStorage.setItem(APP_KEY, JSON.stringify(items)) }
 function load(){ try{ return JSON.parse(localStorage.getItem(APP_KEY)||'[]') }catch(e){return[]}}
@@ -51,6 +59,146 @@ function saveSavedLinks(){ localStorage.setItem(SAVED_LINKS_APP_KEY, JSON.string
 function removeSavedLink(id){ savedLinks = savedLinks.filter(link=>link.id!==id); saveSavedLinks(); renderSavedLinks() }
 
 function uid(){ return Date.now().toString(36)+Math.random().toString(36).slice(2,8) }
+
+function attachLongPress(target, onLongPress, delayMs = 600){
+  let timer = null
+  let didLongPress = false
+
+  const start = (ev)=>{
+    if(ev.type==='mousedown' && ev.button!==0) return
+    didLongPress = false
+    clearTimeout(timer)
+    timer = setTimeout(()=>{
+      didLongPress = true
+      onLongPress()
+    }, delayMs)
+  }
+  const cancel = ()=>{ clearTimeout(timer) }
+
+  target.addEventListener('mousedown', start)
+  target.addEventListener('mouseup', cancel)
+  target.addEventListener('mouseleave', cancel)
+  target.addEventListener('touchstart', start, {passive:true})
+  target.addEventListener('touchend', cancel)
+  target.addEventListener('touchcancel', cancel)
+
+  return {
+    consume(){
+      if(!didLongPress) return false
+      didLongPress = false
+      return true
+    }
+  }
+}
+function closeHoldDialog(){
+  holdDialogState = null
+  if(!holdDialogEl) return
+  holdDialogEl.classList.add('hidden')
+  holdDialogEl.setAttribute('aria-hidden', 'true')
+}
+function movePage(pageId, delta){
+  const pid = normalizePageId(pageId)
+  const index = pages.findIndex(page=>page.id===pid)
+  if(index<0) return false
+  const nextIndex = index + delta
+  if(nextIndex<0 || nextIndex>=pages.length) return false
+  const copy = pages.slice()
+  const [page] = copy.splice(index, 1)
+  copy.splice(nextIndex, 0, page)
+  pages = copy
+  savePages()
+  renderLeftNav()
+  render()
+  return true
+}
+function moveTabInPage(pageId, tabId, delta){
+  const pid = normalizePageId(pageId)
+  const tid = normalizeTabId(tabId)
+  const tabs = getPageTabs(pid).slice()
+  const index = tabs.findIndex(tab=>tab.id===tid)
+  if(index<0) return false
+  const nextIndex = index + delta
+  if(nextIndex<0 || nextIndex>=tabs.length) return false
+  const [tab] = tabs.splice(index, 1)
+  tabs.splice(nextIndex, 0, tab)
+  pageTabs[pid] = tabs
+  savePageTabs()
+  render()
+  return true
+}
+function getHoldDialogModel(){
+  if(!holdDialogState) return null
+
+  if(holdDialogState.type==='page'){
+    const page = pages.find(item=>item.id===holdDialogState.pageId)
+    if(!page) return null
+    const index = pages.findIndex(item=>item.id===page.id)
+    return {
+      title: `Page: ${page.title}`,
+      canMoveUp: index > 0,
+      canMoveDown: index < pages.length - 1,
+      canDelete: true,
+      onMoveUp: ()=>{ movePage(page.id, -1); renderHoldDialog() },
+      onMoveDown: ()=>{ movePage(page.id, 1); renderHoldDialog() },
+      onDelete: ()=>{
+        if(!confirm(`Delete page "${page.title}" and all videos in it?`)) return
+        closeHoldDialog()
+        deletePage(page.id)
+      }
+    }
+  }
+
+  if(holdDialogState.type==='tab'){
+    const pid = normalizePageId(holdDialogState.pageId)
+    const tabs = getPageTabs(pid)
+    const tab = tabs.find(item=>item.id===holdDialogState.tabId)
+    if(!tab) return null
+    const index = tabs.findIndex(item=>item.id===tab.id)
+    return {
+      title: `Tab: ${tab.title}`,
+      canMoveUp: index > 0,
+      canMoveDown: index < tabs.length - 1,
+      canDelete: tabs.length > 1,
+      onMoveUp: ()=>{ moveTabInPage(pid, tab.id, -1); renderHoldDialog() },
+      onMoveDown: ()=>{ moveTabInPage(pid, tab.id, 1); renderHoldDialog() },
+      onDelete: ()=>{
+        if(!confirm(`Delete tab "${tab.title}"? Videos in it will move to another tab on this page.`)) return
+        closeHoldDialog()
+        deleteTabFromPage(pid, tab.id)
+      }
+    }
+  }
+
+  return null
+}
+function renderHoldDialog(){
+  if(!holdDialogEl || !holdDialogTitleEl || !holdMoveUpBtn || !holdMoveDownBtn || !holdDeleteBtn) return
+  const model = getHoldDialogModel()
+  if(!model){
+    closeHoldDialog()
+    return
+  }
+
+  holdDialogTitleEl.textContent = model.title
+  holdMoveUpBtn.disabled = !model.canMoveUp
+  holdMoveDownBtn.disabled = !model.canMoveDown
+  holdDeleteBtn.disabled = !model.canDelete
+
+  holdMoveUpBtn.onclick = model.onMoveUp
+  holdMoveDownBtn.onclick = model.onMoveDown
+  holdDeleteBtn.onclick = model.onDelete
+
+  holdDialogEl.classList.remove('hidden')
+  holdDialogEl.setAttribute('aria-hidden', 'false')
+}
+function openPageHoldDialog(pageId){
+  holdDialogState = {type:'page', pageId: normalizePageId(pageId)}
+  renderHoldDialog()
+}
+function openTabHoldDialog(pageId, tabId){
+  holdDialogState = {type:'tab', pageId: normalizePageId(pageId), tabId: normalizeTabId(tabId)}
+  renderHoldDialog()
+}
 
 function normalizePageId(pageId){ return pageId || 'home' }
 function normalizeTabId(tabId){ return tabId || 'default' }
@@ -225,6 +373,7 @@ function selectItem(id){
   render()
 }
 function setCurrentPage(pageId){
+  closeHoldDialog()
   const pid = normalizePageId(pageId)
   const known = pid === 'home' || pages.some(page=>page.id===pid)
   currentPageId = known ? pid : 'home'
@@ -309,24 +458,13 @@ function renderLeftNav(){
     button.className = `page-link${currentPageId===page.id ? ' selected' : ''}`
     button.textContent = page.title
     button.title = page.title
+    const holdPress = attachLongPress(button, ()=>openPageHoldDialog(page.id))
     button.addEventListener('click', ()=>{
+      if(holdPress.consume()) return
       if(editMode && selectedItemIds.size){ moveSelectedItemsToPage(page.id); return }
       setCurrentPage(page.id)
     })
-
-    const del = document.createElement('button')
-    del.type = 'button'
-    del.className = 'page-delete'
-    del.title = 'Delete page'
-    del.textContent = '×'
-    del.addEventListener('click', (ev)=>{
-      ev.stopPropagation()
-      if(!confirm(`Delete page "${page.title}" and all videos in it?`)) return
-      deletePage(page.id)
-    })
-
     row.appendChild(button)
-    row.appendChild(del)
     leftNavEl.appendChild(row)
   })
 }
@@ -347,21 +485,13 @@ function renderTabBar(pageId){
     button.className = `main-tab${activeTabId===tab.id ? ' selected' : ''}`
     button.textContent = tab.title
     button.title = tab.title
-    button.addEventListener('click', ()=>setActiveTab(pid, tab.id))
-
-    const del = document.createElement('button')
-    del.type = 'button'
-    del.className = 'tab-delete'
-    del.title = 'Delete tab'
-    del.textContent = '×'
-    del.addEventListener('click', (ev)=>{
-      ev.stopPropagation()
-      if(!confirm(`Delete tab "${tab.title}"? Videos in it will move to another tab on this page.`)) return
-      deleteTabFromPage(pid, tab.id)
+    const holdPress = attachLongPress(button, ()=>openTabHoldDialog(pid, tab.id))
+    button.addEventListener('click', ()=>{
+      if(holdPress.consume()) return
+      setActiveTab(pid, tab.id)
     })
 
     wrap.appendChild(button)
-    wrap.appendChild(del)
     row.appendChild(wrap)
   })
 
@@ -518,6 +648,10 @@ addPageBtn.addEventListener('click', ()=>{
   if(!label) return
   addPage(label)
 })
+
+if(holdDialogBackdropEl) holdDialogBackdropEl.addEventListener('click', closeHoldDialog)
+if(holdExitBtn) holdExitBtn.addEventListener('click', closeHoldDialog)
+window.addEventListener('keydown', (ev)=>{ if(ev.key==='Escape') closeHoldDialog() })
 
 // handle url params (extension will open app with params)
 function handleParams(){ const p = new URLSearchParams(location.search); if(p.has('videoId')){
