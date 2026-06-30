@@ -1064,7 +1064,7 @@ function renderTabBar(pageId){
 }
 
 function render(){ sections.innerHTML=''
-  renderTabBar(currentPageId)
+  if(currentPageId !== 'home') renderTabBar(currentPageId)
   const activeTabId = getActiveTabId(currentPageId)
   const list = items.filter(i=>normalizePageId(i.pageId)===currentPageId && normalizeTabId(i.tabId)===activeTabId)
   const groups = {today:[], yesterday:[], earlier:[]}
