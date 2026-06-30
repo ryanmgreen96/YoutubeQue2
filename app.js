@@ -5,7 +5,6 @@ const ACTIVE_TAB_KEY = 'ytActiveTabs_v1'
 const PAGE_TITLE_FILTERS_KEY = 'ytPageTitleFilters_v1'
 const SAVED_LINKS_APP_KEY = 'ytSavedVideos_v1'
 const HEADER_LINKS_KEY = 'ytHeaderLinks_v1'
-const APP_TITLE = document.getElementById('view-title')
 const sections = document.getElementById('sections')
 const leftNavEl = document.getElementById('left-nav')
 const addPageBtn = document.getElementById('add-page-btn')
@@ -811,8 +810,6 @@ function render(){ sections.innerHTML=''
   const groups = {today:[], yesterday:[], earlier:[]}
   const now = new Date();
 
-  APP_TITLE.textContent = getPageTitle(currentPageId)
-
   if(currentPageId !== 'home'){
     const sortedList = list.slice().sort((a, b)=>{
       const aDate = new Date(a.publishedAt || a.created || 0).getTime()
@@ -975,7 +972,6 @@ window.addEventListener('load', ()=>{
   }
   ensurePageTabIntegrity()
   currentPageId = 'home'
-  APP_TITLE.textContent = 'Home'
   renderLeftNav()
   renderHeaderLinks()
   handleParams()
