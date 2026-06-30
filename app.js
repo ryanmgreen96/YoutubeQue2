@@ -527,7 +527,16 @@ function ensurePageTabIntegrity(){
 }
 function moveSelectedItemsToPage(pageId){
   const targetPageId = normalizePageId(pageId)
-  const targetTabId = getActiveTabId(targetPageId)
+  const tabs = getPageTabs(targetPageId)
+  let targetTabId = getActiveTabId(targetPageId)
+  if(tabs.length > 1){
+    const options = tabs.map((tab, index)=>`${index + 1}. ${tab.title}`).join('\n')
+    const input = prompt(`Move selected videos to which tab?\n${options}`, '1')
+    if(input===null) return
+    const selectedIndex = Number(input) - 1
+    if(!Number.isInteger(selectedIndex) || selectedIndex < 0 || selectedIndex >= tabs.length) return
+    targetTabId = tabs[selectedIndex].id
+  }
   if(!selectedItemIds.size) return
   items = items.map(item=>selectedItemIds.has(item.id) ? {...item, pageId: targetPageId, tabId: targetTabId} : item)
   selectedItemIds.clear()
@@ -911,7 +920,8 @@ function renderSection(title, list){
     el.classList.toggle('is-selected', selectedItemIds.has(it.id))
     el.addEventListener('click', ()=>{
       if(editMode){ selectItem(it.id); return }
-      removeItem(it.id); window.open(it.url, '_blank')
+      if(currentPageId==='home') removeItem(it.id)
+      window.open(it.url, '_blank')
     })
 
     // long-press to edit
