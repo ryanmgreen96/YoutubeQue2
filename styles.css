@@ -33,7 +33,10 @@ main{display:grid;grid-template-columns:16% 69% 15%;min-height:calc(100vh - 63px
 .main-tab{font-size:12px;line-height:1.2;padding:5px 10px;border-radius:999px;border:1px solid rgba(255,255,255,0.12);background:rgba(255,255,255,0.04);color:#d7e5fa}
 .main-tab.selected{background:rgba(255,204,0,0.12);border-color:rgba(255,204,0,0.3);color:#ffe5a1}
 .main-tab.add-tab{width:26px;height:26px;padding:0;display:flex;align-items:center;justify-content:center;font-size:16px;color:#ffd86a}
-.title-filter-tools{display:flex;flex-direction:column;gap:8px;margin:0 0 4px 4px;padding:8px;border:1px solid rgba(255,255,255,0.08);border-radius:10px;background:rgba(255,255,255,0.02)}
+.title-filter-toggle{width:24px;height:24px;min-width:24px;padding:0;display:flex;align-items:center;justify-content:center;border-radius:999px;font-size:13px;font-weight:700;color:#9fb0d6}
+.title-filter-overlay{position:fixed;inset:0;z-index:1700;display:flex;align-items:center;justify-content:center}
+.title-filter-overlay-backdrop{position:absolute;inset:0;background:rgba(2,6,14,0.58)}
+.title-filter-tools{position:relative;z-index:1;display:flex;flex-direction:column;gap:8px;margin:0;padding:10px;border:1px solid rgba(255,255,255,0.14);border-radius:12px;background:#0d1628;width:min(560px,92vw);box-shadow:0 20px 55px rgba(0,0,0,0.45)}
 .title-filter-input-wrap{display:flex;gap:8px;align-items:center}
 .title-filter-input{flex:1;min-width:200px;background:rgba(255,255,255,0.03);border:1px solid rgba(255,255,255,0.14);color:#e6eef8;border-radius:8px;padding:7px 10px;font-size:12px}
 .title-filter-input::placeholder{color:#8ea3cf}
@@ -44,6 +47,7 @@ main{display:grid;grid-template-columns:16% 69% 15%;min-height:calc(100vh - 63px
 .title-filter-chip-text{font-size:11px;color:#d8e6ff;max-width:250px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .title-filter-chip-btn{font-size:10px;line-height:1;padding:4px 6px;border-radius:999px;border:1px solid rgba(255,255,255,0.2)}
 .title-filter-chip-btn.danger{color:#ffd5d5;border-color:rgba(255,122,122,0.44);background:rgba(150,20,20,0.2)}
+.title-filter-close{align-self:flex-end;font-size:11px;padding:6px 10px;border-radius:999px}
 .tab-delete{width:18px;height:18px;min-width:18px;padding:0;border-radius:999px;border:1px solid rgba(255,255,255,0.12);background:rgba(255,255,255,0.03);color:#9fb0d6;font-size:12px;line-height:1;display:flex;align-items:center;justify-content:center}
 .tab-delete:hover{color:#ffb7b7;border-color:rgba(255,120,120,0.4)}
 .page-heading{margin:0 0 6px 4px;font-size:16px;line-height:1.2;color:#ffdf8a;font-weight:600}

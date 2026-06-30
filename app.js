@@ -31,6 +31,7 @@ let currentPageId = 'home'
 let editMode = false
 let selectedItemIds = new Set()
 let holdDialogState = null
+let titleFilterOverlayPageId = null
 
 function save(){ localStorage.setItem(APP_KEY, JSON.stringify(items)) }
 function load(){ try{ return JSON.parse(localStorage.getItem(APP_KEY)||'[]') }catch(e){return[]}}
@@ -169,6 +170,11 @@ function closeHoldDialog(){
   if(!holdDialogEl) return
   holdDialogEl.classList.add('hidden')
   holdDialogEl.setAttribute('aria-hidden', 'true')
+}
+function closeTitleFilterOverlay(){
+  if(titleFilterOverlayPageId===null) return
+  titleFilterOverlayPageId = null
+  render()
 }
 function movePage(pageId, delta){
   const pid = normalizePageId(pageId)
@@ -482,6 +488,7 @@ function setCurrentPage(pageId){
   closeHoldDialog()
   const pid = normalizePageId(pageId)
   const known = pid === 'home' || pages.some(page=>page.id===pid)
+  if(titleFilterOverlayPageId && titleFilterOverlayPageId!==pid) titleFilterOverlayPageId = null
   currentPageId = known ? pid : 'home'
   getPageTabs(currentPageId)
   getActiveTabId(currentPageId)
@@ -613,9 +620,31 @@ function renderTabBar(pageId){
   })
   row.appendChild(add)
 
+  if(pid!=='home'){
+    const info = document.createElement('button')
+    info.type = 'button'
+    info.className = `main-tab title-filter-toggle${titleFilterOverlayPageId===pid ? ' selected' : ''}`
+    info.title = 'Manage hidden title phrases'
+    info.setAttribute('aria-label', 'Manage hidden title phrases')
+    info.textContent = 'i'
+    info.addEventListener('click', ()=>{
+      titleFilterOverlayPageId = titleFilterOverlayPageId===pid ? null : pid
+      render()
+    })
+    row.appendChild(info)
+  }
+
   sections.appendChild(row)
 
-  if(pid==='home') return
+  if(pid==='home' || titleFilterOverlayPageId!==pid) return
+
+  const overlay = document.createElement('div')
+  overlay.className = 'title-filter-overlay'
+
+  const backdrop = document.createElement('div')
+  backdrop.className = 'title-filter-overlay-backdrop'
+  backdrop.addEventListener('click', closeTitleFilterOverlay)
+  overlay.appendChild(backdrop)
 
   const filterTools = document.createElement('div')
   filterTools.className = 'title-filter-tools'
@@ -692,7 +721,15 @@ function renderTabBar(pageId){
   }
 
   filterTools.appendChild(list)
-  sections.appendChild(filterTools)
+  const closeBtn = document.createElement('button')
+  closeBtn.type = 'button'
+  closeBtn.className = 'title-filter-close'
+  closeBtn.textContent = 'Close'
+  closeBtn.addEventListener('click', closeTitleFilterOverlay)
+  filterTools.appendChild(closeBtn)
+
+  overlay.appendChild(filterTools)
+  sections.appendChild(overlay)
 }
 
 function render(){ sections.innerHTML=''
@@ -832,7 +869,11 @@ addPageBtn.addEventListener('click', ()=>{
 
 if(holdDialogBackdropEl) holdDialogBackdropEl.addEventListener('click', closeHoldDialog)
 if(holdExitBtn) holdExitBtn.addEventListener('click', closeHoldDialog)
-window.addEventListener('keydown', (ev)=>{ if(ev.key==='Escape') closeHoldDialog() })
+window.addEventListener('keydown', (ev)=>{
+  if(ev.key!=='Escape') return
+  closeHoldDialog()
+  closeTitleFilterOverlay()
+})
 
 // handle url params (extension will open app with params)
 function handleParams(){ const p = new URLSearchParams(location.search); if(p.has('videoId')){
