@@ -533,22 +533,9 @@ function toggleFav(id){ const it = items.find(i=>i.id===id); if(!it) return; it.
 
 function loadHeaderLinks(){ try{ return JSON.parse(localStorage.getItem(HEADER_LINKS_KEY)||'[]') }catch(e){return[]} }
 function saveHeaderLinks(){ localStorage.setItem(HEADER_LINKS_KEY, JSON.stringify(headerLinks)) }
-function addHeaderLink({title,url}){ const link = {id:uid(), title, url, created: new Date().toISOString()}; headerLinks.push(link); saveHeaderLinks(); renderHeaderLinks(); }
-function editHeaderLink(id){ const link = headerLinks.find(l=>l.id===id); if(!link) return; const newTitle = prompt('Edit text label', link.title); if(!newTitle) return; const newUrl = prompt('Edit URL', link.url); if(!newUrl) return; link.title = newTitle; link.url = newUrl; saveHeaderLinks(); renderHeaderLinks(); }
-function renderHeaderLinks(){ headerLinksEl.innerHTML = ''; headerLinks.forEach(link=>{
-    const span = document.createElement('span')
-    span.className = 'header-link'
-    span.textContent = link.title
-    span.title = link.url
-    span.addEventListener('click', ()=>{ window.open(link.url, '_blank') })
-    let pressTimer = null
-    span.addEventListener('mousedown', (ev)=>{ if(ev.button!==0) return; pressTimer = setTimeout(()=>{ editHeaderLink(link.id) }, 600) })
-    span.addEventListener('mouseup', ()=>{ clearTimeout(pressTimer) })
-    span.addEventListener('mouseleave', ()=>{ clearTimeout(pressTimer) })
-    span.addEventListener('dblclick', (ev)=>{ ev.preventDefault(); editHeaderLink(link.id) })
-    headerLinksEl.appendChild(span)
-  })
-}
+function addHeaderLink({title,url}){ const link = {id:uid(), title, url, created: new Date().toISOString()}; headerLinks.push(link); saveHeaderLinks(); renderLeftNav(); }
+function editHeaderLink(id){ const link = headerLinks.find(l=>l.id===id); if(!link) return; const newTitle = prompt('Edit text label', link.title); if(!newTitle) return; const newUrl = prompt('Edit URL', link.url); if(!newUrl) return; link.title = newTitle; link.url = newUrl; saveHeaderLinks(); renderLeftNav(); }
+function renderHeaderLinks(){ if(headerLinksEl) headerLinksEl.innerHTML = '' }
 
 function editItem(id){ const it = items.find(i=>i.id===id); if(!it) return; const newUrl = prompt('Edit URL', it.url); if(!newUrl) return; const newTitle = prompt('Edit title', it.title)||it.title; const vid = extractVideoId(newUrl)||it.videoId; it.url=newUrl; it.title=newTitle; it.videoId=vid; save(); render() }
 
@@ -568,6 +555,26 @@ function renderLeftNav(){
   })
   homeRow.appendChild(homeButton)
   leftNavEl.appendChild(homeRow)
+
+  headerLinks.forEach(link=>{
+    const row = document.createElement('div')
+    row.className = 'page-link-row'
+
+    const button = document.createElement('button')
+    button.type = 'button'
+    button.className = 'page-link side-link'
+    button.textContent = link.title
+    button.title = link.url
+
+    const holdPress = attachLongPress(button, ()=>editHeaderLink(link.id))
+    button.addEventListener('click', ()=>{
+      if(holdPress.consume()) return
+      window.open(link.url, '_blank', 'noopener,noreferrer')
+    })
+
+    row.appendChild(button)
+    leftNavEl.appendChild(row)
+  })
 
   pages.forEach(page=>{
     const row = document.createElement('div')
