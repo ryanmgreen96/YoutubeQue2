@@ -802,16 +802,11 @@ function renderSection(title, list){
     const el = node.querySelector('.item')
     const img = node.querySelector('.thumb')
     const ttl = node.querySelector('.title')
-    const starBtn = node.querySelector('.star')
-    const delBtn = node.querySelector('.delete')
     img.src = it.videoId ? makeThumbUrl(it.videoId) : ''
     const rawTitle = it.title || it.url
     ttl.textContent = currentPageId==='home' ? rawTitle : applyPageTitleFilters(rawTitle, currentPageId)
-    starBtn.textContent = it.favorite ? '★' : '☆'
     el.classList.toggle('is-editing', editMode)
     el.classList.toggle('is-selected', selectedItemIds.has(it.id))
-    starBtn.addEventListener('click', (ev)=>{ ev.stopPropagation(); toggleFav(it.id) })
-    delBtn.addEventListener('click', (ev)=>{ ev.stopPropagation(); removeItem(it.id) })
     el.addEventListener('click', ()=>{
       if(editMode){ selectItem(it.id); return }
       removeItem(it.id); window.open(it.url, '_blank')
