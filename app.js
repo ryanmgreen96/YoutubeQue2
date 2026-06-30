@@ -9,6 +9,7 @@ const APP_TITLE = document.getElementById('view-title')
 const sections = document.getElementById('sections')
 const leftNavEl = document.getElementById('left-nav')
 const addPageBtn = document.getElementById('add-page-btn')
+const addLinkBtn = document.getElementById('add-link-btn')
 const savedLinksEl = document.getElementById('saved-links')
 const headerLinksEl = document.getElementById('header-links')
 const template = document.getElementById('item-template')
@@ -75,6 +76,12 @@ function savePageTitleFilters(){ localStorage.setItem(PAGE_TITLE_FILTERS_KEY, JS
 function loadSavedLinks(){ try{ return JSON.parse(localStorage.getItem(SAVED_LINKS_APP_KEY)||'[]') }catch(e){return[]}}
 function saveSavedLinks(){ localStorage.setItem(SAVED_LINKS_APP_KEY, JSON.stringify(savedLinks)) }
 function removeSavedLink(id){ savedLinks = savedLinks.filter(link=>link.id!==id); saveSavedLinks(); renderSavedLinks() }
+function normalizeUrl(value){
+  const raw = (value || '').trim()
+  if(!raw) return ''
+  if(/^https?:\/\//i.test(raw)) return raw
+  return `https://${raw}`
+}
 
 function uid(){ return Date.now().toString(36)+Math.random().toString(36).slice(2,8) }
 function escapeRegExp(value){ return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') }
@@ -866,6 +873,22 @@ addPageBtn.addEventListener('click', ()=>{
   if(!label) return
   addPage(label)
 })
+
+if(addLinkBtn){
+  addLinkBtn.addEventListener('click', ()=>{
+    const urlInput = prompt('Paste link URL')
+    if(!urlInput) return
+    const url = normalizeUrl(urlInput)
+    try{ new URL(url) }catch(e){ alert('Please enter a valid URL'); return }
+
+    const titleInput = prompt('Link title')
+    if(!titleInput) return
+    const title = titleInput.trim()
+    if(!title) return
+
+    addHeaderLink({title, url})
+  })
+}
 
 if(holdDialogBackdropEl) holdDialogBackdropEl.addEventListener('click', closeHoldDialog)
 if(holdExitBtn) holdExitBtn.addEventListener('click', closeHoldDialog)
