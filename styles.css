@@ -1,10 +1,18 @@
 :root{--gap:10px;--bg:#0f1720;--card:#0b1220;--accent:#ffcc00;--text:#e6eef8}
 *{box-sizing:border-box}
 body{margin:0;font-family:system-ui,-apple-system,Segoe UI,Roboto,'Helvetica Neue',Arial;background:var(--bg);color:var(--text)}
-header{position:fixed;top:0;left:16%;width:69%;height:63px;display:flex;align-items:center;justify-content:space-between;padding:12px 16px;border-bottom:1px solid rgba(255,255,255,0.04);background:var(--bg);z-index:1000}
-.title-group{display:none}
-.header-links{display:flex;gap:6px;flex-wrap:wrap;max-width:60vw}
-.header-link{font-size:12px;padding:4px 10px;background:rgba(255,204,0,0.14);border:1px solid rgba(255,204,0,0.28);border-radius:999px;color:#ffde8c;text-decoration:none}
+header{position:fixed;top:0;left:16%;width:69%;height:76px;display:grid;grid-template-columns:auto 1fr;align-items:center;gap:14px;padding:10px 14px;border-bottom:1px solid rgba(255,255,255,0.04);background:var(--bg);z-index:1000}
+.topbar-roles{display:flex;align-items:center;justify-content:flex-start;min-width:0}
+.topbar-role-grid{display:grid;grid-auto-flow:column;grid-auto-columns:18px;grid-template-rows:repeat(3,18px);gap:4px;max-height:62px}
+.topbar-role-btn{width:18px;height:18px;min-width:18px;padding:0;border-radius:6px;font-size:10px;line-height:1;display:flex;align-items:center;justify-content:center;color:#bcd1f2;background:rgba(255,255,255,0.03);border:1px solid rgba(255,255,255,0.12)}
+.topbar-role-btn.selected{background:rgba(255,204,0,0.14);border-color:rgba(255,204,0,0.35);color:#ffe39a}
+.topbar-role-btn.add{color:#ffd77a;border-color:rgba(255,204,0,0.24)}
+.topbar-links{display:flex;align-items:center;justify-content:center;min-width:0}
+.topbar-link-track{display:flex;align-items:center;justify-content:center;gap:10px;width:100%;overflow-x:auto;padding-bottom:2px}
+.topbar-link-icon{width:34px;height:34px;min-width:34px;padding:0;border-radius:10px;display:flex;align-items:center;justify-content:center;border:1px solid rgba(255,255,255,0.12);background:rgba(255,255,255,0.04)}
+.topbar-link-icon.add{font-size:18px;color:#ffd77a;border-color:rgba(255,204,0,0.3);background:rgba(255,204,0,0.08)}
+.topbar-link-favicon{width:20px;height:20px;display:block;border-radius:5px}
+.topbar-link-fallback{display:none;width:20px;height:20px;border-radius:6px;align-items:center;justify-content:center;font-size:11px;font-weight:700;color:#ffe6aa;background:rgba(255,204,0,0.2)}
 button{background:transparent;border:1px solid rgba(255,255,255,0.06);color:var(--text);padding:6px 10px;border-radius:6px;cursor:pointer}
 button.selected{background:var(--accent);color:#000;border-color:transparent}
 main{display:grid;grid-template-columns:16% 69% 15%;min-height:100vh}
@@ -25,7 +33,7 @@ main{display:grid;grid-template-columns:16% 69% 15%;min-height:100vh}
 .page-delete:hover{color:#ffb7b7;border-color:rgba(255,120,120,0.4)}
 .left-add{font-size:16px;line-height:1;width:24px;height:24px;padding:0;border-radius:999px;color:#ffdf8a;border:1px solid rgba(255,204,0,0.18);background:rgba(255,204,0,0.05)}
 .left-link-add{font-size:13px;font-weight:700;color:#ffd986;border-color:rgba(255,204,0,0.26);background:rgba(255,204,0,0.1)}
-.content-area{min-width:0;padding-top:63px}
+.content-area{min-width:0;padding-top:76px}
 .saved-links{padding:12px;display:flex;flex-direction:column;gap:8px}
 .saved-links-title{font-size:11px;letter-spacing:0.03em;text-transform:uppercase;color:#9fb0d6}
 .saved-links-list{margin:0;padding:0;list-style:none;display:flex;flex-direction:column;gap:6px}
@@ -81,4 +89,4 @@ main{display:grid;grid-template-columns:16% 69% 15%;min-height:100vh}
 .hold-exit-btn{margin-top:2px;font-size:12px;padding:7px 10px;border-radius:999px;color:#d8e7ff}
 
 @media (max-width:1200px){header{left:18%;width:64%}main{grid-template-columns:18% 64% 18%}.grid{grid-template-columns:repeat(4,1fr)}.thumb{height:110px}}
-@media (max-width:800px){header{left:0;width:100%}main{grid-template-columns:0 1fr 0}.side-bar{display:none}.grid{grid-template-columns:repeat(2,1fr)}.thumb{height:140px}.title-filter-input-wrap{flex-direction:column;align-items:stretch}}
+@media (max-width:800px){header{left:0;width:100%}.topbar-role-grid{grid-template-rows:repeat(2,18px)}main{grid-template-columns:0 1fr 0}.side-bar{display:none}.grid{grid-template-columns:repeat(2,1fr)}.thumb{height:140px}.title-filter-input-wrap{flex-direction:column;align-items:stretch}}

@@ -5,12 +5,15 @@ const ACTIVE_TAB_KEY = 'ytActiveTabs_v1'
 const PAGE_TITLE_FILTERS_KEY = 'ytPageTitleFilters_v1'
 const SAVED_LINKS_APP_KEY = 'ytSavedVideos_v1'
 const HEADER_LINKS_KEY = 'ytHeaderLinks_v1'
+const TOPBAR_ROWS_KEY = 'ytTopbarRows_v1'
+const TOPBAR_ACTIVE_ROW_KEY = 'ytTopbarActiveRow_v1'
 const sections = document.getElementById('sections')
 const leftNavEl = document.getElementById('left-nav')
 const addPageBtn = document.getElementById('add-page-btn')
 const addLinkBtn = document.getElementById('add-link-btn')
 const savedLinksEl = document.getElementById('saved-links')
-const headerLinksEl = document.getElementById('header-links')
+const topbarRolesEl = document.getElementById('topbar-roles')
+const topbarLinksEl = document.getElementById('topbar-links')
 const template = document.getElementById('item-template')
 const holdDialogEl = document.getElementById('hold-action-dialog')
 const holdDialogBackdropEl = holdDialogEl ? holdDialogEl.querySelector('.hold-dialog-backdrop') : null
@@ -28,6 +31,8 @@ let activeTabs = loadActiveTabs()
 let pageTitleFilters = loadPageTitleFilters()
 let savedLinks = loadSavedLinks()
 let headerLinks = loadHeaderLinks()
+let topbarRows = loadTopbarRows()
+let activeTopbarRowId = loadTopbarActiveRowId()
 let currentPageId = 'home'
 let editMode = false
 let selectedItemIds = new Set()
@@ -78,6 +83,31 @@ function savePageTitleFilters(){ localStorage.setItem(PAGE_TITLE_FILTERS_KEY, JS
 function loadSavedLinks(){ try{ return JSON.parse(localStorage.getItem(SAVED_LINKS_APP_KEY)||'[]') }catch(e){return[]}}
 function saveSavedLinks(){ localStorage.setItem(SAVED_LINKS_APP_KEY, JSON.stringify(savedLinks)) }
 function removeSavedLink(id){ savedLinks = savedLinks.filter(link=>link.id!==id); saveSavedLinks(); renderSavedLinks() }
+function loadTopbarRows(){
+  try{
+    const parsed = JSON.parse(localStorage.getItem(TOPBAR_ROWS_KEY)||'[]')
+    if(!Array.isArray(parsed)) return []
+    return parsed
+      .filter(row=>row && row.id)
+      .map(row=>({
+        id: row.id,
+        name: typeof row.name==='string' ? row.name : 'Row',
+        symbol: typeof row.symbol==='string' && row.symbol.trim() ? row.symbol.trim().slice(0, 1) : '#',
+        links: Array.isArray(row.links)
+          ? row.links
+              .filter(link=>link && link.id && link.url)
+              .map(link=>({
+                id: link.id,
+                title: typeof link.title==='string' ? link.title : link.url,
+                url: typeof link.url==='string' ? link.url : ''
+              }))
+          : []
+      }))
+  }catch(e){ return [] }
+}
+function saveTopbarRows(){ localStorage.setItem(TOPBAR_ROWS_KEY, JSON.stringify(topbarRows)) }
+function loadTopbarActiveRowId(){ return localStorage.getItem(TOPBAR_ACTIVE_ROW_KEY) || '' }
+function saveTopbarActiveRowId(){ localStorage.setItem(TOPBAR_ACTIVE_ROW_KEY, activeTopbarRowId || '') }
 function normalizeUrl(value){
   const raw = (value || '').trim()
   if(!raw) return ''
@@ -86,6 +116,94 @@ function normalizeUrl(value){
 }
 
 function uid(){ return Date.now().toString(36)+Math.random().toString(36).slice(2,8) }
+function ensureTopbarState(){
+  if(!Array.isArray(topbarRows)) topbarRows = []
+  if(!topbarRows.length){
+    topbarRows = [{id: uid(), name: 'Default', symbol: '1', links: []}]
+    saveTopbarRows()
+  }
+  const exists = topbarRows.some(row=>row.id===activeTopbarRowId)
+  if(!exists){
+    activeTopbarRowId = topbarRows[0].id
+    saveTopbarActiveRowId()
+  }
+}
+function getActiveTopbarRow(){
+  ensureTopbarState()
+  return topbarRows.find(row=>row.id===activeTopbarRowId) || topbarRows[0]
+}
+function makeFaviconUrl(url){
+  try{
+    const host = new URL(url).hostname
+    return `https://www.google.com/s2/favicons?domain=${encodeURIComponent(host)}&sz=64`
+  }catch(e){
+    return ''
+  }
+}
+function fallbackGlyph(title, url){
+  const source = (title || '').trim() || (url || '').trim()
+  if(!source) return '?'
+  const first = source.replace(/^https?:\/\//i, '').trim().charAt(0).toUpperCase()
+  return first || '?'
+}
+function addTopbarRow(){
+  const symbolInput = prompt('Row icon/symbol (single character)', `${topbarRows.length + 1}`)
+  if(!symbolInput) return
+  const nameInput = prompt('Row name', 'New row')
+  if(!nameInput) return
+  const row = {
+    id: uid(),
+    name: nameInput.trim() || 'Row',
+    symbol: symbolInput.trim().slice(0, 1) || '#',
+    links: []
+  }
+  topbarRows.push(row)
+  activeTopbarRowId = row.id
+  saveTopbarRows()
+  saveTopbarActiveRowId()
+  renderHeaderLinks()
+}
+function addTopbarLink(){
+  const row = getActiveTopbarRow()
+  if(!row) return
+  const urlInput = prompt('Website URL')
+  if(!urlInput) return
+  const url = normalizeUrl(urlInput)
+  try{ new URL(url) }catch(e){ alert('Please enter a valid URL'); return }
+  let defaultTitle = url
+  try{ defaultTitle = new URL(url).hostname.replace(/^www\./i, '') }catch(e){}
+  const titleInput = prompt('Label (optional)', defaultTitle)
+  const link = {id: uid(), title: (titleInput || '').trim() || defaultTitle, url}
+  row.links.push(link)
+  saveTopbarRows()
+  renderHeaderLinks()
+}
+function editTopbarLink(linkId){
+  const row = getActiveTopbarRow()
+  if(!row) return
+  const link = row.links.find(item=>item.id===linkId)
+  if(!link) return
+  const urlInput = prompt('Edit URL', link.url)
+  if(!urlInput) return
+  const url = normalizeUrl(urlInput)
+  try{ new URL(url) }catch(e){ alert('Please enter a valid URL'); return }
+  const titleInput = prompt('Edit label', link.title)
+  if(titleInput===null) return
+  link.url = url
+  link.title = titleInput.trim() || link.title
+  saveTopbarRows()
+  renderHeaderLinks()
+}
+function deleteTopbarLink(linkId){
+  const row = getActiveTopbarRow()
+  if(!row) return
+  const link = row.links.find(item=>item.id===linkId)
+  if(!link) return
+  if(!confirm(`Delete link "${link.title}"?`)) return
+  row.links = row.links.filter(item=>item.id!==linkId)
+  saveTopbarRows()
+  renderHeaderLinks()
+}
 function clearRangeFlags(){
   rangeFlagStartId = null
   rangeFlagEndId = null
@@ -646,7 +764,94 @@ function loadHeaderLinks(){ try{ return JSON.parse(localStorage.getItem(HEADER_L
 function saveHeaderLinks(){ localStorage.setItem(HEADER_LINKS_KEY, JSON.stringify(headerLinks)) }
 function addHeaderLink({title,url}){ const link = {id:uid(), title, url, created: new Date().toISOString()}; headerLinks.push(link); saveHeaderLinks(); renderLeftNav(); }
 function editHeaderLink(id){ const link = headerLinks.find(l=>l.id===id); if(!link) return; const newTitle = prompt('Edit text label', link.title); if(!newTitle) return; const newUrl = prompt('Edit URL', link.url); if(!newUrl) return; link.title = newTitle; link.url = newUrl; saveHeaderLinks(); renderLeftNav(); }
-function renderHeaderLinks(){ if(headerLinksEl) headerLinksEl.innerHTML = '' }
+function renderHeaderLinks(){
+  if(!topbarRolesEl || !topbarLinksEl) return
+  ensureTopbarState()
+  const activeRow = getActiveTopbarRow()
+
+  topbarRolesEl.innerHTML = ''
+  const roleGrid = document.createElement('div')
+  roleGrid.className = 'topbar-role-grid'
+
+  topbarRows.forEach(row=>{
+    const btn = document.createElement('button')
+    btn.type = 'button'
+    btn.className = `topbar-role-btn${row.id===activeTopbarRowId ? ' selected' : ''}`
+    btn.textContent = row.symbol || '#'
+    btn.title = row.name
+    btn.addEventListener('click', ()=>{
+      activeTopbarRowId = row.id
+      saveTopbarActiveRowId()
+      renderHeaderLinks()
+    })
+    roleGrid.appendChild(btn)
+  })
+
+  const addRoleBtn = document.createElement('button')
+  addRoleBtn.type = 'button'
+  addRoleBtn.className = 'topbar-role-btn add'
+  addRoleBtn.textContent = '+'
+  addRoleBtn.title = 'Add link row'
+  addRoleBtn.addEventListener('click', addTopbarRow)
+  roleGrid.appendChild(addRoleBtn)
+  topbarRolesEl.appendChild(roleGrid)
+
+  topbarLinksEl.innerHTML = ''
+  const linkTrack = document.createElement('div')
+  linkTrack.className = 'topbar-link-track'
+
+  activeRow.links.forEach(link=>{
+    const iconBtn = document.createElement('button')
+    iconBtn.type = 'button'
+    iconBtn.className = 'topbar-link-icon'
+    iconBtn.title = `${link.title} - ${link.url}`
+    iconBtn.setAttribute('aria-label', link.title)
+
+    const img = document.createElement('img')
+    img.className = 'topbar-link-favicon'
+    img.src = makeFaviconUrl(link.url)
+    img.alt = ''
+
+    const fallback = document.createElement('span')
+    fallback.className = 'topbar-link-fallback'
+    fallback.textContent = fallbackGlyph(link.title, link.url)
+
+    img.addEventListener('error', ()=>{
+      img.style.display = 'none'
+      fallback.style.display = 'inline-flex'
+    })
+    img.addEventListener('load', ()=>{
+      img.style.display = 'block'
+      fallback.style.display = 'none'
+    })
+
+    iconBtn.addEventListener('click', ()=>{
+      if(holdPress.consume()) return
+      window.open(link.url, '_blank', 'noopener,noreferrer')
+    })
+    const holdPress = attachLongPress(iconBtn, ()=>{
+      const action = prompt(`Manage link "${link.title}"\nType: edit or delete`, 'edit')
+      if(!action) return
+      const next = action.trim().toLowerCase()
+      if(next==='delete') deleteTopbarLink(link.id)
+      else editTopbarLink(link.id)
+    })
+
+    iconBtn.appendChild(img)
+    iconBtn.appendChild(fallback)
+    linkTrack.appendChild(iconBtn)
+  })
+
+  const addLinkBtn = document.createElement('button')
+  addLinkBtn.type = 'button'
+  addLinkBtn.className = 'topbar-link-icon add'
+  addLinkBtn.textContent = '+'
+  addLinkBtn.title = 'Add website link'
+  addLinkBtn.addEventListener('click', addTopbarLink)
+  linkTrack.appendChild(addLinkBtn)
+
+  topbarLinksEl.appendChild(linkTrack)
+}
 
 function editItem(id){ const it = items.find(i=>i.id===id); if(!it) return; const newUrl = prompt('Edit URL', it.url); if(!newUrl) return; const newTitle = prompt('Edit title', it.title)||it.title; const vid = extractVideoId(newUrl)||it.videoId; it.url=newUrl; it.title=newTitle; it.videoId=vid; save(); render() }
 
