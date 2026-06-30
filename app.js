@@ -823,7 +823,9 @@ function render(){ sections.innerHTML=''
     const sortedList = list.slice().sort((a, b)=>{
       const aDate = new Date(a.publishedAt || a.created || 0).getTime()
       const bDate = new Date(b.publishedAt || b.created || 0).getTime()
-      return aDate - bDate
+      const aSafe = Number.isFinite(aDate) ? aDate : 0
+      const bSafe = Number.isFinite(bDate) ? bDate : 0
+      return bSafe - aSafe
     })
     if(sortedList.length){
       renderSection('', sortedList)
