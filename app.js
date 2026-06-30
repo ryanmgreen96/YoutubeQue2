@@ -2,6 +2,7 @@ const APP_KEY = 'ytQueueItems_v1'
 const PAGE_KEY = 'ytQueuePages_v1'
 const PAGE_TABS_KEY = 'ytPageTabs_v1'
 const ACTIVE_TAB_KEY = 'ytActiveTabs_v1'
+const PAGE_TITLE_FILTERS_KEY = 'ytPageTitleFilters_v1'
 const SAVED_LINKS_APP_KEY = 'ytSavedVideos_v1'
 const HEADER_LINKS_KEY = 'ytHeaderLinks_v1'
 const APP_TITLE = document.getElementById('view-title')
@@ -23,6 +24,7 @@ let items = load()
 let pages = loadPages()
 let pageTabs = loadPageTabs()
 let activeTabs = loadActiveTabs()
+let pageTitleFilters = loadPageTitleFilters()
 let savedLinks = loadSavedLinks()
 let headerLinks = loadHeaderLinks()
 let currentPageId = 'home'
@@ -54,11 +56,83 @@ function loadActiveTabs(){
   }catch(e){ return {} }
 }
 function saveActiveTabs(){ localStorage.setItem(ACTIVE_TAB_KEY, JSON.stringify(activeTabs)) }
+function loadPageTitleFilters(){
+  try{
+    const parsed = JSON.parse(localStorage.getItem(PAGE_TITLE_FILTERS_KEY)||'{}')
+    if(!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return {}
+    const result = {}
+    Object.keys(parsed).forEach(pid=>{
+      if(!Array.isArray(parsed[pid])) return
+      result[pid] = parsed[pid]
+        .map(item=>typeof item==='string' ? item.trim() : '')
+        .filter(Boolean)
+    })
+    return result
+  }catch(e){ return {} }
+}
+function savePageTitleFilters(){ localStorage.setItem(PAGE_TITLE_FILTERS_KEY, JSON.stringify(pageTitleFilters)) }
 function loadSavedLinks(){ try{ return JSON.parse(localStorage.getItem(SAVED_LINKS_APP_KEY)||'[]') }catch(e){return[]}}
 function saveSavedLinks(){ localStorage.setItem(SAVED_LINKS_APP_KEY, JSON.stringify(savedLinks)) }
 function removeSavedLink(id){ savedLinks = savedLinks.filter(link=>link.id!==id); saveSavedLinks(); renderSavedLinks() }
 
 function uid(){ return Date.now().toString(36)+Math.random().toString(36).slice(2,8) }
+function escapeRegExp(value){ return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') }
+function normalizePhrase(value){ return (value || '').trim().replace(/\s+/g, ' ') }
+function getPageTitleFilters(pageId){
+  const pid = normalizePageId(pageId)
+  if(!Array.isArray(pageTitleFilters[pid])) pageTitleFilters[pid] = []
+  return pageTitleFilters[pid]
+}
+function addPageTitleFilter(pageId, phrase){
+  const pid = normalizePageId(pageId)
+  const next = normalizePhrase(phrase)
+  if(!next) return false
+  const list = getPageTitleFilters(pid)
+  if(list.some(item=>item.toLowerCase()===next.toLowerCase())) return false
+  list.push(next)
+  savePageTitleFilters()
+  return true
+}
+function editPageTitleFilter(pageId, index, phrase){
+  const pid = normalizePageId(pageId)
+  const list = getPageTitleFilters(pid)
+  if(index<0 || index>=list.length) return false
+  const next = normalizePhrase(phrase)
+  if(!next) return false
+  if(list.some((item, itemIndex)=>itemIndex!==index && item.toLowerCase()===next.toLowerCase())) return false
+  list[index] = next
+  savePageTitleFilters()
+  return true
+}
+function removePageTitleFilter(pageId, index){
+  const pid = normalizePageId(pageId)
+  const list = getPageTitleFilters(pid)
+  if(index<0 || index>=list.length) return false
+  list.splice(index, 1)
+  savePageTitleFilters()
+  return true
+}
+function applyPageTitleFilters(title, pageId){
+  const source = title || ''
+  if(!source) return source
+  const filters = getPageTitleFilters(pageId)
+  if(!filters.length) return source
+
+  let cleaned = source
+  const ordered = filters.slice().sort((a, b)=>b.length - a.length)
+  ordered.forEach(phrase=>{
+    const spacedPhrase = escapeRegExp(phrase).replace(/\s+/g, '\\s+')
+    cleaned = cleaned.replace(new RegExp(spacedPhrase, 'ig'), ' ')
+  })
+
+  cleaned = cleaned
+    .replace(/\s{2,}/g, ' ')
+    .replace(/\s+([|:\-])\s+/g, ' $1 ')
+    .replace(/^[\s|:\-]+|[\s|:\-]+$/g, '')
+    .trim()
+
+  return cleaned || source
+}
 
 function attachLongPress(target, onLongPress, delayMs = 600){
   let timer = null
@@ -271,8 +345,10 @@ function addPage(title){
   savePages()
   pageTabs[page.id] = [getDefaultTab()]
   activeTabs[page.id] = 'default'
+  pageTitleFilters[page.id] = []
   savePageTabs()
   saveActiveTabs()
+  savePageTitleFilters()
   setCurrentPage(page.id)
   renderLeftNav()
 }
@@ -283,12 +359,14 @@ function deletePage(pageId){
   pages = pages.filter(page=>page.id !== pid)
   delete pageTabs[pid]
   delete activeTabs[pid]
+  delete pageTitleFilters[pid]
 
   items = items.filter(item=>normalizePageId(item.pageId)!==pid)
 
   savePages()
   savePageTabs()
   saveActiveTabs()
+  savePageTitleFilters()
   save()
 
   if(currentPageId===pid){
@@ -302,6 +380,7 @@ function ensurePageTabIntegrity(){
   let changedTabs = false
   let changedActive = false
   let changedItems = false
+  let changedFilters = false
 
   getPageTabs('home')
   getActiveTabId('home')
@@ -319,6 +398,32 @@ function ensurePageTabIntegrity(){
     if(!validPageIds.has(pid)){
       delete activeTabs[pid]
       changedActive = true
+    }
+  })
+
+  Object.keys(pageTitleFilters).forEach(pid=>{
+    if(!validPageIds.has(pid) || pid==='home'){
+      delete pageTitleFilters[pid]
+      changedFilters = true
+      return
+    }
+    const list = pageTitleFilters[pid]
+    if(!Array.isArray(list)){
+      pageTitleFilters[pid] = []
+      changedFilters = true
+      return
+    }
+    const cleaned = list.map(item=>normalizePhrase(item)).filter(Boolean)
+    if(cleaned.length!==list.length || cleaned.some((item, index)=>item!==list[index])){
+      pageTitleFilters[pid] = cleaned
+      changedFilters = true
+    }
+  })
+
+  pages.forEach(page=>{
+    if(!Array.isArray(pageTitleFilters[page.id])){
+      pageTitleFilters[page.id] = []
+      changedFilters = true
     }
   })
 
@@ -348,6 +453,7 @@ function ensurePageTabIntegrity(){
 
   if(changedTabs) savePageTabs()
   if(changedActive) saveActiveTabs()
+  if(changedFilters) savePageTitleFilters()
   if(changedItems) save()
 }
 function moveSelectedItemsToPage(pageId){
@@ -508,6 +614,85 @@ function renderTabBar(pageId){
   row.appendChild(add)
 
   sections.appendChild(row)
+
+  if(pid==='home') return
+
+  const filterTools = document.createElement('div')
+  filterTools.className = 'title-filter-tools'
+
+  const inputWrap = document.createElement('div')
+  inputWrap.className = 'title-filter-input-wrap'
+
+  const input = document.createElement('input')
+  input.type = 'text'
+  input.className = 'title-filter-input'
+  input.placeholder = 'Hide phrase from titles on this page'
+
+  const addPhraseBtn = document.createElement('button')
+  addPhraseBtn.type = 'button'
+  addPhraseBtn.className = 'title-filter-add'
+  addPhraseBtn.textContent = 'Add'
+
+  const addPhrase = ()=>{
+    if(!addPageTitleFilter(pid, input.value)) return
+    input.value = ''
+    render()
+  }
+
+  addPhraseBtn.addEventListener('click', addPhrase)
+  input.addEventListener('keydown', (ev)=>{ if(ev.key==='Enter') addPhrase() })
+
+  inputWrap.appendChild(input)
+  inputWrap.appendChild(addPhraseBtn)
+  filterTools.appendChild(inputWrap)
+
+  const list = document.createElement('div')
+  list.className = 'title-filter-list'
+  const filters = getPageTitleFilters(pid)
+
+  if(!filters.length){
+    const empty = document.createElement('div')
+    empty.className = 'title-filter-empty'
+    empty.textContent = 'No hidden phrases yet'
+    list.appendChild(empty)
+  }else{
+    filters.forEach((phrase, index)=>{
+      const chip = document.createElement('div')
+      chip.className = 'title-filter-chip'
+
+      const text = document.createElement('span')
+      text.className = 'title-filter-chip-text'
+      text.textContent = phrase
+
+      const editBtn = document.createElement('button')
+      editBtn.type = 'button'
+      editBtn.className = 'title-filter-chip-btn'
+      editBtn.textContent = 'Edit'
+      editBtn.addEventListener('click', ()=>{
+        const next = prompt('Edit hidden phrase', phrase)
+        if(!next) return
+        if(!editPageTitleFilter(pid, index, next)) return
+        render()
+      })
+
+      const removeBtn = document.createElement('button')
+      removeBtn.type = 'button'
+      removeBtn.className = 'title-filter-chip-btn danger'
+      removeBtn.textContent = 'Delete'
+      removeBtn.addEventListener('click', ()=>{
+        if(!removePageTitleFilter(pid, index)) return
+        render()
+      })
+
+      chip.appendChild(text)
+      chip.appendChild(editBtn)
+      chip.appendChild(removeBtn)
+      list.appendChild(chip)
+    })
+  }
+
+  filterTools.appendChild(list)
+  sections.appendChild(filterTools)
 }
 
 function render(){ sections.innerHTML=''
@@ -620,7 +805,8 @@ function renderSection(title, list){
     const starBtn = node.querySelector('.star')
     const delBtn = node.querySelector('.delete')
     img.src = it.videoId ? makeThumbUrl(it.videoId) : ''
-    ttl.textContent = it.title || it.url
+    const rawTitle = it.title || it.url
+    ttl.textContent = currentPageId==='home' ? rawTitle : applyPageTitleFilters(rawTitle, currentPageId)
     starBtn.textContent = it.favorite ? '★' : '☆'
     el.classList.toggle('is-editing', editMode)
     el.classList.toggle('is-selected', selectedItemIds.has(it.id))
