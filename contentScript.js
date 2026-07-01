@@ -45,12 +45,42 @@
       const listId = url.searchParams.get('list')
       if(!listId) return ''
 
-      if(url.pathname === '/playlist') return `https://www.youtube.com/playlist?list=${encodeURIComponent(listId)}`
-      if(url.pathname === '/watch' && !url.searchParams.get('v')){
-        return `https://www.youtube.com/playlist?list=${encodeURIComponent(listId)}`
-      }
+      // Any YouTube URL carrying a list id can be canonicalized to /playlist for bulk queueing.
+      return `https://www.youtube.com/playlist?list=${encodeURIComponent(listId)}`
     }catch(e){ }
     return ''
+  }
+
+  function playlistUrlFromCurrentPage(){
+    try{
+      const url = new URL(location.href)
+      const cleanHost = url.hostname.replace(/^www\./, '')
+      if(!(cleanHost === 'youtube.com' || cleanHost.endsWith('.youtube.com'))) return ''
+      const listId = url.searchParams.get('list')
+      if(!listId) return ''
+      return `https://www.youtube.com/playlist?list=${encodeURIComponent(listId)}`
+    }catch(e){ }
+    return ''
+  }
+
+  function shouldQueuePlaylistFromTarget(target, hrefSource, videoUrl, playlistUrl){
+    if(!playlistUrl) return false
+    if(!target || !target.closest) return !videoUrl
+
+    if(!videoUrl) return true
+
+    const inPlaylistTitleArea = !!target.closest(
+      'ytd-playlist-sidebar-primary-info-renderer, ytd-playlist-header-renderer, ytd-playlist-panel-renderer #title, ytd-playlist-panel-renderer h1, ytd-playlist-renderer'
+    )
+    if(inPlaylistTitleArea) return true
+
+    const ownLabel = (target.getAttribute && (target.getAttribute('aria-label') || target.getAttribute('title'))) || ''
+    if(/playlist/i.test(ownLabel)) return true
+
+    const hrefLooksLikePlaylist = /[?&]list=/.test(hrefSource || '') && /\/playlist(\?|$)/.test(hrefSource || '')
+    if(hrefLooksLikePlaylist) return true
+
+    return false
   }
 
   function queueTitleFromElement(el){
@@ -164,8 +194,11 @@
         if(!target) return
 
         const hrefSource = hrefFromTarget(target)
-        const playlistUrl = playlistUrlFromHref(hrefSource)
-        if(playlistUrl){
+        const videoUrl = videoUrlFromHref(hrefSource)
+        const playlistUrl = playlistUrlFromHref(hrefSource) || playlistUrlFromCurrentPage()
+        const shouldQueuePlaylist = shouldQueuePlaylistFromTarget(target, hrefSource, videoUrl, playlistUrl)
+
+        if(shouldQueuePlaylist){
           ev.preventDefault()
           ev.stopPropagation()
           if(ev.stopImmediatePropagation) ev.stopImmediatePropagation()
@@ -175,7 +208,6 @@
           return
         }
 
-        const videoUrl = videoUrlFromHref(hrefSource)
         if(!videoUrl) return
 
         ev.preventDefault()
