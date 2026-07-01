@@ -49,6 +49,9 @@ let holdDialogState = null
 let titleFilterOverlayPageId = null
 let dividerInsertMode = false
 let activeThemeIndex = 0
+let activeTimerHandle = null
+let activeTimerEndsAt = 0
+let activeTimerLabel = ''
 let scrollPositions = loadScrollPositions()
 let lastViewedItemId = loadLastViewedItemId()
 
@@ -129,6 +132,76 @@ function applyTheme(index){
 function cycleTheme(){
   applyTheme(activeThemeIndex + 1)
 }
+function parseTimerInput(value){
+  const raw = (value || '').trim()
+  if(!raw) return 0
+  if(raw.includes(':')){
+    const parts = raw.split(':').map(part=>Number(part.trim()))
+    if(parts.some(part=>!Number.isFinite(part) || part < 0)) return 0
+    if(parts.length === 2) return (parts[0] * 60) + parts[1]
+    if(parts.length === 3) return (parts[0] * 3600) + (parts[1] * 60) + parts[2]
+    return 0
+  }
+  const minutes = Number(raw)
+  if(!Number.isFinite(minutes) || minutes <= 0) return 0
+  return Math.round(minutes * 60)
+}
+function formatTimerSeconds(totalSeconds){
+  const safe = Math.max(0, Math.ceil(totalSeconds))
+  const hours = Math.floor(safe / 3600)
+  const minutes = Math.floor((safe % 3600) / 60)
+  const seconds = safe % 60
+  if(hours > 0) return `${hours}:${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`
+  return `${minutes}:${String(seconds).padStart(2, '0')}`
+}
+function clearTimer(){
+  if(activeTimerHandle){
+    clearTimeout(activeTimerHandle)
+    activeTimerHandle = null
+  }
+  activeTimerEndsAt = 0
+  activeTimerLabel = ''
+  renderThemeSwitcher()
+}
+function notifyTimerDone(message){
+  if('Notification' in window && Notification.permission === 'granted'){
+    new Notification(message)
+    return
+  }
+  alert(message)
+}
+async function startTimerFromPrompt(){
+  const currentTime = new Date().toLocaleTimeString([], {hour: 'numeric', minute: '2-digit'})
+  const durationInput = prompt(`Timer length in minutes or mm:ss\nCurrent time: ${currentTime}`, '10')
+  if(durationInput === null) return
+  const totalSeconds = parseTimerInput(durationInput)
+  if(!totalSeconds){
+    alert('Enter a valid time like 10 or 10:30')
+    return
+  }
+
+  const labelInput = prompt('Timer label (optional)', 'Timer done')
+  const label = (labelInput || '').trim() || 'Timer done'
+
+  if(activeTimerHandle) clearTimer()
+  activeTimerLabel = label
+  activeTimerEndsAt = Date.now() + (totalSeconds * 1000)
+
+  if('Notification' in window && Notification.permission === 'default'){
+    try{ await Notification.requestPermission() }catch(e){ }
+  }
+
+  activeTimerHandle = setTimeout(()=>{
+    activeTimerHandle = null
+    activeTimerEndsAt = 0
+    const finalLabel = activeTimerLabel || 'Timer done'
+    activeTimerLabel = ''
+    renderThemeSwitcher()
+    notifyTimerDone(finalLabel)
+  }, totalSeconds * 1000)
+
+  renderThemeSwitcher()
+}
 function getScrollKey(pageId, tabId){
   return `${normalizePageId(pageId)}::${normalizeTabId(tabId)}`
 }
@@ -166,6 +239,17 @@ function renderThemeSwitcher(){
   btn.addEventListener('click', cycleTheme)
 
   themeSwitcherEl.appendChild(btn)
+
+  const timerBtn = document.createElement('button')
+  timerBtn.type = 'button'
+  timerBtn.className = `theme-cycle-btn timer-btn${activeTimerHandle ? ' selected' : ''}`
+  const remainingSeconds = activeTimerEndsAt ? Math.max(0, Math.ceil((activeTimerEndsAt - Date.now()) / 1000)) : 0
+  timerBtn.title = activeTimerHandle
+    ? `Timer running: ${formatTimerSeconds(remainingSeconds)} remaining. Click to set a new timer.`
+    : 'Set timer'
+  timerBtn.textContent = '⏰'
+  timerBtn.addEventListener('click', startTimerFromPrompt)
+  themeSwitcherEl.appendChild(timerBtn)
 }
 function loadPages(){
   try{
