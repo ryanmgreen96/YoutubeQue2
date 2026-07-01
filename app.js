@@ -40,6 +40,7 @@ let rangeFlagStartId = null
 let rangeFlagEndId = null
 let holdDialogState = null
 let titleFilterOverlayPageId = null
+let dividerInsertMode = false
 
 function save(){ localStorage.setItem(APP_KEY, JSON.stringify(items)) }
 function load(){ try{ return JSON.parse(localStorage.getItem(APP_KEY)||'[]') }catch(e){return[]}}
@@ -506,6 +507,7 @@ function setActiveTab(pageId, tabId){
   const pid = normalizePageId(pageId)
   activeTabs[pid] = normalizeTabId(tabId)
   saveActiveTabs()
+  dividerInsertMode = false
   render()
 }
 function addTabToPage(pageId, title){
@@ -724,6 +726,7 @@ function setCurrentPage(pageId){
   const pid = normalizePageId(pageId)
   const known = pid === 'home' || pages.some(page=>page.id===pid)
   if(titleFilterOverlayPageId && titleFilterOverlayPageId!==pid) titleFilterOverlayPageId = null
+  dividerInsertMode = false
   currentPageId = known ? pid : 'home'
   getPageTabs(currentPageId)
   getActiveTabId(currentPageId)
@@ -747,6 +750,59 @@ function extractVideoId(url){
 }
 
 function makeThumbUrl(vid){ return `https://i.ytimg.com/vi/${vid}/hqdefault.jpg` }
+
+function isDividerItem(item){ return item && item.type === 'divider' }
+
+function addDividerBeforeItem(targetItemId){
+  const target = items.find(item=>item.id===targetItemId)
+  if(!target || isDividerItem(target)) return false
+  const divider = {
+    id: uid(),
+    type: 'divider',
+    pageId: normalizePageId(target.pageId),
+    tabId: normalizeTabId(target.tabId),
+    anchorId: target.id,
+    created: new Date().toISOString()
+  }
+  items.unshift(divider)
+  save()
+  return true
+}
+
+function buildChronologicalListWithDividers(list){
+  const dividersByAnchor = new Map()
+  const orphans = []
+  const videos = list.filter(item=>!isDividerItem(item))
+
+  const sortedVideos = videos.slice().sort((a, b)=>{
+    const aDate = new Date(a.publishedAt || a.created || 0).getTime()
+    const bDate = new Date(b.publishedAt || b.created || 0).getTime()
+    const aSafe = Number.isFinite(aDate) ? aDate : 0
+    const bSafe = Number.isFinite(bDate) ? bDate : 0
+    return bSafe - aSafe
+  })
+
+  list
+    .filter(item=>isDividerItem(item))
+    .forEach((divider)=>{
+      const anchorId = divider.anchorId || ''
+      if(!anchorId || !sortedVideos.some(video=>video.id===anchorId)){
+        orphans.push(divider)
+        return
+      }
+      if(!dividersByAnchor.has(anchorId)) dividersByAnchor.set(anchorId, [])
+      dividersByAnchor.get(anchorId).push(divider)
+    })
+
+  const merged = []
+  if(orphans.length) merged.push(...orphans)
+  sortedVideos.forEach((video)=>{
+    const attached = dividersByAnchor.get(video.id) || []
+    if(attached.length) merged.push(...attached)
+    merged.push(video)
+  })
+  return merged
+}
 
 function addItem({url,title,videoId,favorite=false,pageId='home',tabId='default',created=new Date().toISOString()}){
   const id = uid()
@@ -952,6 +1008,18 @@ function renderTabBar(pageId){
   row.appendChild(add)
 
   if(pid!=='home'){
+    const dividerToggle = document.createElement('button')
+    dividerToggle.type = 'button'
+    dividerToggle.className = `main-tab title-filter-toggle${dividerInsertMode ? ' selected' : ''}`
+    dividerToggle.title = 'Insert divider before selected video'
+    dividerToggle.setAttribute('aria-label', 'Insert divider before selected video')
+    dividerToggle.textContent = '/'
+    dividerToggle.addEventListener('click', ()=>{
+      dividerInsertMode = !dividerInsertMode
+      render()
+    })
+    row.appendChild(dividerToggle)
+
     const info = document.createElement('button')
     info.type = 'button'
     info.className = `main-tab title-filter-toggle${titleFilterOverlayPageId===pid ? ' selected' : ''}`
@@ -1071,13 +1139,7 @@ function render(){ sections.innerHTML=''
   const now = new Date();
 
   if(currentPageId !== 'home'){
-    const sortedList = list.slice().sort((a, b)=>{
-      const aDate = new Date(a.publishedAt || a.created || 0).getTime()
-      const bDate = new Date(b.publishedAt || b.created || 0).getTime()
-      const aSafe = Number.isFinite(aDate) ? aDate : 0
-      const bSafe = Number.isFinite(bDate) ? bDate : 0
-      return bSafe - aSafe
-    })
+    const sortedList = buildChronologicalListWithDividers(list)
     if(sortedList.length){
       renderSection('', sortedList)
     }else{
@@ -1162,6 +1224,19 @@ function renderSection(title, list){
   }
   const g = document.createElement('div'); g.className='grid'
   list.forEach(it=>{
+    if(isDividerItem(it)){
+      const dividerItem = document.createElement('div')
+      dividerItem.className = 'queue-divider-item'
+      dividerItem.title = 'Divider marker'
+
+      const dividerLine = document.createElement('div')
+      dividerLine.className = 'queue-divider-line'
+      dividerItem.appendChild(dividerLine)
+
+      g.appendChild(dividerItem)
+      return
+    }
+
     const node = template.content.cloneNode(true)
     const el = node.querySelector('.item')
     const img = node.querySelector('.thumb')
@@ -1173,6 +1248,12 @@ function renderSection(title, list){
     el.classList.toggle('is-selected', selectedItemIds.has(it.id))
     el.classList.toggle('is-range-flag', rangeFlagStartId===it.id || rangeFlagEndId===it.id)
     el.addEventListener('click', ()=>{
+      if(dividerInsertMode && currentPageId!=='home'){
+        const inserted = addDividerBeforeItem(it.id)
+        dividerInsertMode = false
+        if(inserted) render()
+        return
+      }
       if(editMode){ selectItem(it.id, list); return }
       if(currentPageId==='home') removeItem(it.id)
       window.open(it.url, '_blank')

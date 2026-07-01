@@ -153,6 +153,173 @@ chrome.commands.onCommand.addListener((command)=>{
 })
 
 function uid(){ return Date.now().toString(36)+Math.random().toString(36).slice(2,8) }
+function safeText(value){ return (typeof value === 'string' ? value : '').trim() }
+
+function parseYouTubeRelativeDate(text){
+  const raw = safeText(text).toLowerCase()
+  if(!raw) return ''
+  const match = raw.match(/(\d+)\s+(second|minute|hour|day|week|month|year)s?\s+ago/)
+  if(!match) return ''
+
+  const value = Number(match[1])
+  if(!Number.isFinite(value) || value <= 0) return ''
+
+  const unit = match[2]
+  const multipliers = {
+    second: 1000,
+    minute: 60 * 1000,
+    hour: 60 * 60 * 1000,
+    day: 24 * 60 * 60 * 1000,
+    week: 7 * 24 * 60 * 60 * 1000,
+    month: 30 * 24 * 60 * 60 * 1000,
+    year: 365 * 24 * 60 * 60 * 1000
+  }
+
+  const offset = multipliers[unit]
+  if(!offset) return ''
+  return new Date(Date.now() - (value * offset)).toISOString()
+}
+
+function pullInitialDataObject(html){
+  const marker = 'var ytInitialData = '
+  const index = html.indexOf(marker)
+  if(index < 0) return null
+
+  const start = html.indexOf('{', index)
+  if(start < 0) return null
+
+  let depth = 0
+  let inString = false
+  let quote = ''
+  let escaped = false
+
+  for(let pos = start; pos < html.length; pos += 1){
+    const ch = html[pos]
+    if(inString){
+      if(escaped){
+        escaped = false
+        continue
+      }
+      if(ch === '\\'){
+        escaped = true
+        continue
+      }
+      if(ch === quote){
+        inString = false
+        quote = ''
+      }
+      continue
+    }
+
+    if(ch === '"' || ch === '\''){
+      inString = true
+      quote = ch
+      continue
+    }
+
+    if(ch === '{') depth += 1
+    if(ch === '}'){
+      depth -= 1
+      if(depth === 0){
+        const jsonText = html.slice(start, pos + 1)
+        try{ return JSON.parse(jsonText) }catch(e){ return null }
+      }
+    }
+  }
+
+  return null
+}
+
+function collectPlaylistRenderers(node, output){
+  if(!node || typeof node !== 'object') return
+  if(Array.isArray(node)){
+    node.forEach(item=>collectPlaylistRenderers(item, output))
+    return
+  }
+
+  if(node.playlistVideoRenderer) output.push(node.playlistVideoRenderer)
+  Object.keys(node).forEach((key)=>collectPlaylistRenderers(node[key], output))
+}
+
+function rendererTitle(renderer){
+  const runs = renderer?.title?.runs
+  if(Array.isArray(runs) && runs.length){
+    return runs.map(run=>run?.text || '').join('').trim()
+  }
+  return safeText(renderer?.title?.simpleText)
+}
+
+function rendererRelativeDate(renderer){
+  const published = safeText(renderer?.publishedTimeText?.simpleText)
+  if(published) return published
+
+  const infoRuns = Array.isArray(renderer?.videoInfo?.runs) ? renderer.videoInfo.runs : []
+  const candidate = infoRuns.map(run=>safeText(run?.text)).find(text=>/\bago\b/i.test(text))
+  return candidate || ''
+}
+
+async function extractPlaylistItems(playlistUrl){
+  const response = await fetch(playlistUrl)
+  const html = await response.text()
+  const initialData = pullInitialDataObject(html)
+  if(!initialData) return []
+
+  const renderers = []
+  collectPlaylistRenderers(initialData, renderers)
+  if(!renderers.length) return []
+
+  const listId = (()=>{
+    try{ return new URL(playlistUrl).searchParams.get('list') || '' }catch(e){ return '' }
+  })()
+
+  const seen = new Set()
+  const raw = []
+
+  renderers.forEach((renderer, index)=>{
+    const videoId = safeText(renderer?.videoId)
+    if(!videoId || seen.has(videoId)) return
+    seen.add(videoId)
+
+    const idx = Number(renderer?.index?.simpleText)
+    const orderIndex = Number.isFinite(idx) ? idx : (index + 1)
+    const title = rendererTitle(renderer) || `YouTube video ${videoId}`
+    const relative = rendererRelativeDate(renderer)
+    const publishedAt = parseYouTubeRelativeDate(relative)
+    const baseUrl = `https://www.youtube.com/watch?v=${videoId}`
+    const url = listId ? `${baseUrl}&list=${encodeURIComponent(listId)}` : baseUrl
+
+    raw.push({videoId, title, publishedAt, orderIndex, url})
+  })
+
+  const withPublished = raw.filter(item=>!!item.publishedAt).length
+  const shouldSortByPublished = withPublished >= 2
+
+  if(shouldSortByPublished){
+    raw.sort((a, b)=>new Date(a.publishedAt).getTime() - new Date(b.publishedAt).getTime())
+  }else{
+    raw.sort((a, b)=>a.orderIndex - b.orderIndex)
+  }
+
+  return raw
+}
+
+function queueManyItems(itemsToQueue){
+  if(!Array.isArray(itemsToQueue) || !itemsToQueue.length) return
+  chrome.storage.local.get({queuedItems:[]}, (res)=>{
+    const existing = Array.isArray(res.queuedItems) ? res.queuedItems : []
+    const existingUrls = new Set(existing.map(item=>item && item.url).filter(Boolean))
+    const unique = []
+
+    itemsToQueue.forEach((item)=>{
+      if(!item || !item.url || existingUrls.has(item.url)) return
+      existingUrls.add(item.url)
+      unique.push(item)
+    })
+
+    if(!unique.length) return
+    chrome.storage.local.set({queuedItems: unique.concat(existing)})
+  })
+}
 async function fetchPageTitle(url){
   try{
     const res = await fetch(url)
@@ -239,9 +406,42 @@ function openQueueTabFor(href, title){
   })()
 }
 
+async function queuePlaylistFor(playlistUrl){
+  try{
+    const videos = await extractPlaylistItems(playlistUrl)
+    if(!videos.length) return {ok:false, count:0}
+
+    const baseMs = Date.now() - (videos.length * 1000)
+    const payload = videos.map((video, index)=>(
+      {
+        id: uid(),
+        url: video.url,
+        title: video.title,
+        videoId: video.videoId,
+        favorite: false,
+        created: new Date(baseMs + (index * 1000)).toISOString(),
+        publishedAt: video.publishedAt || ''
+      }
+    ))
+
+    queueManyItems(payload)
+    return {ok:true, count: payload.length}
+  }catch(e){
+    return {ok:false, count:0}
+  }
+}
+
 chrome.runtime.onMessage.addListener((message, sender, sendResponse)=>{
-  if(!message || message.type !== 'queue-video-url') return
-  openQueueTabFor(message.url, message.title || '')
-  sendResponse({ok:true})
-  return true
+  if(!message || !message.type) return
+
+  if(message.type === 'queue-video-url'){
+    openQueueTabFor(message.url, message.title || '')
+    sendResponse({ok:true})
+    return true
+  }
+
+  if(message.type === 'queue-playlist-url'){
+    queuePlaylistFor(message.url).then(sendResponse)
+    return true
+  }
 })

@@ -37,6 +37,22 @@
     return ''
   }
 
+  function playlistUrlFromHref(href){
+    try{
+      const url = new URL(href, location.href)
+      const cleanHost = url.hostname.replace(/^www\./, '')
+      if(!(cleanHost === 'youtube.com' || cleanHost.endsWith('.youtube.com'))) return ''
+      const listId = url.searchParams.get('list')
+      if(!listId) return ''
+
+      if(url.pathname === '/playlist') return `https://www.youtube.com/playlist?list=${encodeURIComponent(listId)}`
+      if(url.pathname === '/watch' && !url.searchParams.get('v')){
+        return `https://www.youtube.com/playlist?list=${encodeURIComponent(listId)}`
+      }
+    }catch(e){ }
+    return ''
+  }
+
   function queueTitleFromElement(el){
     const label = (el && (el.getAttribute && (el.getAttribute('aria-label') || el.getAttribute('title')))) || ''
     if(label.trim()) return label.trim()
@@ -55,7 +71,7 @@
 
     const banner = document.createElement('div')
     banner.id = 'yt-queue-mode-banner'
-    banner.textContent = 'Queue mode on: click videos to queue'
+    banner.textContent = 'Queue mode on: right-click videos or playlists to queue'
     banner.style.cssText = 'position:fixed;top:12px;right:12px;z-index:2147483647;background:#ffcc00;color:#000;padding:8px 10px;border-radius:999px;font:600 12px/1.2 system-ui,-apple-system,Segoe UI,Roboto,Arial;box-shadow:0 8px 24px rgba(0,0,0,0.25)'
     document.documentElement.appendChild(banner)
   }
@@ -64,6 +80,17 @@
   function findVideoLinkElement(start){
     if(!start || !start.closest) return null
     return start.closest('a[href], [href], ytd-thumbnail, ytd-playlist-thumbnail, #video-title, ytd-rich-item-renderer, ytd-video-renderer, ytd-compact-video-renderer, ytd-grid-video-renderer, ytd-reel-item-renderer')
+  }
+
+  function hrefFromTarget(target){
+    if(!target) return ''
+    const own = target.getAttribute && (target.getAttribute('href') || target.getAttribute('data-href'))
+    if(own) return own
+    if(target.href) return target.href
+
+    const nested = target.querySelector && target.querySelector('a[href], [href], #thumbnail, #video-title')
+    if(!nested) return ''
+    return (nested.getAttribute && (nested.getAttribute('href') || nested.getAttribute('data-href'))) || nested.href || ''
   }
 
   function mergeUniqueByUrl(incoming, existing){
@@ -136,7 +163,18 @@
         const target = findVideoLinkElement(ev.target)
         if(!target) return
 
-        const hrefSource = target.getAttribute && (target.getAttribute('href') || target.getAttribute('data-href')) || target.href || ''
+        const hrefSource = hrefFromTarget(target)
+        const playlistUrl = playlistUrlFromHref(hrefSource)
+        if(playlistUrl){
+          ev.preventDefault()
+          ev.stopPropagation()
+          if(ev.stopImmediatePropagation) ev.stopImmediatePropagation()
+
+          const title = queueTitleFromElement(target)
+          chrome.runtime.sendMessage({type:'queue-playlist-url', url: playlistUrl, title})
+          return
+        }
+
         const videoUrl = videoUrlFromHref(hrefSource)
         if(!videoUrl) return
 
