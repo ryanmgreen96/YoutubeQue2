@@ -137,6 +137,40 @@
   }
 
   function collectPlaylistItemsFromDom(listId){
+    const containers = [
+      ...Array.from(document.querySelectorAll('ytd-playlist-panel-renderer #contents, ytd-playlist-panel-renderer #items')),
+      ...Array.from(document.querySelectorAll('ytd-playlist-video-list-renderer #contents'))
+    ]
+
+    for(const container of containers){
+      if(!container) continue
+      let stagnant = 0
+      let prevHeight = -1
+      for(let step = 0; step < 24; step += 1){
+        container.scrollTop = container.scrollHeight
+        await sleep(120)
+        const nextHeight = container.scrollHeight
+        if(nextHeight <= prevHeight) stagnant += 1
+        else stagnant = 0
+        prevHeight = nextHeight
+        if(stagnant >= 4) break
+      }
+    }
+
+    if(listId && location.pathname === '/playlist'){
+      let stagnant = 0
+      let prevHeight = -1
+      for(let step = 0; step < 20; step += 1){
+        window.scrollTo(0, document.documentElement.scrollHeight)
+        await sleep(150)
+        const nextHeight = document.documentElement.scrollHeight
+        if(nextHeight <= prevHeight) stagnant += 1
+        else stagnant = 0
+        prevHeight = nextHeight
+        if(stagnant >= 4) break
+      }
+    }
+
     const anchors = Array.from(document.querySelectorAll('a[href*="watch?v="][href*="list="]'))
     const seen = new Set()
     const items = []
@@ -305,8 +339,7 @@
 
           const title = queueTitleFromElement(target)
           const listId = listIdFromPlaylistUrl(playlistUrl)
-          await tryLoadMorePlaylistItems(listId)
-          const domItems = collectPlaylistItemsFromDom(listId)
+          const domItems = await collectPlaylistItemsFromDom(listId)
 
           if(domItems.length){
             chrome.runtime.sendMessage({type:'queue-playlist-items', url: playlistUrl, title, items: domItems})

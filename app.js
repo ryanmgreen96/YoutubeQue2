@@ -8,6 +8,8 @@ const HEADER_LINKS_KEY = 'ytHeaderLinks_v1'
 const TOPBAR_ROWS_KEY = 'ytTopbarRows_v1'
 const TOPBAR_ACTIVE_ROW_KEY = 'ytTopbarActiveRow_v1'
 const THEME_INDEX_KEY = 'ytThemeIndex_v1'
+const SCROLL_POSITIONS_KEY = 'ytScrollPositions_v1'
+const LAST_VIEWED_KEY = 'ytLastViewedItem_v1'
 const sections = document.getElementById('sections')
 const leftNavEl = document.getElementById('left-nav')
 const addPageBtn = document.getElementById('add-page-btn')
@@ -47,6 +49,8 @@ let holdDialogState = null
 let titleFilterOverlayPageId = null
 let dividerInsertMode = false
 let activeThemeIndex = 0
+let scrollPositions = loadScrollPositions()
+let lastViewedItemId = loadLastViewedItemId()
 
 const THEMES = [
   {
@@ -125,6 +129,30 @@ function applyTheme(index){
 function cycleTheme(){
   applyTheme(activeThemeIndex + 1)
 }
+function getScrollKey(pageId, tabId){
+  return `${normalizePageId(pageId)}::${normalizeTabId(tabId)}`
+}
+function saveScrollPositionForCurrentView(){
+  if(!sections) return
+  const key = getScrollKey(currentPageId, getActiveTabId(currentPageId))
+  scrollPositions[key] = Math.max(0, Math.round(sections.scrollTop || 0))
+  saveScrollPositions()
+}
+function restoreScrollPositionForCurrentView(){
+  if(!sections) return
+  const key = getScrollKey(currentPageId, getActiveTabId(currentPageId))
+  const next = Number(scrollPositions[key])
+  sections.scrollTop = Number.isFinite(next) ? next : 0
+  requestAnimationFrame(()=>{
+    sections.scrollTop = Number.isFinite(next) ? next : 0
+  })
+}
+function markLastViewedItem(itemId){
+  if(!itemId) return
+  lastViewedItemId = itemId
+  saveLastViewedItemId()
+  render()
+}
 function renderThemeSwitcher(){
   if(!themeSwitcherEl) return
   const theme = THEMES[activeThemeIndex] || THEMES[0]
@@ -178,6 +206,15 @@ function loadPageTitleFilters(){
 function savePageTitleFilters(){ localStorage.setItem(PAGE_TITLE_FILTERS_KEY, JSON.stringify(pageTitleFilters)) }
 function loadSavedLinks(){ try{ return JSON.parse(localStorage.getItem(SAVED_LINKS_APP_KEY)||'[]') }catch(e){return[]}}
 function saveSavedLinks(){ localStorage.setItem(SAVED_LINKS_APP_KEY, JSON.stringify(savedLinks)) }
+function loadScrollPositions(){
+  try{
+    const parsed = JSON.parse(localStorage.getItem(SCROLL_POSITIONS_KEY)||'{}')
+    return parsed && typeof parsed === 'object' && !Array.isArray(parsed) ? parsed : {}
+  }catch(e){ return {} }
+}
+function saveScrollPositions(){ localStorage.setItem(SCROLL_POSITIONS_KEY, JSON.stringify(scrollPositions)) }
+function loadLastViewedItemId(){ return localStorage.getItem(LAST_VIEWED_KEY) || '' }
+function saveLastViewedItemId(){ localStorage.setItem(LAST_VIEWED_KEY, lastViewedItemId || '') }
 function removeSavedLink(id){ savedLinks = savedLinks.filter(link=>link.id!==id); saveSavedLinks(); renderSavedLinks() }
 function loadTopbarRows(){
   try{
@@ -600,10 +637,12 @@ function getActiveTabId(pageId){
 }
 function setActiveTab(pageId, tabId){
   const pid = normalizePageId(pageId)
+  saveScrollPositionForCurrentView()
   activeTabs[pid] = normalizeTabId(tabId)
   saveActiveTabs()
   dividerInsertMode = false
   render()
+  requestAnimationFrame(restoreScrollPositionForCurrentView)
 }
 function addTabToPage(pageId, title){
   const tabTitle = (title || '').trim()
@@ -853,6 +892,7 @@ function setCurrentPage(pageId){
   const pid = normalizePageId(pageId)
   const known = pid === 'home' || pages.some(page=>page.id===pid)
   if(titleFilterOverlayPageId && titleFilterOverlayPageId!==pid) titleFilterOverlayPageId = null
+  saveScrollPositionForCurrentView()
   dividerInsertMode = false
   currentPageId = known ? pid : 'home'
   getPageTabs(currentPageId)
@@ -865,6 +905,7 @@ function setCurrentPage(pageId){
   renderLeftNav()
   syncPageDeleteModeButton()
   render()
+  requestAnimationFrame(restoreScrollPositionForCurrentView)
 }
 
 function extractVideoId(url){
@@ -1385,6 +1426,7 @@ function renderSection(title, list){
     el.classList.toggle('is-editing', editMode)
     el.classList.toggle('is-selected', selectedItemIds.has(it.id))
     el.classList.toggle('is-range-flag', rangeFlagStartId===it.id || rangeFlagEndId===it.id)
+    el.classList.toggle('is-last-viewed', lastViewedItemId===it.id)
     el.addEventListener('click', ()=>{
       if(dividerInsertMode && currentPageId!=='home'){
         const inserted = addDividerBeforeItem(it.id)
@@ -1402,6 +1444,7 @@ function renderSection(title, list){
       }
       if(editMode){ selectItem(it.id, list); return }
       if(currentPageId==='home') removeItem(it.id)
+      else markLastViewedItem(it.id)
       window.open(it.url, '_blank')
     })
 
@@ -1443,6 +1486,12 @@ if(deletePageItemsBtn){
   deletePageItemsBtn.addEventListener('click', togglePageDeleteMode)
 }
 
+if(sections){
+  sections.addEventListener('scroll', ()=>{
+    saveScrollPositionForCurrentView()
+  }, {passive:true})
+}
+
 if(holdDialogBackdropEl) holdDialogBackdropEl.addEventListener('click', closeHoldDialog)
 if(holdExitBtn) holdExitBtn.addEventListener('click', closeHoldDialog)
 window.addEventListener('keydown', (ev)=>{
@@ -1475,4 +1524,5 @@ window.addEventListener('load', ()=>{
   savedLinks = loadSavedLinks()
   renderSavedLinks()
   render()
+  restoreScrollPositionForCurrentView()
 })
