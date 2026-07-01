@@ -780,10 +780,12 @@ function moveSelectedItemsToPage(pageId){
   render()
 }
 function toggleEditMode(){
+  pageDeleteMode = false
   deleteMode = false
   editMode = !editMode
   if(!editMode) selectedItemIds.clear()
   clearRangeFlags()
+  syncPageDeleteModeButton()
   render()
 }
 function toggleDeleteMode(){
@@ -792,6 +794,7 @@ function toggleDeleteMode(){
   deleteMode = !deleteMode
   selectedItemIds.clear()
   clearRangeFlags()
+  syncPageDeleteModeButton()
   render()
 }
 function togglePageDeleteMode(){
@@ -801,6 +804,7 @@ function togglePageDeleteMode(){
   pageDeleteMode = !pageDeleteMode
   selectedItemIds.clear()
   clearRangeFlags()
+  syncPageDeleteModeButton()
   renderLeftNav()
   render()
 }

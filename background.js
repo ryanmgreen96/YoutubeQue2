@@ -491,6 +491,41 @@ async function queuePlaylistFor(playlistUrl){
   }
 }
 
+function extractVideoIdFromUrl(url){
+  try{
+    const u = new URL(url)
+    if(u.pathname === '/watch') return safeText(u.searchParams.get('v'))
+    if(u.pathname.startsWith('/shorts/')) return safeText(u.pathname.split('/').filter(Boolean)[1])
+  }catch(e){ }
+  return ''
+}
+
+function extractListIdFromUrl(url){
+  try{ return safeText(new URL(url).searchParams.get('list')) }catch(e){ return '' }
+}
+
+function normalizePlaylistIncoming(video, fallbackListId, index){
+  const fromVideoId = safeText(video && video.videoId)
+  const fromUrlVideoId = extractVideoIdFromUrl(video && video.url)
+  const videoId = fromVideoId || fromUrlVideoId
+  if(!videoId) return null
+
+  const listId = extractListIdFromUrl(video && video.url) || fallbackListId
+  const url = listId
+    ? `https://www.youtube.com/watch?v=${videoId}&list=${encodeURIComponent(listId)}`
+    : `https://www.youtube.com/watch?v=${videoId}`
+
+  return {
+    id: uid(),
+    url,
+    title: safeText(video && video.title) || `YouTube video ${videoId}`,
+    videoId,
+    favorite: false,
+    created: new Date(Date.now() - ((index + 1) * 1000)).toISOString(),
+    publishedAt: safeText(video && video.publishedAt)
+  }
+}
+
 chrome.runtime.onMessage.addListener((message, sender, sendResponse)=>{
   if(!message || !message.type) return
 
@@ -512,16 +547,15 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse)=>{
       return true
     }
 
-    const baseMs = Date.now() - (incoming.length * 1000)
-    const payload = incoming.map((video, index)=>({
-      id: uid(),
-      url: video.url,
-      title: video.title || '',
-      videoId: video.videoId || '',
-      favorite: false,
-      created: new Date(baseMs + (index * 1000)).toISOString(),
-      publishedAt: video.publishedAt || ''
-    }))
+    const fallbackListId = extractListIdFromUrl(message.url || '')
+    const payload = incoming
+      .map((video, index)=>normalizePlaylistIncoming(video, fallbackListId, index))
+      .filter(Boolean)
+
+    if(!payload.length){
+      sendResponse({ok:false, count:0})
+      return true
+    }
 
     queueManyItems(payload)
     sendResponse({ok:true, count: payload.length})
