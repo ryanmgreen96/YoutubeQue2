@@ -11,6 +11,7 @@ const THEME_INDEX_KEY = 'ytThemeIndex_v1'
 const sections = document.getElementById('sections')
 const leftNavEl = document.getElementById('left-nav')
 const addPageBtn = document.getElementById('add-page-btn')
+const deletePageItemsBtn = document.getElementById('delete-page-items-btn')
 const addLinkBtn = document.getElementById('add-link-btn')
 const savedLinksEl = document.getElementById('saved-links')
 const topbarRolesEl = document.getElementById('topbar-roles')
@@ -38,6 +39,7 @@ let activeTopbarRowId = loadTopbarActiveRowId()
 let currentPageId = 'home'
 let editMode = false
 let deleteMode = false
+let pageDeleteMode = false
 let selectedItemIds = new Set()
 let rangeFlagStartId = null
 let rangeFlagEndId = null
@@ -786,10 +788,30 @@ function toggleEditMode(){
 }
 function toggleDeleteMode(){
   editMode = false
+  pageDeleteMode = false
   deleteMode = !deleteMode
   selectedItemIds.clear()
   clearRangeFlags()
   render()
+}
+function togglePageDeleteMode(){
+  if(currentPageId==='home') return
+  editMode = false
+  deleteMode = false
+  pageDeleteMode = !pageDeleteMode
+  selectedItemIds.clear()
+  clearRangeFlags()
+  renderLeftNav()
+  render()
+}
+function syncPageDeleteModeButton(){
+  if(!deletePageItemsBtn) return
+  const enabled = currentPageId!=='home'
+  deletePageItemsBtn.disabled = !enabled
+  deletePageItemsBtn.classList.toggle('selected', pageDeleteMode)
+  deletePageItemsBtn.title = enabled
+    ? (pageDeleteMode ? 'Delete mode ON for this page' : 'Delete mode for page items')
+    : 'Open a page to delete its items'
 }
 function selectItem(id, list){
   if(!selectedItemIds.has(id)){
@@ -833,9 +855,11 @@ function setCurrentPage(pageId){
   getActiveTabId(currentPageId)
   editMode = false
   deleteMode = false
+  pageDeleteMode = false
   selectedItemIds.clear()
   clearRangeFlags()
   renderLeftNav()
+  syncPageDeleteModeButton()
   render()
 }
 
@@ -1364,6 +1388,10 @@ function renderSection(title, list){
         if(inserted) render()
         return
       }
+      if(pageDeleteMode && currentPageId!=='home'){
+        removeItem(it.id)
+        return
+      }
       if(deleteMode && currentPageId==='home'){
         removeItem(it.id)
         return
@@ -1407,6 +1435,10 @@ if(addLinkBtn){
   })
 }
 
+if(deletePageItemsBtn){
+  deletePageItemsBtn.addEventListener('click', togglePageDeleteMode)
+}
+
 if(holdDialogBackdropEl) holdDialogBackdropEl.addEventListener('click', closeHoldDialog)
 if(holdExitBtn) holdExitBtn.addEventListener('click', closeHoldDialog)
 window.addEventListener('keydown', (ev)=>{
@@ -1432,6 +1464,7 @@ window.addEventListener('load', ()=>{
   ensurePageTabIntegrity()
   currentPageId = 'home'
   renderLeftNav()
+  syncPageDeleteModeButton()
   applyTheme(loadThemeIndex())
   renderHeaderLinks()
   handleParams()

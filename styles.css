@@ -35,6 +35,8 @@ main{display:grid;grid-template-columns:10% 75% 15%;min-height:100vh}
 .page-delete:hover{color:#ffb7b7;border-color:rgba(255,120,120,0.4)}
 .left-add{font-size:16px;line-height:1;width:24px;height:24px;padding:0;border-radius:999px;color:#ffdf8a;border:1px solid rgba(255,204,0,0.18);background:rgba(255,204,0,0.05)}
 .left-link-add{font-size:13px;font-weight:700;color:#ffd986;border-color:rgba(255,204,0,0.26);background:rgba(255,204,0,0.1)}
+.left-delete-add{font-size:11px;font-weight:700;color:#ffd7d7;border-color:rgba(255,150,140,0.45);background:rgba(120,40,35,0.26)}
+.left-delete-add.selected{background:#d58172;color:#1a0f0d;border-color:#d58172}
 .content-area{min-width:0;padding-top:92px}
 .saved-links{padding:12px;display:flex;flex-direction:column;gap:8px}
 .saved-links-title{font-size:11px;letter-spacing:0.03em;text-transform:uppercase;color:var(--text-soft)}
