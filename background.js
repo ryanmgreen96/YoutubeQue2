@@ -180,12 +180,9 @@ function parseYouTubeRelativeDate(text){
   return new Date(Date.now() - (value * offset)).toISOString()
 }
 
-function pullInitialDataObject(html){
-  const marker = 'var ytInitialData = '
-  const index = html.indexOf(marker)
-  if(index < 0) return null
+function parseBalancedJsonFrom(html, start){
+  if(start < 0) return null
 
-  const start = html.indexOf('{', index)
   if(start < 0) return null
 
   let depth = 0
@@ -230,6 +227,24 @@ function pullInitialDataObject(html){
   return null
 }
 
+function pullInitialDataObject(html){
+  const markers = [
+    'var ytInitialData = ',
+    'window["ytInitialData"] = ',
+    'ytInitialData = '
+  ]
+
+  for(const marker of markers){
+    const index = html.indexOf(marker)
+    if(index < 0) continue
+    const start = html.indexOf('{', index)
+    const parsed = parseBalancedJsonFrom(html, start)
+    if(parsed) return parsed
+  }
+
+  return null
+}
+
 function collectPlaylistRenderers(node, output){
   if(!node || typeof node !== 'object') return
   if(Array.isArray(node)){
@@ -258,37 +273,82 @@ function rendererRelativeDate(renderer){
   return candidate || ''
 }
 
+function extractPlaylistItemsFromAnchors(html, listId){
+  let doc
+  try{ doc = new DOMParser().parseFromString(html, 'text/html') }catch(e){ doc = null }
+  if(!doc) return []
+
+  const anchors = Array.from(doc.querySelectorAll('a[href*="watch?v="]'))
+  const seen = new Set()
+  const result = []
+
+  anchors.forEach((anchor, index)=>{
+    const rawHref = anchor.getAttribute('href') || ''
+    if(!rawHref) return
+
+    let url
+    try{ url = new URL(rawHref, 'https://www.youtube.com') }catch(e){ return }
+    if(url.pathname !== '/watch') return
+
+    const videoId = safeText(url.searchParams.get('v'))
+    const hrefListId = safeText(url.searchParams.get('list'))
+    if(!videoId || !hrefListId) return
+    if(listId && hrefListId !== listId) return
+    if(seen.has(videoId)) return
+    seen.add(videoId)
+
+    const idx = Number(url.searchParams.get('index'))
+    const orderIndex = Number.isFinite(idx) ? idx : (index + 1)
+    const title = safeText(anchor.getAttribute('title')) || safeText(anchor.textContent) || `YouTube video ${videoId}`
+    result.push({videoId, title, publishedAt: '', orderIndex, url: `https://www.youtube.com/watch?v=${videoId}&list=${encodeURIComponent(hrefListId)}`})
+  })
+
+  return result
+}
+
 async function extractPlaylistItems(playlistUrl){
-  const response = await fetch(playlistUrl)
+  const response = await fetch(playlistUrl, {credentials: 'include'})
   const html = await response.text()
   const initialData = pullInitialDataObject(html)
-  if(!initialData) return []
-
-  const renderers = []
-  collectPlaylistRenderers(initialData, renderers)
-  if(!renderers.length) return []
 
   const listId = (()=>{
     try{ return new URL(playlistUrl).searchParams.get('list') || '' }catch(e){ return '' }
   })()
 
+  const renderers = []
+  if(initialData) collectPlaylistRenderers(initialData, renderers)
+
+  const fromRenderers = []
+  if(renderers.length){
+    const seen = new Set()
+    renderers.forEach((renderer, index)=>{
+      const videoId = safeText(renderer?.videoId)
+      if(!videoId || seen.has(videoId)) return
+      seen.add(videoId)
+
+      const idx = Number(renderer?.index?.simpleText)
+      const orderIndex = Number.isFinite(idx) ? idx : (index + 1)
+      const title = rendererTitle(renderer) || `YouTube video ${videoId}`
+      const relative = rendererRelativeDate(renderer)
+      const publishedAt = parseYouTubeRelativeDate(relative)
+      const baseUrl = `https://www.youtube.com/watch?v=${videoId}`
+      const url = listId ? `${baseUrl}&list=${encodeURIComponent(listId)}` : baseUrl
+
+      fromRenderers.push({videoId, title, publishedAt, orderIndex, url})
+    })
+  }
+
+  const fromAnchors = extractPlaylistItemsFromAnchors(html, listId)
+  const source = fromRenderers.length ? fromRenderers : fromAnchors
+  if(!source.length) return []
+
   const seen = new Set()
   const raw = []
 
-  renderers.forEach((renderer, index)=>{
-    const videoId = safeText(renderer?.videoId)
-    if(!videoId || seen.has(videoId)) return
-    seen.add(videoId)
-
-    const idx = Number(renderer?.index?.simpleText)
-    const orderIndex = Number.isFinite(idx) ? idx : (index + 1)
-    const title = rendererTitle(renderer) || `YouTube video ${videoId}`
-    const relative = rendererRelativeDate(renderer)
-    const publishedAt = parseYouTubeRelativeDate(relative)
-    const baseUrl = `https://www.youtube.com/watch?v=${videoId}`
-    const url = listId ? `${baseUrl}&list=${encodeURIComponent(listId)}` : baseUrl
-
-    raw.push({videoId, title, publishedAt, orderIndex, url})
+  source.forEach((item)=>{
+    if(!item || !item.videoId || seen.has(item.videoId)) return
+    seen.add(item.videoId)
+    raw.push(item)
   })
 
   const withPublished = raw.filter(item=>!!item.publishedAt).length
