@@ -69,10 +69,13 @@
 
     if(!videoUrl) return true
 
-    const isPlaylistRowVideo = !!target.closest(
+    const inPlaylistRow = !!target.closest(
       'ytd-playlist-panel-video-renderer, ytd-playlist-video-renderer, ytd-playlist-video-list-renderer ytd-playlist-panel-video-renderer'
     )
-    if(isPlaylistRowVideo) return false
+    const rowVideoLink = !!target.closest(
+      'ytd-playlist-panel-video-renderer a#video-title, ytd-playlist-panel-video-renderer a#thumbnail, ytd-playlist-video-renderer a#video-title, ytd-playlist-video-renderer a#thumbnail'
+    )
+    if(inPlaylistRow && rowVideoLink) return false
 
     const hrefHasList = /[?&]list=/.test(hrefSource || '')
     if(hrefHasList) return true
