@@ -504,4 +504,27 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse)=>{
     queuePlaylistFor(message.url).then(sendResponse)
     return true
   }
+
+  if(message.type === 'queue-playlist-items'){
+    const incoming = Array.isArray(message.items) ? message.items : []
+    if(!incoming.length){
+      sendResponse({ok:false, count:0})
+      return true
+    }
+
+    const baseMs = Date.now() - (incoming.length * 1000)
+    const payload = incoming.map((video, index)=>({
+      id: uid(),
+      url: video.url,
+      title: video.title || '',
+      videoId: video.videoId || '',
+      favorite: false,
+      created: new Date(baseMs + (index * 1000)).toISOString(),
+      publishedAt: video.publishedAt || ''
+    }))
+
+    queueManyItems(payload)
+    sendResponse({ok:true, count: payload.length})
+    return true
+  }
 })

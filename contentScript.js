@@ -91,6 +91,95 @@
     return false
   }
 
+  function listIdFromPlaylistUrl(playlistUrl){
+    try{ return new URL(playlistUrl).searchParams.get('list') || '' }catch(e){ return '' }
+  }
+
+  function sleep(ms){ return new Promise((resolve)=>setTimeout(resolve, ms)) }
+
+  async function tryLoadMorePlaylistItems(listId){
+    const containers = [
+      ...Array.from(document.querySelectorAll('ytd-playlist-panel-renderer #contents, ytd-playlist-panel-renderer #items')),
+      ...Array.from(document.querySelectorAll('ytd-playlist-video-list-renderer #contents'))
+    ]
+
+    for(const container of containers){
+      if(!container) continue
+      let stagnant = 0
+      let prevHeight = -1
+      for(let step = 0; step < 24; step += 1){
+        container.scrollTop = container.scrollHeight
+        await sleep(120)
+        const nextHeight = container.scrollHeight
+        if(nextHeight <= prevHeight) stagnant += 1
+        else stagnant = 0
+        prevHeight = nextHeight
+        if(stagnant >= 4) break
+      }
+    }
+
+    if(listId && location.pathname === '/playlist'){
+      let stagnant = 0
+      let prevHeight = -1
+      for(let step = 0; step < 20; step += 1){
+        window.scrollTo(0, document.documentElement.scrollHeight)
+        await sleep(150)
+        const nextHeight = document.documentElement.scrollHeight
+        if(nextHeight <= prevHeight) stagnant += 1
+        else stagnant = 0
+        prevHeight = nextHeight
+        if(stagnant >= 4) break
+      }
+    }
+  }
+
+  function collectPlaylistItemsFromDom(listId){
+    const anchors = Array.from(document.querySelectorAll('a[href*="watch?v="][href*="list="]'))
+    const seen = new Set()
+    const items = []
+
+    anchors.forEach((anchor, index)=>{
+      const href = anchor.getAttribute('href') || ''
+      if(!href) return
+
+      let url
+      try{ url = new URL(href, location.href) }catch(e){ return }
+      if(url.pathname !== '/watch') return
+
+      const videoId = url.searchParams.get('v') || ''
+      const hrefListId = url.searchParams.get('list') || ''
+      if(!videoId || !hrefListId) return
+      if(listId && hrefListId !== listId) return
+      if(seen.has(videoId)) return
+      seen.add(videoId)
+
+      const closestRow = anchor.closest('ytd-playlist-panel-video-renderer, ytd-playlist-video-renderer, ytd-playlist-video-list-renderer ytd-playlist-video-renderer')
+      const rowIndexText = closestRow && closestRow.querySelector && closestRow.querySelector('#index') ? (closestRow.querySelector('#index').textContent || '') : ''
+      const parsedIndex = Number((rowIndexText || '').replace(/[^\d]/g, ''))
+      const indexParam = Number(url.searchParams.get('index'))
+      const orderIndex = Number.isFinite(parsedIndex) && parsedIndex > 0
+        ? parsedIndex
+        : (Number.isFinite(indexParam) && indexParam > 0 ? indexParam : (index + 1))
+
+      const title =
+        (anchor.getAttribute('title') || '').trim() ||
+        (anchor.getAttribute('aria-label') || '').trim() ||
+        (closestRow && closestRow.querySelector && closestRow.querySelector('#video-title') ? (closestRow.querySelector('#video-title').textContent || '').trim() : '') ||
+        (anchor.textContent || '').trim() ||
+        `YouTube video ${videoId}`
+
+      items.push({
+        videoId,
+        title,
+        orderIndex,
+        url: `https://www.youtube.com/watch?v=${videoId}&list=${encodeURIComponent(hrefListId)}`
+      })
+    })
+
+    items.sort((a, b)=>a.orderIndex - b.orderIndex)
+    return items
+  }
+
   function queueTitleFromElement(el){
     const label = (el && (el.getAttribute && (el.getAttribute('aria-label') || el.getAttribute('title')))) || ''
     if(label.trim()) return label.trim()
@@ -192,7 +281,7 @@
       queueModeEnabled = await getQueueMode()
       renderQueueModeBanner(queueModeEnabled)
 
-      const handleQueueClick = (ev)=>{
+      const handleQueueClick = async (ev)=>{
         if(!queueModeEnabled) return
         if(ev.defaultPrevented || ev.metaKey || ev.ctrlKey || ev.shiftKey || ev.altKey) return
         if(ev.type === 'pointerdown' && ev.button !== 2) return
@@ -212,6 +301,15 @@
           if(ev.stopImmediatePropagation) ev.stopImmediatePropagation()
 
           const title = queueTitleFromElement(target)
+          const listId = listIdFromPlaylistUrl(playlistUrl)
+          await tryLoadMorePlaylistItems(listId)
+          const domItems = collectPlaylistItemsFromDom(listId)
+
+          if(domItems.length){
+            chrome.runtime.sendMessage({type:'queue-playlist-items', url: playlistUrl, title, items: domItems})
+            return
+          }
+
           chrome.runtime.sendMessage({type:'queue-playlist-url', url: playlistUrl, title})
           return
         }
