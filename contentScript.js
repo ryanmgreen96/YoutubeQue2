@@ -136,7 +136,7 @@
     }
   }
 
-  function collectPlaylistItemsFromDom(listId){
+  async function collectPlaylistItemsFromDom(listId){
     const containers = [
       ...Array.from(document.querySelectorAll('ytd-playlist-panel-renderer #contents, ytd-playlist-panel-renderer #items')),
       ...Array.from(document.querySelectorAll('ytd-playlist-video-list-renderer #contents'))
