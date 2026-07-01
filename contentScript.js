@@ -69,6 +69,14 @@
 
     if(!videoUrl) return true
 
+    const isPlaylistRowVideo = !!target.closest(
+      'ytd-playlist-panel-video-renderer, ytd-playlist-video-renderer, ytd-playlist-video-list-renderer ytd-playlist-panel-video-renderer'
+    )
+    if(isPlaylistRowVideo) return false
+
+    const hrefHasList = /[?&]list=/.test(hrefSource || '')
+    if(hrefHasList) return true
+
     const inPlaylistTitleArea = !!target.closest(
       'ytd-playlist-sidebar-primary-info-renderer, ytd-playlist-header-renderer, ytd-playlist-panel-renderer #title, ytd-playlist-panel-renderer h1, ytd-playlist-renderer'
     )
@@ -109,7 +117,7 @@
 
   function findVideoLinkElement(start){
     if(!start || !start.closest) return null
-    return start.closest('a[href], [href], ytd-thumbnail, ytd-playlist-thumbnail, #video-title, ytd-rich-item-renderer, ytd-video-renderer, ytd-compact-video-renderer, ytd-grid-video-renderer, ytd-reel-item-renderer')
+    return start.closest('a[href], [href], ytd-thumbnail, ytd-playlist-thumbnail, #video-title, ytd-rich-item-renderer, ytd-video-renderer, ytd-compact-video-renderer, ytd-grid-video-renderer, ytd-reel-item-renderer, ytd-playlist-header-renderer, ytd-playlist-sidebar-primary-info-renderer, ytd-playlist-panel-renderer')
   }
 
   function hrefFromTarget(target){
