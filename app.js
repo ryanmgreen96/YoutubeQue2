@@ -7,6 +7,7 @@ const SAVED_LINKS_APP_KEY = 'ytSavedVideos_v1'
 const HEADER_LINKS_KEY = 'ytHeaderLinks_v1'
 const TOPBAR_ROWS_KEY = 'ytTopbarRows_v1'
 const TOPBAR_ACTIVE_ROW_KEY = 'ytTopbarActiveRow_v1'
+const THEME_INDEX_KEY = 'ytThemeIndex_v1'
 const sections = document.getElementById('sections')
 const leftNavEl = document.getElementById('left-nav')
 const addPageBtn = document.getElementById('add-page-btn')
@@ -14,6 +15,7 @@ const addLinkBtn = document.getElementById('add-link-btn')
 const savedLinksEl = document.getElementById('saved-links')
 const topbarRolesEl = document.getElementById('topbar-roles')
 const topbarLinksEl = document.getElementById('topbar-links')
+const themeSwitcherEl = document.getElementById('theme-switcher')
 const template = document.getElementById('item-template')
 const holdDialogEl = document.getElementById('hold-action-dialog')
 const holdDialogBackdropEl = holdDialogEl ? holdDialogEl.querySelector('.hold-dialog-backdrop') : null
@@ -35,15 +37,106 @@ let topbarRows = loadTopbarRows()
 let activeTopbarRowId = loadTopbarActiveRowId()
 let currentPageId = 'home'
 let editMode = false
+let deleteMode = false
 let selectedItemIds = new Set()
 let rangeFlagStartId = null
 let rangeFlagEndId = null
 let holdDialogState = null
 let titleFilterOverlayPageId = null
 let dividerInsertMode = false
+let activeThemeIndex = 0
+
+const THEMES = [
+  {
+    name: 'Blue',
+    bg: '#172330',
+    card: '#111a26',
+    text: '#e8f0fa',
+    textSoft: '#cad8ea',
+    accent: '#d7b06e'
+  },
+  {
+    name: 'Red',
+    bg: '#2b1f1d',
+    card: '#241917',
+    text: '#f3e8e5',
+    textSoft: '#dbc7c0',
+    accent: '#d39a7a'
+  },
+  {
+    name: 'Green',
+    bg: '#202a22',
+    card: '#1a241c',
+    text: '#e9f1e8',
+    textSoft: '#c7d7c6',
+    accent: '#c5b37a'
+  },
+  {
+    name: 'Yellow',
+    bg: '#2c291f',
+    card: '#242116',
+    text: '#f4eddc',
+    textSoft: '#ddd2b4',
+    accent: '#d2a967'
+  },
+  {
+    name: 'Baby Blue',
+    bg: '#1f2830',
+    card: '#182029',
+    text: '#ecf3f7',
+    textSoft: '#cedbe4',
+    accent: '#c9a77a'
+  },
+  {
+    name: 'Purple',
+    bg: '#292232',
+    card: '#211b2a',
+    text: '#efe9f6',
+    textSoft: '#d3c6e2',
+    accent: '#c8a07a'
+  }
+]
 
 function save(){ localStorage.setItem(APP_KEY, JSON.stringify(items)) }
 function load(){ try{ return JSON.parse(localStorage.getItem(APP_KEY)||'[]') }catch(e){return[]}}
+function loadThemeIndex(){
+  const parsed = Number(localStorage.getItem(THEME_INDEX_KEY) || '0')
+  if(!Number.isInteger(parsed) || parsed < 0) return 0
+  return parsed % THEMES.length
+}
+function saveThemeIndex(){ localStorage.setItem(THEME_INDEX_KEY, String(activeThemeIndex)) }
+function applyTheme(index){
+  const safeIndex = Number.isInteger(index) ? ((index % THEMES.length) + THEMES.length) % THEMES.length : 0
+  const theme = THEMES[safeIndex]
+  activeThemeIndex = safeIndex
+
+  const root = document.documentElement
+  root.style.setProperty('--bg', theme.bg)
+  root.style.setProperty('--card', theme.card)
+  root.style.setProperty('--text', theme.text)
+  root.style.setProperty('--text-soft', theme.textSoft)
+  root.style.setProperty('--accent', theme.accent)
+
+  saveThemeIndex()
+  renderThemeSwitcher()
+}
+function cycleTheme(){
+  applyTheme(activeThemeIndex + 1)
+}
+function renderThemeSwitcher(){
+  if(!themeSwitcherEl) return
+  const theme = THEMES[activeThemeIndex] || THEMES[0]
+  themeSwitcherEl.innerHTML = ''
+
+  const btn = document.createElement('button')
+  btn.type = 'button'
+  btn.className = 'theme-cycle-btn'
+  btn.title = `Theme: ${theme.name}. Click to cycle.`
+  btn.textContent = 'T'
+  btn.addEventListener('click', cycleTheme)
+
+  themeSwitcherEl.appendChild(btn)
+}
 function loadPages(){
   try{
     const stored = JSON.parse(localStorage.getItem(PAGE_KEY)||'[]')
@@ -685,8 +778,16 @@ function moveSelectedItemsToPage(pageId){
   render()
 }
 function toggleEditMode(){
+  deleteMode = false
   editMode = !editMode
   if(!editMode) selectedItemIds.clear()
+  clearRangeFlags()
+  render()
+}
+function toggleDeleteMode(){
+  editMode = false
+  deleteMode = !deleteMode
+  selectedItemIds.clear()
   clearRangeFlags()
   render()
 }
@@ -731,6 +832,7 @@ function setCurrentPage(pageId){
   getPageTabs(currentPageId)
   getActiveTabId(currentPageId)
   editMode = false
+  deleteMode = false
   selectedItemIds.clear()
   clearRangeFlags()
   renderLeftNav()
@@ -1219,6 +1321,14 @@ function renderSection(title, list){
       editButton.textContent = editMode ? `Done${selectedItemIds.size ? ` (${selectedItemIds.size})` : ''}` : 'Edit'
       editButton.addEventListener('click', toggleEditMode)
       header.appendChild(editButton)
+
+      const deleteButton = document.createElement('button')
+      deleteButton.type = 'button'
+      deleteButton.className = `edit-mode-btn delete-mode-btn${deleteMode ? ' selected' : ''}`
+      deleteButton.textContent = 'X'
+      deleteButton.title = 'Delete mode'
+      deleteButton.addEventListener('click', toggleDeleteMode)
+      header.appendChild(deleteButton)
     }
     s.appendChild(header)
   }
@@ -1252,6 +1362,10 @@ function renderSection(title, list){
         const inserted = addDividerBeforeItem(it.id)
         dividerInsertMode = false
         if(inserted) render()
+        return
+      }
+      if(deleteMode && currentPageId==='home'){
+        removeItem(it.id)
         return
       }
       if(editMode){ selectItem(it.id, list); return }
@@ -1318,6 +1432,7 @@ window.addEventListener('load', ()=>{
   ensurePageTabIntegrity()
   currentPageId = 'home'
   renderLeftNav()
+  applyTheme(loadThemeIndex())
   renderHeaderLinks()
   handleParams()
   savedLinks = loadSavedLinks()
