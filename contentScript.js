@@ -69,6 +69,9 @@
 
     if(!videoUrl) return true
 
+    const hrefLooksLikeExplicitPlaylist = /\/playlist(\?|$)/.test(hrefSource || '') && /[?&]list=/.test(hrefSource || '')
+    if(hrefLooksLikeExplicitPlaylist) return true
+
     const inPlaylistRow = !!target.closest(
       'ytd-playlist-panel-video-renderer, ytd-playlist-video-renderer, ytd-playlist-video-list-renderer ytd-playlist-panel-video-renderer'
     )
@@ -77,9 +80,6 @@
     )
     if(inPlaylistRow && rowVideoLink) return false
 
-    const hrefHasList = /[?&]list=/.test(hrefSource || '')
-    if(hrefHasList) return true
-
     const inPlaylistTitleArea = !!target.closest(
       'ytd-playlist-sidebar-primary-info-renderer, ytd-playlist-header-renderer, ytd-playlist-panel-renderer #title, ytd-playlist-panel-renderer h1, ytd-playlist-renderer'
     )
@@ -87,9 +87,6 @@
 
     const ownLabel = (target.getAttribute && (target.getAttribute('aria-label') || target.getAttribute('title'))) || ''
     if(/playlist/i.test(ownLabel)) return true
-
-    const hrefLooksLikePlaylist = /[?&]list=/.test(hrefSource || '') && /\/playlist(\?|$)/.test(hrefSource || '')
-    if(hrefLooksLikePlaylist) return true
 
     return false
   }

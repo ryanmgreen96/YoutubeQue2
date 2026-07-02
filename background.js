@@ -504,6 +504,20 @@ function extractListIdFromUrl(url){
   try{ return safeText(new URL(url).searchParams.get('list')) }catch(e){ return '' }
 }
 
+function canonicalPlaylistUrlFromUrl(url){
+  try{
+    const parsed = new URL(url)
+    const host = parsed.hostname.replace(/^www\./, '')
+    if(!(host === 'youtube.com' || host.endsWith('.youtube.com'))) return ''
+    if(parsed.pathname !== '/playlist') return ''
+
+    const listId = safeText(parsed.searchParams.get('list'))
+    if(!listId) return ''
+
+    return `https://www.youtube.com/playlist?list=${encodeURIComponent(listId)}`
+  }catch(e){ return '' }
+}
+
 function normalizePlaylistIncoming(video, fallbackListId, index){
   const fromVideoId = safeText(video && video.videoId)
   const fromUrlVideoId = extractVideoIdFromUrl(video && video.url)
@@ -530,6 +544,12 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse)=>{
   if(!message || !message.type) return
 
   if(message.type === 'queue-video-url'){
+    const playlistUrl = canonicalPlaylistUrlFromUrl(message.url || '')
+    if(playlistUrl){
+      queuePlaylistFor(playlistUrl).then(sendResponse)
+      return true
+    }
+
     openQueueTabFor(message.url, message.title || '')
     sendResponse({ok:true})
     return true
