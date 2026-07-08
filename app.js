@@ -133,19 +133,48 @@ function applyTheme(index){
 function cycleTheme(){
   applyTheme(activeThemeIndex + 1)
 }
-function parseTimerInput(value){
-  const raw = (value || '').trim()
+function parseAlarmTime(value){
+  const raw = (value || '').trim().toLowerCase().replace(/\s+/g, '')
   if(!raw) return 0
-  if(raw.includes(':')){
-    const parts = raw.split(':').map(part=>Number(part.trim()))
-    if(parts.some(part=>!Number.isFinite(part) || part < 0)) return 0
-    if(parts.length === 2) return (parts[0] * 60) + parts[1]
-    if(parts.length === 3) return (parts[0] * 3600) + (parts[1] * 60) + parts[2]
-    return 0
+
+  let meridiem = null
+  let timeStr = raw
+  if(timeStr.endsWith('pm')){ meridiem = 'pm'; timeStr = timeStr.slice(0, -2) }
+  else if(timeStr.endsWith('am')){ meridiem = 'am'; timeStr = timeStr.slice(0, -2) }
+
+  let hours, minutes = 0
+  if(timeStr.includes(':')){
+    const parts = timeStr.split(':')
+    hours = parseInt(parts[0], 10)
+    minutes = parseInt(parts[1], 10)
+  } else {
+    hours = parseInt(timeStr, 10)
   }
-  const minutes = Number(raw)
-  if(!Number.isFinite(minutes) || minutes <= 0) return 0
-  return Math.round(minutes * 60)
+
+  if(!Number.isFinite(hours) || hours < 0 || hours > 23) return 0
+  if(!Number.isFinite(minutes) || minutes < 0 || minutes > 59) return 0
+
+  const now = new Date()
+  function makeTarget(h, m){
+    const t = new Date(now.getFullYear(), now.getMonth(), now.getDate(), h, m, 0, 0)
+    return t <= now ? new Date(t.getTime() + 86400000) : t
+  }
+
+  if(meridiem === 'pm'){
+    if(hours !== 12) hours += 12
+    if(hours > 23) return 0
+  } else if(meridiem === 'am'){
+    if(hours === 12) hours = 0
+  } else if(hours >= 1 && hours <= 12){
+    // Ambiguous — pick whichever AM/PM occurrence is soonest
+    const tAM = makeTarget(hours === 12 ? 0 : hours, minutes)
+    const tPM = makeTarget(hours === 12 ? 12 : hours + 12, minutes)
+    const target = tAM < tPM ? tAM : tPM
+    return Math.round((target.getTime() - now.getTime()) / 1000)
+  }
+
+  const target = makeTarget(hours, minutes)
+  return Math.round((target.getTime() - now.getTime()) / 1000)
 }
 function formatTimerSeconds(totalSeconds){
   const safe = Math.max(0, Math.ceil(totalSeconds))
@@ -232,16 +261,19 @@ async function notifyTimerDone(message){
 }
 async function startTimerFromPrompt(){
   const currentTime = new Date().toLocaleTimeString([], {hour: 'numeric', minute: '2-digit'})
-  const durationInput = prompt(`Timer length in minutes or mm:ss\nCurrent time: ${currentTime}`, '10')
-  if(durationInput === null) return
-  const totalSeconds = parseTimerInput(durationInput)
+  const timeInput = prompt(`Set alarm for what time? (e.g. 6:50pm, 8:30am, 14:00)\nIt is currently ${currentTime}`, '')
+  if(timeInput === null) return
+  const totalSeconds = parseAlarmTime(timeInput)
   if(!totalSeconds){
-    alert('Enter a valid time like 10 or 10:30')
+    alert('Enter a time like 6:50pm, 8:30am, or 14:00')
     return
   }
 
-  const labelInput = prompt('Timer label (optional)', 'Timer done')
-  const label = (labelInput || '').trim() || 'Timer done'
+  const alarmAt = new Date(Date.now() + totalSeconds * 1000)
+  const alarmTimeStr = alarmAt.toLocaleTimeString([], {hour: 'numeric', minute: '2-digit'})
+  const labelInput = prompt(`Alarm label (optional)\nAlarm will fire at ${alarmTimeStr}`, 'Alarm')
+  if(labelInput === null) return
+  const label = (labelInput || '').trim() || 'Alarm'
 
   if(activeTimerHandle) clearTimer()
   activeTimerLabel = label
@@ -254,7 +286,7 @@ async function startTimerFromPrompt(){
   activeTimerHandle = setTimeout(()=>{
     activeTimerHandle = null
     activeTimerEndsAt = 0
-    const finalLabel = activeTimerLabel || 'Timer done'
+    const finalLabel = activeTimerLabel || 'Alarm'
     activeTimerLabel = ''
     renderThemeSwitcher()
     notifyTimerDone(finalLabel)
@@ -304,9 +336,12 @@ function renderThemeSwitcher(){
   timerBtn.type = 'button'
   timerBtn.className = `theme-cycle-btn timer-btn${activeTimerHandle ? ' selected' : ''}`
   const remainingSeconds = activeTimerEndsAt ? Math.max(0, Math.ceil((activeTimerEndsAt - Date.now()) / 1000)) : 0
+  const alarmTimeStr = activeTimerEndsAt
+    ? new Date(activeTimerEndsAt).toLocaleTimeString([], {hour: 'numeric', minute: '2-digit'})
+    : ''
   timerBtn.title = activeTimerHandle
-    ? `Timer running: ${formatTimerSeconds(remainingSeconds)} remaining. Click to set a new timer.`
-    : 'Set timer'
+    ? `Alarm set for ${alarmTimeStr} (${formatTimerSeconds(remainingSeconds)} away). Click to change.`
+    : 'Set alarm'
   timerBtn.textContent = '⏰'
   timerBtn.addEventListener('click', startTimerFromPrompt)
   themeSwitcherEl.appendChild(timerBtn)
