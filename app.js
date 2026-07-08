@@ -163,12 +163,59 @@ function clearTimer(){
   activeTimerLabel = ''
   renderThemeSwitcher()
 }
+function playAlarmBeep(){
+  try{
+    const ctx = new (window.AudioContext || window.webkitAudioContext)()
+    const beepTones = [880, 1100, 880, 1100]
+    let offset = 0
+    beepTones.forEach((freq)=>{
+      const osc = ctx.createOscillator()
+      const gain = ctx.createGain()
+      osc.type = 'sine'
+      osc.frequency.value = freq
+      gain.gain.setValueAtTime(0.4, ctx.currentTime + offset)
+      gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + offset + 0.35)
+      osc.connect(gain)
+      gain.connect(ctx.destination)
+      osc.start(ctx.currentTime + offset)
+      osc.stop(ctx.currentTime + offset + 0.35)
+      offset += 0.38
+    })
+    setTimeout(()=>{ try{ ctx.close() }catch(e){} }, (offset + 0.5) * 1000)
+  }catch(e){}
+}
+function showTimerToast(message){
+  const existing = document.getElementById('timer-toast')
+  if(existing) existing.remove()
+  const toast = document.createElement('div')
+  toast.id = 'timer-toast'
+  toast.textContent = `⏰ ${message}`
+  Object.assign(toast.style, {
+    position: 'fixed',
+    top: '20px',
+    left: '50%',
+    transform: 'translateX(-50%)',
+    background: '#ffcc00',
+    color: '#1a1a1a',
+    fontWeight: 'bold',
+    fontSize: '1.1rem',
+    padding: '14px 28px',
+    borderRadius: '8px',
+    boxShadow: '0 4px 20px rgba(0,0,0,0.5)',
+    zIndex: '99999',
+    cursor: 'pointer',
+    whiteSpace: 'nowrap'
+  })
+  toast.addEventListener('click', ()=>toast.remove())
+  document.body.appendChild(toast)
+  setTimeout(()=>{ if(toast.parentNode) toast.remove() }, 15000)
+}
 function notifyTimerDone(message){
+  playAlarmBeep()
+  showTimerToast(message)
   if('Notification' in window && Notification.permission === 'granted'){
-    new Notification(message)
-    return
+    try{ new Notification(message) }catch(e){}
   }
-  alert(message)
 }
 async function startTimerFromPrompt(){
   const currentTime = new Date().toLocaleTimeString([], {hour: 'numeric', minute: '2-digit'})
