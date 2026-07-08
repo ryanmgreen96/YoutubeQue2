@@ -196,7 +196,7 @@ function clearTimer(){
 function playAlarmBeep(){
   try{
     const ctx = new (window.AudioContext || window.webkitAudioContext)()
-    const beepTones = [880, 1100, 880, 1100]
+    const beepTones = [880, 1100, 880, 1100, 880]
     let offset = 0
     beepTones.forEach((freq)=>{
       const osc = ctx.createOscillator()
