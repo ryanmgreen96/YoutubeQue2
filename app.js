@@ -52,6 +52,7 @@ let activeThemeIndex = 0
 let activeTimerHandle = null
 let activeTimerEndsAt = 0
 let activeTimerLabel = ''
+let swRegistration = null
 let scrollPositions = loadScrollPositions()
 let lastViewedItemId = loadLastViewedItemId()
 
@@ -210,12 +211,24 @@ function showTimerToast(message){
   document.body.appendChild(toast)
   setTimeout(()=>{ if(toast.parentNode) toast.remove() }, 15000)
 }
-function notifyTimerDone(message){
+async function notifyTimerDone(message){
   playAlarmBeep()
   showTimerToast(message)
-  if('Notification' in window && Notification.permission === 'granted'){
-    try{ new Notification(message) }catch(e){}
+  if(!('Notification' in window)) return
+  if(Notification.permission === 'default'){
+    try{ await Notification.requestPermission() }catch(e){}
   }
+  if(Notification.permission !== 'granted') return
+  if(swRegistration){
+    try{
+      await swRegistration.showNotification(message, {
+        icon: 'https://ryanmgreen96.github.io/YoutubeQue2/favicon.ico',
+        requireInteraction: true
+      })
+      return
+    }catch(e){}
+  }
+  try{ new Notification(message) }catch(e){}
 }
 async function startTimerFromPrompt(){
   const currentTime = new Date().toLocaleTimeString([], {hour: 'numeric', minute: '2-digit'})
@@ -1641,6 +1654,11 @@ function handleParams(){ const p = new URLSearchParams(location.search); if(p.ha
 }}
 
 window.addEventListener('load', ()=>{
+  if('serviceWorker' in navigator){
+    navigator.serviceWorker.register('./sw.js')
+      .then(reg=>{ swRegistration = reg })
+      .catch(()=>{})
+  }
   if(!pages.length){
     pages = []
     savePages()
