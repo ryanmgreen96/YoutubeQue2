@@ -19,7 +19,7 @@ async function updateQueueModeBadge(enabled){
     await chrome.action.setTitle({title: 'Click-to-queue mode: ON'})
   }else{
     await chrome.action.setBadgeText({text: ''})
-    await chrome.action.setTitle({title: 'Save current YouTube video'})
+    await chrome.action.setTitle({title: 'Save current page for later'})
   }
 }
 
@@ -132,12 +132,42 @@ function extractVideoUrlFromTab(tabUrl){
   return null
 }
 
-chrome.action.onClicked.addListener((tab)=>{
-  const videoUrl = extractVideoUrlFromTab(tab && tab.url)
-  if(!videoUrl) return
+function extractSavedLinkFromTab(tab){
+  const fallbackUrl = (tab && typeof tab.url === 'string') ? tab.url : ''
+  if(!fallbackUrl) return null
 
-  const cleanTitle = ((tab && tab.title) || '').replace(/\s*-\s*YouTube\s*$/i, '').trim() || 'YouTube video'
-  const item = { id: uid(), url: videoUrl, title: cleanTitle, created: new Date().toISOString(), publishedAt: '' }
+  const videoUrl = extractVideoUrlFromTab(fallbackUrl)
+  const rawTitle = ((tab && tab.title) || '').trim()
+
+  if(videoUrl){
+    return {
+      url: videoUrl,
+      title: rawTitle.replace(/\s*-\s*YouTube\s*$/i, '').trim() || 'YouTube video'
+    }
+  }
+
+  try{
+    const pageUrl = new URL(fallbackUrl)
+    return {
+      url: pageUrl.href,
+      title: rawTitle || pageUrl.hostname.replace(/^www\./, '') || pageUrl.href
+    }
+  }catch(e){
+    return rawTitle || fallbackUrl ? {url: fallbackUrl, title: rawTitle || fallbackUrl} : null
+  }
+}
+
+chrome.action.onClicked.addListener((tab)=>{
+  const itemData = extractSavedLinkFromTab(tab)
+  if(!itemData) return
+
+  const item = {
+    id: uid(),
+    url: itemData.url,
+    title: itemData.title,
+    created: new Date().toISOString(),
+    publishedAt: ''
+  }
 
   chrome.storage.local.get({[SAVED_LINKS_KEY]:[]}, (res)=>{
     const current = res[SAVED_LINKS_KEY] || []

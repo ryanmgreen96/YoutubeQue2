@@ -1,6 +1,6 @@
 # YoutubeQue2
 
-A simple YouTube queue app and browser extension.
+A simple queue app and browser extension for YouTube videos and saved links.
 
 ## Files
 
@@ -15,5 +15,6 @@ A simple YouTube queue app and browser extension.
 
 ## Usage
 
+- Click the extension button to save the current YouTube video or the current page into the saved-for-later list.
 - Right-click a video and choose the queue action.
 - The web app reads URL parameters and adds items to local storage.

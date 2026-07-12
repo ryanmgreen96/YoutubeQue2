@@ -1531,7 +1531,7 @@ function renderSavedLinks(){
 
   const title = document.createElement('div')
   title.className = 'saved-links-title'
-  title.textContent = 'Saved videos'
+  title.textContent = 'Saved for later'
 
   const list = document.createElement('ul')
   list.className = 'saved-links-list'

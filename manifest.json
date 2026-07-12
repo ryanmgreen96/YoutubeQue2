@@ -5,7 +5,7 @@
   "description": "Toggle click-to-queue mode for YouTube pages and send videos into your hosted queue app.",
   "permissions": ["contextMenus","scripting","tabs","activeTab","storage"],
   "action": {
-    "default_title": "Save current YouTube video"
+    "default_title": "Save current page for later"
   },
   "background": {"service_worker": "background.js"},
   "host_permissions": ["<all_urls>"],
