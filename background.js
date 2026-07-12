@@ -393,6 +393,69 @@ async function extractPlaylistItems(playlistUrl){
   return raw
 }
 
+function waitForTabComplete(tabId, timeoutMs = 30000){
+  return new Promise((resolve, reject)=>{
+    let settled = false
+
+    const cleanup = ()=>{
+      settled = true
+      clearTimeout(timeoutHandle)
+      chrome.tabs.onUpdated.removeListener(handleUpdated)
+      chrome.tabs.onRemoved.removeListener(handleRemoved)
+    }
+
+    const handleUpdated = (updatedTabId, info)=>{
+      if(updatedTabId !== tabId) return
+      if(info.status !== 'complete') return
+      cleanup()
+      resolve()
+    }
+
+    const handleRemoved = (removedTabId)=>{
+      if(removedTabId !== tabId) return
+      cleanup()
+      reject(new Error('Playlist tab closed before it finished loading'))
+    }
+
+    const timeoutHandle = setTimeout(()=>{
+      if(settled) return
+      cleanup()
+      reject(new Error('Timed out waiting for playlist tab to load'))
+    }, timeoutMs)
+
+    chrome.tabs.onUpdated.addListener(handleUpdated)
+    chrome.tabs.onRemoved.addListener(handleRemoved)
+  })
+}
+
+function closeTabIfPresent(tabId){
+  return new Promise((resolve)=>{
+    chrome.tabs.remove(tabId, ()=>resolve())
+  })
+}
+
+async function extractPlaylistItemsViaTab(playlistUrl){
+  const createdTab = await chrome.tabs.create({url: playlistUrl, active: false})
+  const tabId = createdTab && createdTab.id
+  if(typeof tabId !== 'number') return []
+
+  try{
+    await waitForTabComplete(tabId)
+    const response = await chrome.tabs.sendMessage(tabId, {type:'collect-playlist-items-from-page', url: playlistUrl})
+    return response && response.ok && Array.isArray(response.items) ? response.items : []
+  }catch(e){
+    return []
+  }finally{
+    await closeTabIfPresent(tabId)
+  }
+}
+
+async function resolvePlaylistItemsForRandom(playlistUrl){
+  const directItems = await extractPlaylistItems(playlistUrl)
+  if(directItems.length) return directItems
+  return extractPlaylistItemsViaTab(playlistUrl)
+}
+
 function queueManyItems(itemsToQueue){
   if(!Array.isArray(itemsToQueue) || !itemsToQueue.length) return
   chrome.storage.local.get({queuedItems:[]}, (res)=>{
@@ -579,7 +642,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse)=>{
       return true
     }
 
-    extractPlaylistItems(playlistUrl)
+    resolvePlaylistItemsForRandom(playlistUrl)
       .then((items)=>sendResponse({ok:true, items}))
       .catch(()=>sendResponse({ok:false, items:[], error:'Could not load playlist items'}))
     return true

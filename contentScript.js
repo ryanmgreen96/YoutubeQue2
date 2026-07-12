@@ -214,6 +214,19 @@
     return items
   }
 
+  chrome.runtime.onMessage.addListener((message, sender, sendResponse)=>{
+    if(!message || message.type !== 'collect-playlist-items-from-page') return
+
+    const playlistUrl = typeof message.url === 'string' ? message.url : ''
+    const listId = listIdFromPlaylistUrl(playlistUrl) || listIdFromPlaylistUrl(location.href)
+
+    collectPlaylistItemsFromDom(listId)
+      .then((items)=>sendResponse({ok:true, items}))
+      .catch(()=>sendResponse({ok:false, items:[]}))
+
+    return true
+  })
+
   function queueTitleFromElement(el){
     const label = (el && (el.getAttribute && (el.getAttribute('aria-label') || el.getAttribute('title')))) || ''
     if(label.trim()) return label.trim()
