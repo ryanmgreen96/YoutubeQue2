@@ -441,8 +441,117 @@ async function extractPlaylistItemsViaTab(playlistUrl){
 
   try{
     await waitForTabComplete(tabId)
-    const response = await chrome.tabs.sendMessage(tabId, {type:'collect-playlist-items-from-page', url: playlistUrl})
-    return response && response.ok && Array.isArray(response.items) ? response.items : []
+    const results = await chrome.scripting.executeScript({
+      target: {tabId},
+      args: [playlistUrl],
+      func: async (expectedPlaylistUrl)=>{
+        const sleep = (ms)=>new Promise((resolve)=>setTimeout(resolve, ms))
+        const cleanHost = location.hostname.replace(/^www\./, '')
+        if(!(cleanHost === 'youtube.com' || cleanHost.endsWith('.youtube.com'))) return []
+
+        const expectedListId = (()=>{
+          try{ return new URL(expectedPlaylistUrl).searchParams.get('list') || '' }catch(e){ return '' }
+        })()
+
+        const currentListId = (()=>{
+          try{ return new URL(location.href).searchParams.get('list') || '' }catch(e){ return '' }
+        })()
+
+        const listId = expectedListId || currentListId
+        if(!listId) return []
+
+        const scrollContainers = async ()=>{
+          const containers = [
+            ...Array.from(document.querySelectorAll('ytd-playlist-panel-renderer #contents, ytd-playlist-panel-renderer #items')),
+            ...Array.from(document.querySelectorAll('ytd-playlist-video-list-renderer #contents'))
+          ]
+
+          for(const container of containers){
+            let stagnant = 0
+            let prevHeight = -1
+            for(let step = 0; step < 24; step += 1){
+              container.scrollTop = container.scrollHeight
+              await sleep(120)
+              const nextHeight = container.scrollHeight
+              if(nextHeight <= prevHeight) stagnant += 1
+              else stagnant = 0
+              prevHeight = nextHeight
+              if(stagnant >= 4) break
+            }
+          }
+
+          if(location.pathname === '/playlist'){
+            let stagnant = 0
+            let prevHeight = -1
+            for(let step = 0; step < 24; step += 1){
+              window.scrollTo(0, document.documentElement.scrollHeight)
+              await sleep(150)
+              const nextHeight = document.documentElement.scrollHeight
+              if(nextHeight <= prevHeight) stagnant += 1
+              else stagnant = 0
+              prevHeight = nextHeight
+              if(stagnant >= 4) break
+            }
+          }
+        }
+
+        const collect = ()=>{
+          const anchors = Array.from(document.querySelectorAll('a[href*="watch?v="][href*="list="]'))
+          const seen = new Set()
+          const items = []
+
+          anchors.forEach((anchor, index)=>{
+            const href = anchor.getAttribute('href') || ''
+            if(!href) return
+
+            let url
+            try{ url = new URL(href, location.href) }catch(e){ return }
+            if(url.pathname !== '/watch') return
+
+            const videoId = url.searchParams.get('v') || ''
+            const hrefListId = url.searchParams.get('list') || ''
+            if(!videoId || !hrefListId || hrefListId !== listId) return
+            if(seen.has(videoId)) return
+            seen.add(videoId)
+
+            const closestRow = anchor.closest('ytd-playlist-panel-video-renderer, ytd-playlist-video-renderer, ytd-playlist-video-list-renderer ytd-playlist-video-renderer')
+            const rowIndexText = closestRow && closestRow.querySelector ? ((closestRow.querySelector('#index') || {}).textContent || '') : ''
+            const parsedIndex = Number((rowIndexText || '').replace(/[^\d]/g, ''))
+            const indexParam = Number(url.searchParams.get('index'))
+            const orderIndex = Number.isFinite(parsedIndex) && parsedIndex > 0
+              ? parsedIndex
+              : (Number.isFinite(indexParam) && indexParam > 0 ? indexParam : (index + 1))
+
+            const title =
+              (anchor.getAttribute('title') || '').trim() ||
+              (anchor.getAttribute('aria-label') || '').trim() ||
+              (closestRow && closestRow.querySelector ? (((closestRow.querySelector('#video-title') || {}).textContent) || '').trim() : '') ||
+              (anchor.textContent || '').trim() ||
+              `YouTube video ${videoId}`
+
+            items.push({
+              videoId,
+              title,
+              orderIndex,
+              url: `https://www.youtube.com/watch?v=${videoId}&list=${encodeURIComponent(hrefListId)}`
+            })
+          })
+
+          items.sort((a, b)=>a.orderIndex - b.orderIndex)
+          return items
+        }
+
+        for(let attempt = 0; attempt < 8; attempt += 1){
+          await scrollContainers()
+          const items = collect()
+          if(items.length) return items
+          await sleep(500)
+        }
+
+        return []
+      }
+    })
+    return Array.isArray(results) && results[0] && Array.isArray(results[0].result) ? results[0].result : []
   }catch(e){
     return []
   }finally{
