@@ -1747,6 +1747,15 @@ function extractVideoId(url){
   }catch(e){return null}
 }
 
+function isYouTubeUrl(url){
+  try{
+    const host = new URL(url).hostname.replace(/^www\./, '')
+    return host === 'youtube.com' || host.endsWith('.youtube.com') || host === 'youtu.be'
+  }catch(e){
+    return false
+  }
+}
+
 function makeThumbUrl(vid){ return `https://i.ytimg.com/vi/${vid}/hqdefault.jpg` }
 
 function isDividerItem(item){ return item && item.type === 'divider' }
@@ -2291,6 +2300,7 @@ function renderSavedLinks(){
     a.href = link.url
     a.textContent = link.title || link.url
     a.title = link.title || link.url
+    if(!isYouTubeUrl(link.url)) a.classList.add('saved-link-website')
     a.addEventListener('click', (ev)=>{
       ev.preventDefault()
       window.open(link.url, '_blank', 'noopener,noreferrer')

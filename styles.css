@@ -47,6 +47,7 @@ main{display:grid;grid-template-columns:10% 75% 15%;height:100vh;overflow:hidden
 .saved-links-title{font-size:11px;letter-spacing:0.03em;text-transform:uppercase;color:var(--text-soft)}
 .saved-links-list{margin:0;padding:0;list-style:none;display:flex;flex-direction:column;gap:6px}
 .saved-links-list a{font-size:10px;line-height:1.2;color:var(--text-soft);text-decoration:none;word-break:break-word;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+.saved-links-list a.saved-link-website{color:#e2bf6b}
 .saved-links-list a:hover{text-decoration:underline;color:#fff}
 #sections{padding:12px;display:flex;flex-direction:column;gap:18px;flex:1;overflow:auto;overscroll-behavior:contain;scrollbar-gutter:stable}
 .tab-row{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin:0 0 2px 4px}
