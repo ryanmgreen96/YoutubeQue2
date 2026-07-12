@@ -357,7 +357,16 @@ function loadPages(){
   try{
     const stored = JSON.parse(localStorage.getItem(PAGE_KEY)||'[]')
     if(!Array.isArray(stored)) return []
-    return stored.filter(page=>page && page.id && page.title)
+    return stored
+      .filter(page=>page && page.id && page.title)
+      .map((page)=>{
+        const playlistUrl = normalizePlaylistUrl(page.randomPlaylistUrl || '')
+        return {
+          ...page,
+          randomPlaylistUrl: playlistUrl,
+          isRandom: !!page.isRandom && !!playlistUrl
+        }
+      })
   }catch(e){return[]}
 }
 function savePages(){ localStorage.setItem(PAGE_KEY, JSON.stringify(pages)) }
@@ -499,30 +508,16 @@ function normalizeHeaderLink(link){
   if(!url) return null
 
   const title = typeof link.title === 'string' && link.title.trim() ? link.title.trim() : url
-  const playlistUrl = normalizePlaylistUrl(url)
-  const shuffledItems = Array.isArray(link.shuffledItems)
-    ? link.shuffledItems
-        .filter((item)=>item && typeof item.url === 'string')
-        .map((item)=>(
-          {
-            url: item.url,
-            title: (typeof item.title === 'string' ? item.title : '').trim() || item.url
-          }
-        ))
-    : []
-  const parsedIndex = Number(link.currentIndex)
-  const currentIndex = Number.isInteger(parsedIndex) && parsedIndex >= 0 ? parsedIndex : 0
-  const isRandom = !!link.isRandom && !!playlistUrl
 
   return {
     id: link.id,
     title,
-    url: isRandom ? playlistUrl : url,
+    url,
     created: link.created || new Date().toISOString(),
-    isRandom,
-    shuffledItems: isRandom ? shuffledItems : [],
-    currentIndex: isRandom ? Math.min(currentIndex, shuffledItems.length) : 0,
-    needsShuffle: isRandom ? (!!link.needsShuffle || !shuffledItems.length) : true
+    isRandom: false,
+    shuffledItems: [],
+    currentIndex: 0,
+    needsShuffle: true
   }
 }
 
@@ -619,7 +614,7 @@ function requestExtensionAction(action, payload){
       if(settled) return
       cleanup()
       reject(new Error('Extension bridge timed out'))
-    }, 20000)
+    }, 60000)
 
     window.addEventListener('message', handleMessage)
     window.postMessage({source:'ytqueue-app', requestId, action, payload: payload || {}}, targetOrigin)
@@ -658,6 +653,51 @@ function setHeaderLinkRandomMode(id, enabled){
   saveHeaderLinks()
   renderLeftNav()
   return true
+}
+function setPageRandomMode(pageId, enabled){
+  const pid = normalizePageId(pageId)
+  const page = pages.find((item)=>item.id===pid)
+  if(!page) return false
+
+  if(enabled){
+    const urlInput = prompt('Paste YouTube playlist URL', page.randomPlaylistUrl || '')
+    if(urlInput === null) return false
+    const playlistUrl = normalizePlaylistUrl(urlInput)
+    if(!playlistUrl){
+      alert('Random playlist requires a valid YouTube playlist URL.')
+      return false
+    }
+    page.isRandom = true
+    page.randomPlaylistUrl = playlistUrl
+  }else{
+    page.isRandom = false
+    page.randomPlaylistUrl = ''
+  }
+
+  savePages()
+  renderLeftNav()
+  return true
+}
+async function triggerRandomPage(pageId){
+  const pid = normalizePageId(pageId)
+  const page = pages.find((item)=>item.id===pid)
+  if(!page || !page.isRandom || !page.randomPlaylistUrl) return
+
+  const activeTabId = getActiveTabId(pid)
+  let slot = getRandomPlaylistSlot(pid, activeTabId)
+
+  if(!slot || slot.playlistUrl !== page.randomPlaylistUrl){
+    slot = {
+      title: page.title,
+      playlistUrl: page.randomPlaylistUrl,
+      shuffledItems: [],
+      currentIndex: 0,
+      needsShuffle: true
+    }
+    setRandomPlaylistSlot(pid, activeTabId, slot)
+  }
+
+  await triggerRandomPlaylistSlot(pid, activeTabId)
 }
 async function triggerHeaderRandomLink(linkId){
   const link = headerLinks.find((item)=>item.id===linkId)
@@ -1090,10 +1130,16 @@ function getHoldDialogModel(){
     const index = pages.findIndex(item=>item.id===page.id)
     return {
       title: `Page: ${page.title}`,
+      linkEditorVisible: false,
+      linkTitle: '',
+      linkUrl: '',
       canEdit: false,
       canMoveUp: index > 0,
       canMoveDown: index < pages.length - 1,
       canDelete: true,
+      randomVisible: true,
+      randomChecked: !!page.isRandom,
+      onToggleRandom: (checked)=>setPageRandomMode(page.id, checked),
       onEdit: null,
       onMoveUp: ()=>{ movePage(page.id, -1); renderHoldDialog() },
       onMoveDown: ()=>{ movePage(page.id, 1); renderHoldDialog() },
@@ -1141,9 +1187,9 @@ function getHoldDialogModel(){
       canMoveUp: index > 0,
       canMoveDown: index < headerLinks.length - 1,
       canDelete: true,
-      randomVisible: true,
-      randomChecked: !!link.isRandom,
-      onToggleRandom: (checked)=>setHeaderLinkRandomMode(link.id, checked),
+      randomVisible: false,
+      randomChecked: false,
+      onToggleRandom: null,
       onEdit: ()=>{
         const applied = updateHeaderLink(
           link.id,
@@ -1845,16 +1891,12 @@ function renderLeftNav(){
     const button = document.createElement('button')
     button.type = 'button'
     button.className = 'page-link side-link'
-    button.textContent = link.isRandom ? `${link.title} ?` : link.title
-    button.title = link.isRandom ? `${link.title} - ${linkShuffleStatus(link)}` : link.url
+    button.textContent = link.title
+    button.title = link.url
 
     const holdPress = attachLongPress(button, ()=>openLinkHoldDialog(link.id))
     button.addEventListener('click', ()=>{
       if(holdPress.consume()) return
-      if(link.isRandom){
-        triggerHeaderRandomLink(link.id)
-        return
-      }
       window.open(link.url, '_blank', 'noopener,noreferrer')
     })
 
@@ -1868,12 +1910,16 @@ function renderLeftNav(){
 
     const button = document.createElement('button')
     button.type = 'button'
-    button.className = `page-link${currentPageId===page.id ? ' selected' : ''}`
+    button.className = `page-link${currentPageId===page.id ? ' selected' : ''}${page.isRandom ? ' random-page-link' : ''}`
     button.textContent = page.title
-    button.title = page.title
+    button.title = page.isRandom ? `${page.title} - random playlist` : page.title
     const holdPress = attachLongPress(button, ()=>openPageHoldDialog(page.id))
     button.addEventListener('click', ()=>{
       if(holdPress.consume()) return
+      if(page.isRandom){
+        triggerRandomPage(page.id)
+        return
+      }
       if(editMode && selectedItemIds.size){ moveSelectedItemsToPage(page.id); return }
       setCurrentPage(page.id)
     })
