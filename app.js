@@ -667,11 +667,27 @@ function setPageRandomMode(pageId, enabled){
       alert('Random playlist requires a valid YouTube playlist URL.')
       return false
     }
+    const activeTabId = getActiveTabId(pid)
+    const existingSlot = getRandomPlaylistSlot(pid, activeTabId)
     page.isRandom = true
     page.randomPlaylistUrl = playlistUrl
+
+    if(existingSlot && existingSlot.playlistUrl === playlistUrl){
+      setRandomPlaylistSlot(pid, activeTabId, existingSlot)
+    }else{
+      setRandomPlaylistSlot(pid, activeTabId, {
+        title: page.title,
+        playlistUrl,
+        shuffledItems: [],
+        currentIndex: 0,
+        needsShuffle: true
+      })
+    }
   }else{
     page.isRandom = false
     page.randomPlaylistUrl = ''
+    const activeTabId = getActiveTabId(pid)
+    removeRandomPlaylistSlot(pid, activeTabId)
   }
 
   savePages()
