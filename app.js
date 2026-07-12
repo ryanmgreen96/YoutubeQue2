@@ -27,6 +27,10 @@ const holdDialogTitleEl = document.getElementById('hold-dialog-title')
 const holdLinkEditorEl = document.getElementById('hold-link-editor')
 const holdLinkTitleInputEl = document.getElementById('hold-link-title-input')
 const holdLinkUrlInputEl = document.getElementById('hold-link-url-input')
+const holdPageRandomEditorEl = document.getElementById('hold-page-random-editor')
+const holdPageRandomUrlInputEl = document.getElementById('hold-page-random-url-input')
+const holdPageRangeStartInputEl = document.getElementById('hold-page-range-start-input')
+const holdPageRangeEndInputEl = document.getElementById('hold-page-range-end-input')
 const holdRandomRowEl = document.getElementById('hold-random-row')
 const holdRandomCheckboxEl = document.getElementById('hold-random-checkbox')
 const holdEditBtn = document.getElementById('hold-edit-btn')
@@ -375,13 +379,17 @@ function loadPages(){
         const randomCurrentIndex = Number.isInteger(parsedIndex) && parsedIndex >= 0
           ? Math.min(parsedIndex, randomShuffledItems.length)
           : 0
+        const parsedRangeStart = Number(page.randomRangeStart)
+        const parsedRangeEnd = Number(page.randomRangeEnd)
         return {
           ...page,
           randomPlaylistUrl: playlistUrl,
           isRandom: !!page.isRandom && !!playlistUrl,
           randomShuffledItems: !!page.isRandom && !!playlistUrl ? randomShuffledItems : [],
           randomCurrentIndex,
-          randomNeedsShuffle: !!page.isRandom && !!playlistUrl ? (!!page.randomNeedsShuffle || !randomShuffledItems.length) : true
+          randomNeedsShuffle: !!page.isRandom && !!playlistUrl ? (!!page.randomNeedsShuffle || !randomShuffledItems.length) : true,
+          randomRangeStart: Number.isInteger(parsedRangeStart) && parsedRangeStart > 0 ? parsedRangeStart : 1,
+          randomRangeEnd: Number.isInteger(parsedRangeEnd) && parsedRangeEnd > 0 ? parsedRangeEnd : 0
         }
       })
   }catch(e){return[]}
@@ -579,6 +587,13 @@ function shufflePlaylistItems(list){
   }
   return copy
 }
+function applyPlaylistRange(items, start, end){
+  const safeStart = Number.isInteger(start) && start > 0 ? start : 1
+  const safeEnd = Number.isInteger(end) && end > 0 ? end : 0
+  const fromIndex = Math.max(0, safeStart - 1)
+  const toIndex = safeEnd > 0 ? safeEnd : items.length
+  return items.slice(fromIndex, Math.max(fromIndex, toIndex))
+}
 function playlistSlotStatus(slot){
   if(!slot || slot.needsShuffle || !slot.shuffledItems.length) return 'Ready to shuffle'
   if(slot.currentIndex >= slot.shuffledItems.length) return 'Needs reshuffle'
@@ -690,12 +705,16 @@ function setPageRandomMode(pageId, enabled){
     page.randomShuffledItems = samePlaylist ? (Array.isArray(page.randomShuffledItems) ? page.randomShuffledItems : []) : []
     page.randomCurrentIndex = samePlaylist ? Number(page.randomCurrentIndex) || 0 : 0
     page.randomNeedsShuffle = samePlaylist ? !!page.randomNeedsShuffle : true
+    page.randomRangeStart = Number.isInteger(page.randomRangeStart) && page.randomRangeStart > 0 ? page.randomRangeStart : 1
+    page.randomRangeEnd = Number.isInteger(page.randomRangeEnd) && page.randomRangeEnd > 0 ? page.randomRangeEnd : 0
   }else{
     page.isRandom = false
     page.randomPlaylistUrl = ''
     page.randomShuffledItems = []
     page.randomCurrentIndex = 0
     page.randomNeedsShuffle = true
+    page.randomRangeStart = 1
+    page.randomRangeEnd = 0
   }
 
   savePages()
@@ -711,11 +730,12 @@ async function triggerRandomPage(pageId){
     if(!confirm('Shuffle this playlist now?')) return
     try{
       const videos = await fetchPlaylistVideos(page.randomPlaylistUrl)
-      if(!videos.length){
+      const rangedVideos = applyPlaylistRange(videos, page.randomRangeStart, page.randomRangeEnd)
+      if(!rangedVideos.length){
         alert('No videos were found in that playlist.')
         return
       }
-      page.randomShuffledItems = shufflePlaylistItems(videos)
+      page.randomShuffledItems = shufflePlaylistItems(rangedVideos)
       page.randomCurrentIndex = 0
       page.randomNeedsShuffle = false
       savePages()
@@ -750,6 +770,44 @@ async function triggerRandomPage(pageId){
   }catch(e){
     window.open(nextVideo.url, '_blank', 'noopener,noreferrer')
   }
+}
+function updateRandomPageSettings(pageId, nextUrlInput, nextRangeStartInput, nextRangeEndInput){
+  const pid = normalizePageId(pageId)
+  const page = pages.find((item)=>item.id===pid)
+  if(!page || !page.isRandom) return false
+
+  const playlistUrl = normalizePlaylistUrl(nextUrlInput)
+  if(!playlistUrl){
+    alert('Please enter a valid YouTube playlist URL.')
+    return false
+  }
+
+  const parsedStart = Number((nextRangeStartInput || '').trim())
+  const parsedEnd = Number((nextRangeEndInput || '').trim())
+  const rangeStart = Number.isInteger(parsedStart) && parsedStart > 0 ? parsedStart : 1
+  const rangeEnd = Number.isInteger(parsedEnd) && parsedEnd > 0 ? parsedEnd : 0
+
+  if(rangeEnd > 0 && rangeEnd < rangeStart){
+    alert('The end of the range must be greater than or equal to the start.')
+    return false
+  }
+
+  const playlistChanged = page.randomPlaylistUrl !== playlistUrl
+  const rangeChanged = (page.randomRangeStart || 1) !== rangeStart || (page.randomRangeEnd || 0) !== rangeEnd
+
+  page.randomPlaylistUrl = playlistUrl
+  page.randomRangeStart = rangeStart
+  page.randomRangeEnd = rangeEnd
+
+  if(playlistChanged || rangeChanged){
+    page.randomShuffledItems = []
+    page.randomCurrentIndex = 0
+    page.randomNeedsShuffle = true
+  }
+
+  savePages()
+  renderLeftNav()
+  return true
 }
 async function triggerHeaderRandomLink(linkId){
   const link = headerLinks.find((item)=>item.id===linkId)
@@ -1185,14 +1243,27 @@ function getHoldDialogModel(){
       linkEditorVisible: false,
       linkTitle: '',
       linkUrl: '',
-      canEdit: false,
+      pageRandomEditorVisible: !!page.isRandom,
+      pageRandomUrl: page.randomPlaylistUrl || '',
+      pageRangeStart: String(page.randomRangeStart || 1),
+      pageRangeEnd: page.randomRangeEnd ? String(page.randomRangeEnd) : '',
+      canEdit: !!page.isRandom,
       canMoveUp: index > 0,
       canMoveDown: index < pages.length - 1,
       canDelete: true,
       randomVisible: true,
       randomChecked: !!page.isRandom,
       onToggleRandom: (checked)=>setPageRandomMode(page.id, checked),
-      onEdit: null,
+      onEdit: ()=>{
+        const applied = updateRandomPageSettings(
+          page.id,
+          holdPageRandomUrlInputEl ? holdPageRandomUrlInputEl.value : '',
+          holdPageRangeStartInputEl ? holdPageRangeStartInputEl.value : '',
+          holdPageRangeEndInputEl ? holdPageRangeEndInputEl.value : ''
+        )
+        if(!applied) return
+        renderHoldDialog()
+      },
       onMoveUp: ()=>{ movePage(page.id, -1); renderHoldDialog() },
       onMoveDown: ()=>{ movePage(page.id, 1); renderHoldDialog() },
       onDelete: ()=>{
@@ -1211,6 +1282,7 @@ function getHoldDialogModel(){
     const index = tabs.findIndex(item=>item.id===tab.id)
     return {
       title: `Tab: ${tab.title}`,
+      pageRandomEditorVisible: false,
       canEdit: false,
       canMoveUp: index > 0,
       canMoveDown: index < tabs.length - 1,
@@ -1235,6 +1307,7 @@ function getHoldDialogModel(){
       linkEditorVisible: true,
       linkTitle: link.title,
       linkUrl: link.url,
+      pageRandomEditorVisible: false,
       canEdit: true,
       canMoveUp: index > 0,
       canMoveDown: index < headerLinks.length - 1,
@@ -1263,7 +1336,7 @@ function getHoldDialogModel(){
   return null
 }
 function renderHoldDialog(){
-  if(!holdDialogEl || !holdDialogTitleEl || !holdLinkEditorEl || !holdLinkTitleInputEl || !holdLinkUrlInputEl || !holdRandomRowEl || !holdRandomCheckboxEl || !holdEditBtn || !holdMoveUpBtn || !holdMoveDownBtn || !holdDeleteBtn) return
+  if(!holdDialogEl || !holdDialogTitleEl || !holdLinkEditorEl || !holdLinkTitleInputEl || !holdLinkUrlInputEl || !holdPageRandomEditorEl || !holdPageRandomUrlInputEl || !holdPageRangeStartInputEl || !holdPageRangeEndInputEl || !holdRandomRowEl || !holdRandomCheckboxEl || !holdEditBtn || !holdMoveUpBtn || !holdMoveDownBtn || !holdDeleteBtn) return
   const model = getHoldDialogModel()
   if(!model){
     closeHoldDialog()
@@ -1274,9 +1347,13 @@ function renderHoldDialog(){
   holdLinkEditorEl.classList.toggle('hidden', !model.linkEditorVisible)
   holdLinkTitleInputEl.value = model.linkEditorVisible ? (model.linkTitle || '') : ''
   holdLinkUrlInputEl.value = model.linkEditorVisible ? (model.linkUrl || '') : ''
+  holdPageRandomEditorEl.classList.toggle('hidden', !model.pageRandomEditorVisible)
+  holdPageRandomUrlInputEl.value = model.pageRandomEditorVisible ? (model.pageRandomUrl || '') : ''
+  holdPageRangeStartInputEl.value = model.pageRandomEditorVisible ? (model.pageRangeStart || '1') : ''
+  holdPageRangeEndInputEl.value = model.pageRandomEditorVisible ? (model.pageRangeEnd || '') : ''
   holdEditBtn.disabled = !model.canEdit
   holdEditBtn.style.display = model.canEdit ? '' : 'none'
-  holdEditBtn.textContent = model.linkEditorVisible ? 'Save changes' : 'Edit'
+  holdEditBtn.textContent = (model.linkEditorVisible || model.pageRandomEditorVisible) ? 'Save changes' : 'Edit'
   holdMoveUpBtn.disabled = !model.canMoveUp
   holdMoveDownBtn.disabled = !model.canMoveDown
   holdDeleteBtn.disabled = !model.canDelete

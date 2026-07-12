@@ -103,6 +103,7 @@ main{display:grid;grid-template-columns:10% 75% 15%;height:100vh;overflow:hidden
 .hold-dialog-actions{display:grid;grid-template-columns:1fr;gap:8px}
 .hold-link-editor{display:grid;grid-template-columns:1fr;gap:8px}
 .hold-link-editor.hidden{display:none}
+.hold-range-row{display:grid;grid-template-columns:1fr 1fr;gap:8px}
 .hold-link-field{display:grid;grid-template-columns:1fr;gap:5px;font-size:11px;letter-spacing:0.04em;text-transform:uppercase;color:#9fb3d9}
 .hold-link-field input{width:100%;background:rgba(255,255,255,0.03);border:1px solid rgba(255,255,255,0.14);color:#e6eef8;border-radius:8px;padding:8px 10px;font-size:12px;text-transform:none;letter-spacing:normal}
 .hold-random-row{display:flex;align-items:center;gap:8px;padding:8px 10px;border-radius:8px;border:1px solid rgba(255,255,255,0.12);background:rgba(255,255,255,0.04);color:#e6eef8;font-size:13px}
