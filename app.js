@@ -361,10 +361,27 @@ function loadPages(){
       .filter(page=>page && page.id && page.title)
       .map((page)=>{
         const playlistUrl = normalizePlaylistUrl(page.randomPlaylistUrl || '')
+        const randomShuffledItems = Array.isArray(page.randomShuffledItems)
+          ? page.randomShuffledItems
+              .filter((item)=>item && typeof item.url === 'string')
+              .map((item)=>(
+                {
+                  url: item.url,
+                  title: (typeof item.title === 'string' ? item.title : '').trim() || item.url
+                }
+              ))
+          : []
+        const parsedIndex = Number(page.randomCurrentIndex)
+        const randomCurrentIndex = Number.isInteger(parsedIndex) && parsedIndex >= 0
+          ? Math.min(parsedIndex, randomShuffledItems.length)
+          : 0
         return {
           ...page,
           randomPlaylistUrl: playlistUrl,
-          isRandom: !!page.isRandom && !!playlistUrl
+          isRandom: !!page.isRandom && !!playlistUrl,
+          randomShuffledItems: !!page.isRandom && !!playlistUrl ? randomShuffledItems : [],
+          randomCurrentIndex,
+          randomNeedsShuffle: !!page.isRandom && !!playlistUrl ? (!!page.randomNeedsShuffle || !randomShuffledItems.length) : true
         }
       })
   }catch(e){return[]}
@@ -667,27 +684,18 @@ function setPageRandomMode(pageId, enabled){
       alert('Random playlist requires a valid YouTube playlist URL.')
       return false
     }
-    const activeTabId = getActiveTabId(pid)
-    const existingSlot = getRandomPlaylistSlot(pid, activeTabId)
+    const samePlaylist = page.randomPlaylistUrl === playlistUrl
     page.isRandom = true
     page.randomPlaylistUrl = playlistUrl
-
-    if(existingSlot && existingSlot.playlistUrl === playlistUrl){
-      setRandomPlaylistSlot(pid, activeTabId, existingSlot)
-    }else{
-      setRandomPlaylistSlot(pid, activeTabId, {
-        title: page.title,
-        playlistUrl,
-        shuffledItems: [],
-        currentIndex: 0,
-        needsShuffle: true
-      })
-    }
+    page.randomShuffledItems = samePlaylist ? (Array.isArray(page.randomShuffledItems) ? page.randomShuffledItems : []) : []
+    page.randomCurrentIndex = samePlaylist ? Number(page.randomCurrentIndex) || 0 : 0
+    page.randomNeedsShuffle = samePlaylist ? !!page.randomNeedsShuffle : true
   }else{
     page.isRandom = false
     page.randomPlaylistUrl = ''
-    const activeTabId = getActiveTabId(pid)
-    removeRandomPlaylistSlot(pid, activeTabId)
+    page.randomShuffledItems = []
+    page.randomCurrentIndex = 0
+    page.randomNeedsShuffle = true
   }
 
   savePages()
@@ -699,21 +707,49 @@ async function triggerRandomPage(pageId){
   const page = pages.find((item)=>item.id===pid)
   if(!page || !page.isRandom || !page.randomPlaylistUrl) return
 
-  const activeTabId = getActiveTabId(pid)
-  let slot = getRandomPlaylistSlot(pid, activeTabId)
-
-  if(!slot || slot.playlistUrl !== page.randomPlaylistUrl){
-    slot = {
-      title: page.title,
-      playlistUrl: page.randomPlaylistUrl,
-      shuffledItems: [],
-      currentIndex: 0,
-      needsShuffle: true
+  if(page.randomNeedsShuffle || !Array.isArray(page.randomShuffledItems) || !page.randomShuffledItems.length){
+    if(!confirm('Shuffle this playlist now?')) return
+    try{
+      const videos = await fetchPlaylistVideos(page.randomPlaylistUrl)
+      if(!videos.length){
+        alert('No videos were found in that playlist.')
+        return
+      }
+      page.randomShuffledItems = shufflePlaylistItems(videos)
+      page.randomCurrentIndex = 0
+      page.randomNeedsShuffle = false
+      savePages()
+      renderLeftNav()
+    }catch(e){
+      alert(e && e.message ? e.message : 'Could not load that playlist from the extension.')
+      return
     }
-    setRandomPlaylistSlot(pid, activeTabId, slot)
   }
 
-  await triggerRandomPlaylistSlot(pid, activeTabId)
+  if(page.randomCurrentIndex >= page.randomShuffledItems.length){
+    if(!confirm('This playlist has been used all the way through. It needs to be reshuffled. Reshuffle now?')) return
+    page.randomShuffledItems = shufflePlaylistItems(page.randomShuffledItems)
+    page.randomCurrentIndex = 0
+    page.randomNeedsShuffle = false
+    savePages()
+    renderLeftNav()
+  }
+
+  const nextVideo = page.randomShuffledItems[page.randomCurrentIndex]
+  if(!nextVideo || !nextVideo.url){
+    alert('The next playlist video could not be opened.')
+    return
+  }
+
+  page.randomCurrentIndex += 1
+  savePages()
+  renderLeftNav()
+
+  try{
+    await openExternalUrl(nextVideo.url)
+  }catch(e){
+    window.open(nextVideo.url, '_blank', 'noopener,noreferrer')
+  }
 }
 async function triggerHeaderRandomLink(linkId){
   const link = headerLinks.find((item)=>item.id===linkId)
