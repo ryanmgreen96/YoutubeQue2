@@ -269,6 +269,50 @@
 
   try{
     if(isAppHost()){
+    window.addEventListener('message', (event)=>{
+      if(event.source !== window) return
+      const data = event.data
+      if(!data || data.source !== 'ytqueue-app' || !data.requestId || !data.action) return
+
+      const respond = (payload)=>{
+        const targetOrigin = window.location.origin && window.location.origin !== 'null' ? window.location.origin : '*'
+        window.postMessage({
+          source: 'ytqueue-extension',
+          requestId: data.requestId,
+          ok: !!payload.ok,
+          payload: payload.payload || null,
+          error: payload.error || ''
+        }, targetOrigin)
+      }
+
+      if(data.action === 'fetch-playlist-items'){
+        chrome.runtime.sendMessage({type:'fetch-playlist-items', url: data.payload && data.payload.playlistUrl}, (response)=>{
+          if(chrome.runtime.lastError){
+            respond({ok:false, error: chrome.runtime.lastError.message || 'Extension unavailable'})
+            return
+          }
+
+          respond({
+            ok: !!(response && response.ok),
+            payload: {items: response && Array.isArray(response.items) ? response.items : []},
+            error: response && response.error ? response.error : ''
+          })
+        })
+        return
+      }
+
+      if(data.action === 'open-url'){
+        chrome.runtime.sendMessage({type:'open-url', url: data.payload && data.payload.url}, (response)=>{
+          if(chrome.runtime.lastError){
+            respond({ok:false, error: chrome.runtime.lastError.message || 'Extension unavailable'})
+            return
+          }
+
+          respond({ok: !!(response && response.ok), error: response && response.error ? response.error : ''})
+        })
+      }
+    })
+
     chrome.storage.local.get(['queuedItems', SAVED_LINKS_EXT_KEY], (res)=>{
       const q = res.queuedItems || []
       const savedLinks = res[SAVED_LINKS_EXT_KEY] || []

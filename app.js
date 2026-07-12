@@ -10,6 +10,7 @@ const TOPBAR_ACTIVE_ROW_KEY = 'ytTopbarActiveRow_v1'
 const THEME_INDEX_KEY = 'ytThemeIndex_v1'
 const SCROLL_POSITIONS_KEY = 'ytScrollPositions_v1'
 const LAST_VIEWED_KEY = 'ytLastViewedItem_v1'
+const RANDOM_PLAYLISTS_KEY = 'ytRandomPlaylists_v1'
 const sections = document.getElementById('sections')
 const leftNavEl = document.getElementById('left-nav')
 const addPageBtn = document.getElementById('add-page-btn')
@@ -23,6 +24,8 @@ const template = document.getElementById('item-template')
 const holdDialogEl = document.getElementById('hold-action-dialog')
 const holdDialogBackdropEl = holdDialogEl ? holdDialogEl.querySelector('.hold-dialog-backdrop') : null
 const holdDialogTitleEl = document.getElementById('hold-dialog-title')
+const holdRandomRowEl = document.getElementById('hold-random-row')
+const holdRandomCheckboxEl = document.getElementById('hold-random-checkbox')
 const holdEditBtn = document.getElementById('hold-edit-btn')
 const holdMoveUpBtn = document.getElementById('hold-move-up-btn')
 const holdMoveDownBtn = document.getElementById('hold-move-down-btn')
@@ -55,6 +58,7 @@ let activeTimerLabel = ''
 let swRegistration = null
 let scrollPositions = loadScrollPositions()
 let lastViewedItemId = loadLastViewedItemId()
+let randomPlaylistSlots = loadRandomPlaylistSlots()
 
 const THEMES = [
   {
@@ -394,6 +398,20 @@ function loadScrollPositions(){
 function saveScrollPositions(){ localStorage.setItem(SCROLL_POSITIONS_KEY, JSON.stringify(scrollPositions)) }
 function loadLastViewedItemId(){ return localStorage.getItem(LAST_VIEWED_KEY) || '' }
 function saveLastViewedItemId(){ localStorage.setItem(LAST_VIEWED_KEY, lastViewedItemId || '') }
+function loadRandomPlaylistSlots(){
+  try{
+    const parsed = JSON.parse(localStorage.getItem(RANDOM_PLAYLISTS_KEY) || '{}')
+    if(!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return {}
+
+    const result = {}
+    Object.keys(parsed).forEach((key)=>{
+      const slot = normalizeRandomPlaylistSlot(parsed[key])
+      if(slot) result[key] = slot
+    })
+    return result
+  }catch(e){ return {} }
+}
+function saveRandomPlaylistSlots(){ localStorage.setItem(RANDOM_PLAYLISTS_KEY, JSON.stringify(randomPlaylistSlots)) }
 function removeSavedLink(id){ savedLinks = savedLinks.filter(link=>link.id!==id); saveSavedLinks(); renderSavedLinks() }
 function loadTopbarRows(){
   try{
@@ -427,7 +445,385 @@ function normalizeUrl(value){
   return `https://${raw}`
 }
 
+function normalizePlaylistUrl(value){
+  const raw = normalizeUrl(value)
+  if(!raw) return ''
+
+  try{
+    const parsed = new URL(raw)
+    const host = parsed.hostname.replace(/^www\./, '')
+    if(!(host === 'youtube.com' || host.endsWith('.youtube.com'))) return ''
+
+    const listId = (parsed.searchParams.get('list') || '').trim()
+    if(!listId) return ''
+    return `https://www.youtube.com/playlist?list=${encodeURIComponent(listId)}`
+  }catch(e){ return '' }
+}
+
+function normalizeRandomPlaylistSlot(slot){
+  if(!slot || typeof slot !== 'object' || Array.isArray(slot)) return null
+  const playlistUrl = normalizePlaylistUrl(slot.playlistUrl || '')
+  if(!playlistUrl) return null
+
+  const title = (typeof slot.title === 'string' ? slot.title : '').trim() || 'Random Playlist'
+  const shuffledItems = Array.isArray(slot.shuffledItems)
+    ? slot.shuffledItems
+        .filter((item)=>item && typeof item.url === 'string')
+        .map((item)=>(
+          {
+            url: item.url,
+            title: (typeof item.title === 'string' ? item.title : '').trim() || item.url
+          }
+        ))
+    : []
+
+  const parsedIndex = Number(slot.currentIndex)
+  const currentIndex = Number.isInteger(parsedIndex) && parsedIndex >= 0 ? parsedIndex : 0
+
+  return {
+    title,
+    playlistUrl,
+    shuffledItems,
+    currentIndex: Math.min(currentIndex, shuffledItems.length),
+    needsShuffle: !!slot.needsShuffle || !shuffledItems.length
+  }
+}
+
+function normalizeHeaderLink(link){
+  if(!link || !link.id) return null
+
+  const url = normalizeUrl(typeof link.url === 'string' ? link.url : '')
+  if(!url) return null
+
+  const title = typeof link.title === 'string' && link.title.trim() ? link.title.trim() : url
+  const playlistUrl = normalizePlaylistUrl(url)
+  const shuffledItems = Array.isArray(link.shuffledItems)
+    ? link.shuffledItems
+        .filter((item)=>item && typeof item.url === 'string')
+        .map((item)=>(
+          {
+            url: item.url,
+            title: (typeof item.title === 'string' ? item.title : '').trim() || item.url
+          }
+        ))
+    : []
+  const parsedIndex = Number(link.currentIndex)
+  const currentIndex = Number.isInteger(parsedIndex) && parsedIndex >= 0 ? parsedIndex : 0
+  const isRandom = !!link.isRandom && !!playlistUrl
+
+  return {
+    id: link.id,
+    title,
+    url: isRandom ? playlistUrl : url,
+    created: link.created || new Date().toISOString(),
+    isRandom,
+    shuffledItems: isRandom ? shuffledItems : [],
+    currentIndex: isRandom ? Math.min(currentIndex, shuffledItems.length) : 0,
+    needsShuffle: isRandom ? (!!link.needsShuffle || !shuffledItems.length) : true
+  }
+}
+
 function uid(){ return Date.now().toString(36)+Math.random().toString(36).slice(2,8) }
+function getRandomPlaylistKey(pageId, tabId){ return getScrollKey(pageId, tabId) }
+function getRandomPlaylistSlot(pageId, tabId){
+  return randomPlaylistSlots[getRandomPlaylistKey(pageId, tabId)] || null
+}
+function setRandomPlaylistSlot(pageId, tabId, slot){
+  const key = getRandomPlaylistKey(pageId, tabId)
+  const normalized = normalizeRandomPlaylistSlot(slot)
+  if(normalized) randomPlaylistSlots[key] = normalized
+  else delete randomPlaylistSlots[key]
+  saveRandomPlaylistSlots()
+  render()
+}
+function removeRandomPlaylistSlot(pageId, tabId){
+  const key = getRandomPlaylistKey(pageId, tabId)
+  if(!randomPlaylistSlots[key]) return false
+  delete randomPlaylistSlots[key]
+  saveRandomPlaylistSlots()
+  render()
+  return true
+}
+function deleteRandomPlaylistSlotsForPage(pageId){
+  const prefix = `${normalizePageId(pageId)}::`
+  let changed = false
+  Object.keys(randomPlaylistSlots).forEach((key)=>{
+    if(!key.startsWith(prefix)) return
+    delete randomPlaylistSlots[key]
+    changed = true
+  })
+  if(changed) saveRandomPlaylistSlots()
+}
+function shufflePlaylistItems(list){
+  const copy = list.slice()
+  for(let index = copy.length - 1; index > 0; index -= 1){
+    const swapIndex = Math.floor(Math.random() * (index + 1))
+    const hold = copy[index]
+    copy[index] = copy[swapIndex]
+    copy[swapIndex] = hold
+  }
+  return copy
+}
+function playlistSlotStatus(slot){
+  if(!slot || slot.needsShuffle || !slot.shuffledItems.length) return 'Ready to shuffle'
+  if(slot.currentIndex >= slot.shuffledItems.length) return 'Needs reshuffle'
+  return 'Shuffle active'
+}
+function linkShuffleStatus(link){
+  if(!link || !link.isRandom) return ''
+  if(link.needsShuffle || !link.shuffledItems.length) return 'shuffle ready'
+  if(link.currentIndex >= link.shuffledItems.length) return 'reshuffle needed'
+  return 'shuffle active'
+}
+function normalizePlaylistVideos(items){
+  const seen = new Set()
+  return (Array.isArray(items) ? items : [])
+    .filter((item)=>item && typeof item.url === 'string')
+    .map((item)=>(
+      {
+        url: item.url,
+        title: (typeof item.title === 'string' ? item.title : '').trim() || item.url
+      }
+    ))
+    .filter((item)=>{
+      if(!item.url || seen.has(item.url)) return false
+      seen.add(item.url)
+      return true
+    })
+}
+function requestExtensionAction(action, payload){
+  return new Promise((resolve, reject)=>{
+    const requestId = `bridge-${uid()}`
+    const targetOrigin = window.location.origin && window.location.origin !== 'null' ? window.location.origin : '*'
+    let settled = false
+
+    const cleanup = ()=>{
+      settled = true
+      clearTimeout(timeoutHandle)
+      window.removeEventListener('message', handleMessage)
+    }
+
+    const handleMessage = (event)=>{
+      if(event.source !== window) return
+      const data = event.data
+      if(!data || data.source !== 'ytqueue-extension' || data.requestId !== requestId) return
+      cleanup()
+      if(data.ok) resolve(data.payload)
+      else reject(new Error(data.error || 'Extension request failed'))
+    }
+
+    const timeoutHandle = setTimeout(()=>{
+      if(settled) return
+      cleanup()
+      reject(new Error('Extension bridge timed out'))
+    }, 20000)
+
+    window.addEventListener('message', handleMessage)
+    window.postMessage({source:'ytqueue-app', requestId, action, payload: payload || {}}, targetOrigin)
+  })
+}
+async function fetchPlaylistVideos(playlistUrl){
+  const normalizedUrl = normalizePlaylistUrl(playlistUrl)
+  if(!normalizedUrl) throw new Error('Please enter a valid YouTube playlist URL')
+  const payload = await requestExtensionAction('fetch-playlist-items', {playlistUrl: normalizedUrl})
+  return normalizePlaylistVideos(payload && payload.items)
+}
+async function openExternalUrl(url){
+  const normalizedUrl = normalizeUrl(url)
+  if(!normalizedUrl) throw new Error('Missing URL')
+  await requestExtensionAction('open-url', {url: normalizedUrl})
+}
+function setHeaderLinkRandomMode(id, enabled){
+  const link = headerLinks.find((item)=>item.id===id)
+  if(!link) return false
+
+  if(enabled){
+    const playlistUrl = normalizePlaylistUrl(link.url)
+    if(!playlistUrl){
+      alert('Random mode requires a valid YouTube playlist URL.')
+      return false
+    }
+    link.url = playlistUrl
+    link.isRandom = true
+    if(!Array.isArray(link.shuffledItems)) link.shuffledItems = []
+    if(!Number.isInteger(link.currentIndex) || link.currentIndex < 0) link.currentIndex = 0
+    if(typeof link.needsShuffle !== 'boolean') link.needsShuffle = !link.shuffledItems.length
+  }else{
+    link.isRandom = false
+  }
+
+  saveHeaderLinks()
+  renderLeftNav()
+  return true
+}
+async function triggerHeaderRandomLink(linkId){
+  const link = headerLinks.find((item)=>item.id===linkId)
+  if(!link || !link.isRandom) return
+
+  if(link.needsShuffle || !link.shuffledItems.length){
+    if(!confirm('Shuffle this playlist now?')) return
+    try{
+      const videos = await fetchPlaylistVideos(link.url)
+      if(!videos.length){
+        alert('No videos were found in that playlist.')
+        return
+      }
+      link.shuffledItems = shufflePlaylistItems(videos)
+      link.currentIndex = 0
+      link.needsShuffle = false
+      saveHeaderLinks()
+      renderLeftNav()
+    }catch(e){
+      alert(e && e.message ? e.message : 'Could not load that playlist from the extension.')
+      return
+    }
+  }
+
+  if(link.currentIndex >= link.shuffledItems.length){
+    if(!confirm('This playlist has been used all the way through. It needs to be reshuffled. Reshuffle now?')) return
+    link.shuffledItems = shufflePlaylistItems(link.shuffledItems)
+    link.currentIndex = 0
+    link.needsShuffle = false
+    saveHeaderLinks()
+    renderLeftNav()
+  }
+
+  const nextVideo = link.shuffledItems[link.currentIndex]
+  if(!nextVideo || !nextVideo.url){
+    alert('The next playlist video could not be opened.')
+    return
+  }
+
+  link.currentIndex += 1
+  saveHeaderLinks()
+  renderLeftNav()
+
+  try{
+    await openExternalUrl(nextVideo.url)
+  }catch(e){
+    window.open(nextVideo.url, '_blank', 'noopener,noreferrer')
+  }
+}
+function promptForRandomPlaylistSlot(existingSlot){
+  const urlInput = prompt('Paste YouTube playlist URL', existingSlot ? existingSlot.playlistUrl : '')
+  if(urlInput === null) return null
+
+  const playlistUrl = normalizePlaylistUrl(urlInput)
+  if(!playlistUrl){
+    alert('Please enter a valid YouTube playlist URL.')
+    return null
+  }
+
+  const titleInput = prompt('Button label', existingSlot ? existingSlot.title : 'Random Playlist')
+  if(titleInput === null) return null
+
+  const title = titleInput.trim() || (existingSlot ? existingSlot.title : '') || 'Random Playlist'
+  const samePlaylist = !!existingSlot && existingSlot.playlistUrl === playlistUrl
+
+  return {
+    title,
+    playlistUrl,
+    shuffledItems: samePlaylist ? existingSlot.shuffledItems : [],
+    currentIndex: samePlaylist ? existingSlot.currentIndex : 0,
+    needsShuffle: samePlaylist ? !!existingSlot.needsShuffle : true
+  }
+}
+function configureRandomPlaylistSlot(pageId){
+  const pid = normalizePageId(pageId)
+  const tid = getActiveTabId(pid)
+  const existingSlot = getRandomPlaylistSlot(pid, tid)
+
+  if(existingSlot){
+    const action = prompt('Random playlist button already exists here. Type: edit or remove', 'edit')
+    if(!action) return
+    const next = action.trim().toLowerCase()
+    if(next === 'remove' || next === 'delete'){
+      if(confirm('Remove the random playlist button from this tab?')) removeRandomPlaylistSlot(pid, tid)
+      return
+    }
+    if(next !== 'edit') return
+  }
+
+  const slot = promptForRandomPlaylistSlot(existingSlot)
+  if(!slot) return
+  setRandomPlaylistSlot(pid, tid, slot)
+}
+async function triggerRandomPlaylistSlot(pageId, tabId){
+  const pid = normalizePageId(pageId)
+  const tid = normalizeTabId(tabId)
+  let slot = getRandomPlaylistSlot(pid, tid)
+  if(!slot) return
+
+  if(slot.needsShuffle || !slot.shuffledItems.length){
+    if(!confirm('Shuffle this playlist now?')) return
+    try{
+      const videos = await fetchPlaylistVideos(slot.playlistUrl)
+      if(!videos.length){
+        alert('No videos were found in that playlist.')
+        return
+      }
+      slot = {
+        ...slot,
+        shuffledItems: shufflePlaylistItems(videos),
+        currentIndex: 0,
+        needsShuffle: false
+      }
+      setRandomPlaylistSlot(pid, tid, slot)
+    }catch(e){
+      alert(e && e.message ? e.message : 'Could not load that playlist from the extension.')
+      return
+    }
+  }
+
+  slot = getRandomPlaylistSlot(pid, tid)
+  if(!slot) return
+
+  if(slot.currentIndex >= slot.shuffledItems.length){
+    if(!confirm('This playlist has been used all the way through. It needs to be reshuffled. Reshuffle now?')) return
+    slot = {
+      ...slot,
+      shuffledItems: shufflePlaylistItems(slot.shuffledItems),
+      currentIndex: 0,
+      needsShuffle: false
+    }
+    setRandomPlaylistSlot(pid, tid, slot)
+  }
+
+  const nextVideo = slot.shuffledItems[slot.currentIndex]
+  if(!nextVideo || !nextVideo.url){
+    alert('The next playlist video could not be opened.')
+    return
+  }
+
+  setRandomPlaylistSlot(pid, tid, {...slot, currentIndex: slot.currentIndex + 1})
+  try{
+    await openExternalUrl(nextVideo.url)
+  }catch(e){
+    window.open(nextVideo.url, '_blank', 'noopener,noreferrer')
+  }
+}
+function renderRandomPlaylistButton(pageId, tabId){
+  const slot = getRandomPlaylistSlot(pageId, tabId)
+  if(!slot) return
+
+  const wrap = document.createElement('div')
+  wrap.className = 'random-playlist-wrap'
+
+  const button = document.createElement('button')
+  button.type = 'button'
+  button.className = 'random-playlist-btn'
+  button.textContent = slot.title
+  button.title = slot.playlistUrl
+  button.addEventListener('click', ()=>{ triggerRandomPlaylistSlot(pageId, tabId) })
+
+  const status = document.createElement('div')
+  status.className = 'random-playlist-status'
+  status.textContent = playlistSlotStatus(slot)
+
+  wrap.appendChild(button)
+  wrap.appendChild(status)
+  sections.appendChild(wrap)
+}
 function ensureTopbarState(){
   if(!Array.isArray(topbarRows)) topbarRows = []
   if(!topbarRows.length){
@@ -739,6 +1135,9 @@ function getHoldDialogModel(){
       canMoveUp: index > 0,
       canMoveDown: index < headerLinks.length - 1,
       canDelete: true,
+      randomVisible: true,
+      randomChecked: !!link.isRandom,
+      onToggleRandom: (checked)=>setHeaderLinkRandomMode(link.id, checked),
       onEdit: ()=>{
         editHeaderLink(link.id)
         renderHoldDialog()
@@ -755,7 +1154,7 @@ function getHoldDialogModel(){
   return null
 }
 function renderHoldDialog(){
-  if(!holdDialogEl || !holdDialogTitleEl || !holdEditBtn || !holdMoveUpBtn || !holdMoveDownBtn || !holdDeleteBtn) return
+  if(!holdDialogEl || !holdDialogTitleEl || !holdRandomRowEl || !holdRandomCheckboxEl || !holdEditBtn || !holdMoveUpBtn || !holdMoveDownBtn || !holdDeleteBtn) return
   const model = getHoldDialogModel()
   if(!model){
     closeHoldDialog()
@@ -768,6 +1167,15 @@ function renderHoldDialog(){
   holdMoveUpBtn.disabled = !model.canMoveUp
   holdMoveDownBtn.disabled = !model.canMoveDown
   holdDeleteBtn.disabled = !model.canDelete
+  holdRandomRowEl.classList.toggle('hidden', !model.randomVisible)
+  holdRandomCheckboxEl.checked = !!model.randomChecked
+  holdRandomCheckboxEl.onchange = model.randomVisible && model.onToggleRandom
+    ? ()=>{
+        const applied = model.onToggleRandom(holdRandomCheckboxEl.checked)
+        if(applied === false) holdRandomCheckboxEl.checked = !!model.randomChecked
+        renderHoldDialog()
+      }
+    : null
 
   holdEditBtn.onclick = model.onEdit
   holdMoveUpBtn.onclick = model.onMoveUp
@@ -843,11 +1251,18 @@ function deleteTabFromPage(pageId, tabId){
   const nextTabs = tabs.filter(tab=>tab.id !== tid)
   if(nextTabs.length === tabs.length) return
   const fallbackTabId = nextTabs[0].id
+  const existingSlot = getRandomPlaylistSlot(pid, tid)
 
   items = items.map(item=>{
     if(normalizePageId(item.pageId)!==pid || normalizeTabId(item.tabId)!==tid) return item
     return {...item, tabId: fallbackTabId}
   })
+
+  if(existingSlot){
+    if(!getRandomPlaylistSlot(pid, fallbackTabId)) setRandomPlaylistSlot(pid, fallbackTabId, existingSlot)
+    delete randomPlaylistSlots[getRandomPlaylistKey(pid, tid)]
+    saveRandomPlaylistSlots()
+  }
 
   pageTabs[pid] = nextTabs
   if(normalizeTabId(activeTabs[pid])===tid) activeTabs[pid] = fallbackTabId
@@ -881,6 +1296,7 @@ function deletePage(pageId){
   delete pageTitleFilters[pid]
 
   items = items.filter(item=>normalizePageId(item.pageId)!==pid)
+  deleteRandomPlaylistSlotsForPage(pid)
 
   savePages()
   savePageTabs()
@@ -900,6 +1316,7 @@ function ensurePageTabIntegrity(){
   let changedActive = false
   let changedItems = false
   let changedFilters = false
+  let changedRandomPlaylists = false
 
   getPageTabs('home')
   getActiveTabId('home')
@@ -946,6 +1363,46 @@ function ensurePageTabIntegrity(){
     }
   })
 
+  Object.keys(randomPlaylistSlots).forEach((key)=>{
+    const parts = key.split('::')
+    const pid = normalizePageId(parts[0])
+    const tid = normalizeTabId(parts[1])
+    if(!validPageIds.has(pid) || pid === 'home'){
+      delete randomPlaylistSlots[key]
+      changedRandomPlaylists = true
+      return
+    }
+
+    const tabs = pageTabs[pid] || [getDefaultTab()]
+    const tabIds = new Set(tabs.map(tab=>tab.id))
+    if(!tabIds.has(tid)){
+      delete randomPlaylistSlots[key]
+      changedRandomPlaylists = true
+      return
+    }
+
+    const normalized = normalizeRandomPlaylistSlot(randomPlaylistSlots[key])
+    if(!normalized){
+      delete randomPlaylistSlots[key]
+      changedRandomPlaylists = true
+      return
+    }
+
+    const nextKey = getRandomPlaylistKey(pid, tid)
+    if(nextKey !== key){
+      delete randomPlaylistSlots[key]
+      randomPlaylistSlots[nextKey] = normalized
+      changedRandomPlaylists = true
+      return
+    }
+
+    const same = JSON.stringify(randomPlaylistSlots[key]) === JSON.stringify(normalized)
+    if(!same){
+      randomPlaylistSlots[key] = normalized
+      changedRandomPlaylists = true
+    }
+  })
+
   validPageIds.forEach(pid=>{
     const tabs = pageTabs[pid]
     if(!Array.isArray(tabs) || !tabs.length){
@@ -973,6 +1430,7 @@ function ensurePageTabIntegrity(){
   if(changedTabs) savePageTabs()
   if(changedActive) saveActiveTabs()
   if(changedFilters) savePageTitleFilters()
+  if(changedRandomPlaylists) saveRandomPlaylistSlots()
   if(changedItems) save()
 }
 function moveSelectedItemsToPage(pageId){
@@ -1166,10 +1624,57 @@ function removeItem(id){ items = items.filter(i=>i.id!==id); selectedItemIds.del
 
 function toggleFav(id){ const it = items.find(i=>i.id===id); if(!it) return; it.favorite=!it.favorite; save(); render() }
 
-function loadHeaderLinks(){ try{ return JSON.parse(localStorage.getItem(HEADER_LINKS_KEY)||'[]') }catch(e){return[]} }
+function loadHeaderLinks(){
+  try{
+    const parsed = JSON.parse(localStorage.getItem(HEADER_LINKS_KEY)||'[]')
+    if(!Array.isArray(parsed)) return []
+    return parsed.map(normalizeHeaderLink).filter(Boolean)
+  }catch(e){return[]}
+}
 function saveHeaderLinks(){ localStorage.setItem(HEADER_LINKS_KEY, JSON.stringify(headerLinks)) }
-function addHeaderLink({title,url}){ const link = {id:uid(), title, url, created: new Date().toISOString()}; headerLinks.push(link); saveHeaderLinks(); renderLeftNav(); }
-function editHeaderLink(id){ const link = headerLinks.find(l=>l.id===id); if(!link) return; const newTitle = prompt('Edit text label', link.title); if(!newTitle) return; const newUrl = prompt('Edit URL', link.url); if(!newUrl) return; link.title = newTitle; link.url = newUrl; saveHeaderLinks(); renderLeftNav(); }
+function addHeaderLink({title,url}){
+  const link = normalizeHeaderLink({id:uid(), title, url, created: new Date().toISOString(), isRandom:false})
+  if(!link) return
+  headerLinks.push(link)
+  saveHeaderLinks()
+  renderLeftNav()
+}
+function editHeaderLink(id){
+  const link = headerLinks.find(l=>l.id===id)
+  if(!link) return
+  const newTitle = prompt('Edit text label', link.title)
+  if(!newTitle) return
+  const newUrlInput = prompt('Edit URL', link.url)
+  if(!newUrlInput) return
+  const newUrl = normalizeUrl(newUrlInput)
+  try{ new URL(newUrl) }catch(e){ alert('Please enter a valid URL'); return }
+
+  const oldPlaylistUrl = normalizePlaylistUrl(link.url)
+  const nextPlaylistUrl = normalizePlaylistUrl(newUrl)
+
+  link.title = newTitle.trim() || link.title
+  link.url = newUrl
+
+  if(link.isRandom){
+    if(!nextPlaylistUrl){
+      link.isRandom = false
+      link.shuffledItems = []
+      link.currentIndex = 0
+      link.needsShuffle = true
+      alert('Random mode was turned off because the new URL is not a YouTube playlist.')
+    }else{
+      link.url = nextPlaylistUrl
+      if(nextPlaylistUrl !== oldPlaylistUrl){
+        link.shuffledItems = []
+        link.currentIndex = 0
+        link.needsShuffle = true
+      }
+    }
+  }
+
+  saveHeaderLinks()
+  renderLeftNav()
+}
 function renderHeaderLinks(){
   if(!topbarRolesEl || !topbarLinksEl) return
   ensureTopbarState()
@@ -1285,12 +1790,16 @@ function renderLeftNav(){
     const button = document.createElement('button')
     button.type = 'button'
     button.className = 'page-link side-link'
-    button.textContent = link.title
-    button.title = link.url
+    button.textContent = link.isRandom ? `${link.title} ?` : link.title
+    button.title = link.isRandom ? `${link.title} - ${linkShuffleStatus(link)}` : link.url
 
     const holdPress = attachLongPress(button, ()=>openLinkHoldDialog(link.id))
     button.addEventListener('click', ()=>{
       if(holdPress.consume()) return
+      if(link.isRandom){
+        triggerHeaderRandomLink(link.id)
+        return
+      }
       window.open(link.url, '_blank', 'noopener,noreferrer')
     })
 
@@ -1369,6 +1878,15 @@ function renderTabBar(pageId){
       render()
     })
     row.appendChild(dividerToggle)
+
+    const randomPlaylistToggle = document.createElement('button')
+    randomPlaylistToggle.type = 'button'
+    randomPlaylistToggle.className = `main-tab title-filter-toggle${getRandomPlaylistSlot(pid, activeTabId) ? ' selected' : ''}`
+    randomPlaylistToggle.title = 'Add or edit random playlist button'
+    randomPlaylistToggle.setAttribute('aria-label', 'Add or edit random playlist button')
+    randomPlaylistToggle.textContent = '?'
+    randomPlaylistToggle.addEventListener('click', ()=>{ configureRandomPlaylistSlot(pid) })
+    row.appendChild(randomPlaylistToggle)
 
     const info = document.createElement('button')
     info.type = 'button'
@@ -1489,6 +2007,7 @@ function render(){ sections.innerHTML=''
   const now = new Date();
 
   if(currentPageId !== 'home'){
+    renderRandomPlaylistButton(currentPageId, activeTabId)
     const sortedList = buildChronologicalListWithDividers(list)
     if(sortedList.length){
       renderSection('', sortedList)

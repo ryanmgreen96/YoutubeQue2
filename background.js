@@ -539,7 +539,6 @@ function canonicalPlaylistUrlFromUrl(url){
     const parsed = new URL(url)
     const host = parsed.hostname.replace(/^www\./, '')
     if(!(host === 'youtube.com' || host.endsWith('.youtube.com'))) return ''
-    if(parsed.pathname !== '/playlist') return ''
 
     const listId = safeText(parsed.searchParams.get('list'))
     if(!listId) return ''
@@ -572,6 +571,36 @@ function normalizePlaylistIncoming(video, fallbackListId, index){
 
 chrome.runtime.onMessage.addListener((message, sender, sendResponse)=>{
   if(!message || !message.type) return
+
+  if(message.type === 'fetch-playlist-items'){
+    const playlistUrl = canonicalPlaylistUrlFromUrl(message.url || '')
+    if(!playlistUrl){
+      sendResponse({ok:false, items:[], error:'Please enter a valid YouTube playlist URL'})
+      return true
+    }
+
+    extractPlaylistItems(playlistUrl)
+      .then((items)=>sendResponse({ok:true, items}))
+      .catch(()=>sendResponse({ok:false, items:[], error:'Could not load playlist items'}))
+    return true
+  }
+
+  if(message.type === 'open-url'){
+    const targetUrl = safeText(message.url)
+    if(!targetUrl){
+      sendResponse({ok:false, error:'Missing URL'})
+      return true
+    }
+
+    chrome.tabs.create({url: targetUrl}, ()=>{
+      if(chrome.runtime.lastError){
+        sendResponse({ok:false, error: chrome.runtime.lastError.message || 'Could not open URL'})
+        return
+      }
+      sendResponse({ok:true})
+    })
+    return true
+  }
 
   if(message.type === 'queue-video-url'){
     const playlistUrl = canonicalPlaylistUrlFromUrl(message.url || '')
