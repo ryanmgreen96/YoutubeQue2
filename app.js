@@ -24,6 +24,9 @@ const template = document.getElementById('item-template')
 const holdDialogEl = document.getElementById('hold-action-dialog')
 const holdDialogBackdropEl = holdDialogEl ? holdDialogEl.querySelector('.hold-dialog-backdrop') : null
 const holdDialogTitleEl = document.getElementById('hold-dialog-title')
+const holdLinkEditorEl = document.getElementById('hold-link-editor')
+const holdLinkTitleInputEl = document.getElementById('hold-link-title-input')
+const holdLinkUrlInputEl = document.getElementById('hold-link-url-input')
 const holdRandomRowEl = document.getElementById('hold-random-row')
 const holdRandomCheckboxEl = document.getElementById('hold-random-checkbox')
 const holdEditBtn = document.getElementById('hold-edit-btn')
@@ -1131,6 +1134,9 @@ function getHoldDialogModel(){
     const index = headerLinks.findIndex(item=>item.id===link.id)
     return {
       title: `Link: ${link.title}`,
+      linkEditorVisible: true,
+      linkTitle: link.title,
+      linkUrl: link.url,
       canEdit: true,
       canMoveUp: index > 0,
       canMoveDown: index < headerLinks.length - 1,
@@ -1139,7 +1145,12 @@ function getHoldDialogModel(){
       randomChecked: !!link.isRandom,
       onToggleRandom: (checked)=>setHeaderLinkRandomMode(link.id, checked),
       onEdit: ()=>{
-        editHeaderLink(link.id)
+        const applied = updateHeaderLink(
+          link.id,
+          holdLinkTitleInputEl ? holdLinkTitleInputEl.value : '',
+          holdLinkUrlInputEl ? holdLinkUrlInputEl.value : ''
+        )
+        if(!applied) return
         renderHoldDialog()
       },
       onMoveUp: ()=>{ moveHeaderLink(link.id, -1); renderHoldDialog() },
@@ -1154,7 +1165,7 @@ function getHoldDialogModel(){
   return null
 }
 function renderHoldDialog(){
-  if(!holdDialogEl || !holdDialogTitleEl || !holdRandomRowEl || !holdRandomCheckboxEl || !holdEditBtn || !holdMoveUpBtn || !holdMoveDownBtn || !holdDeleteBtn) return
+  if(!holdDialogEl || !holdDialogTitleEl || !holdLinkEditorEl || !holdLinkTitleInputEl || !holdLinkUrlInputEl || !holdRandomRowEl || !holdRandomCheckboxEl || !holdEditBtn || !holdMoveUpBtn || !holdMoveDownBtn || !holdDeleteBtn) return
   const model = getHoldDialogModel()
   if(!model){
     closeHoldDialog()
@@ -1162,8 +1173,12 @@ function renderHoldDialog(){
   }
 
   holdDialogTitleEl.textContent = model.title
+  holdLinkEditorEl.classList.toggle('hidden', !model.linkEditorVisible)
+  holdLinkTitleInputEl.value = model.linkEditorVisible ? (model.linkTitle || '') : ''
+  holdLinkUrlInputEl.value = model.linkEditorVisible ? (model.linkUrl || '') : ''
   holdEditBtn.disabled = !model.canEdit
   holdEditBtn.style.display = model.canEdit ? '' : 'none'
+  holdEditBtn.textContent = model.linkEditorVisible ? 'Save changes' : 'Edit'
   holdMoveUpBtn.disabled = !model.canMoveUp
   holdMoveDownBtn.disabled = !model.canMoveDown
   holdDeleteBtn.disabled = !model.canDelete
@@ -1674,6 +1689,46 @@ function editHeaderLink(id){
 
   saveHeaderLinks()
   renderLeftNav()
+}
+function updateHeaderLink(id, nextTitle, nextUrlInput){
+  const link = headerLinks.find((item)=>item.id===id)
+  if(!link) return false
+
+  const trimmedTitle = (nextTitle || '').trim()
+  if(!trimmedTitle){
+    alert('Please enter a title.')
+    return false
+  }
+
+  const newUrl = normalizeUrl(nextUrlInput)
+  try{ new URL(newUrl) }catch(e){ alert('Please enter a valid URL'); return false }
+
+  const oldPlaylistUrl = normalizePlaylistUrl(link.url)
+  const nextPlaylistUrl = normalizePlaylistUrl(newUrl)
+
+  link.title = trimmedTitle
+  link.url = newUrl
+
+  if(link.isRandom){
+    if(!nextPlaylistUrl){
+      link.isRandom = false
+      link.shuffledItems = []
+      link.currentIndex = 0
+      link.needsShuffle = true
+      alert('Random mode was turned off because the new URL is not a YouTube playlist.')
+    }else{
+      link.url = nextPlaylistUrl
+      if(nextPlaylistUrl !== oldPlaylistUrl){
+        link.shuffledItems = []
+        link.currentIndex = 0
+        link.needsShuffle = true
+      }
+    }
+  }
+
+  saveHeaderLinks()
+  renderLeftNav()
+  return true
 }
 function renderHeaderLinks(){
   if(!topbarRolesEl || !topbarLinksEl) return

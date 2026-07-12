@@ -48,9 +48,19 @@
     <div class="hold-dialog-panel" role="dialog" aria-modal="true" aria-labelledby="hold-dialog-title">
       <h2 id="hold-dialog-title" class="hold-dialog-title">Manage</h2>
       <div class="hold-dialog-actions">
+        <div id="hold-link-editor" class="hold-link-editor hidden">
+          <label class="hold-link-field">
+            <span>Title</span>
+            <input id="hold-link-title-input" type="text" autocomplete="off">
+          </label>
+          <label class="hold-link-field">
+            <span>Link</span>
+            <input id="hold-link-url-input" type="url" autocomplete="off">
+          </label>
+        </div>
         <label id="hold-random-row" class="hold-random-row hidden">
           <input id="hold-random-checkbox" type="checkbox">
-          <span>Random</span>
+          <span>Random playlist</span>
         </label>
         <button id="hold-edit-btn" type="button">Edit</button>
         <button id="hold-move-up-btn" type="button">Move up</button>

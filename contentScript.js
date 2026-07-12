@@ -267,6 +267,46 @@
     return merged
   }
 
+  function syncAppStateFromExtension(res){
+    const q = Array.isArray(res && res.queuedItems) ? res.queuedItems : []
+    const savedLinks = Array.isArray(res && res[SAVED_LINKS_EXT_KEY]) ? res[SAVED_LINKS_EXT_KEY] : []
+    let changed = false
+
+    try{
+      if(q.length){
+        const existingQueue = JSON.parse(localStorage.getItem(APP_KEY)||'[]')
+        const mergedQueue = q.concat(existingQueue)
+        localStorage.setItem(APP_KEY, JSON.stringify(mergedQueue))
+        changed = true
+      }
+    }catch(e){
+      if(q.length){
+        localStorage.setItem(APP_KEY, JSON.stringify(q))
+        changed = true
+      }
+    }
+
+    try{
+      if(savedLinks.length){
+        const existingSaved = JSON.parse(localStorage.getItem(SAVED_LINKS_APP_KEY)||'[]')
+        const mergedSaved = mergeUniqueByUrl(savedLinks, existingSaved)
+        localStorage.setItem(SAVED_LINKS_APP_KEY, JSON.stringify(mergedSaved))
+        changed = true
+      }
+    }catch(e){
+      if(savedLinks.length){
+        localStorage.setItem(SAVED_LINKS_APP_KEY, JSON.stringify(savedLinks))
+        changed = true
+      }
+    }
+
+    if(!q.length && !savedLinks.length) return
+
+    chrome.storage.local.set({queuedItems: [], [SAVED_LINKS_EXT_KEY]: []}, ()=>{
+      if(changed) location.reload()
+    })
+  }
+
   try{
     if(isAppHost()){
     window.addEventListener('message', (event)=>{
@@ -313,41 +353,15 @@
       }
     })
 
-    chrome.storage.local.get(['queuedItems', SAVED_LINKS_EXT_KEY], (res)=>{
-      const q = res.queuedItems || []
-      const savedLinks = res[SAVED_LINKS_EXT_KEY] || []
-      let changed = false
+    chrome.storage.local.get(['queuedItems', SAVED_LINKS_EXT_KEY], syncAppStateFromExtension)
 
-      try{
-        if(q.length){
-          const existingQueue = JSON.parse(localStorage.getItem(APP_KEY)||'[]')
-          const mergedQueue = q.concat(existingQueue)
-          localStorage.setItem(APP_KEY, JSON.stringify(mergedQueue))
-          changed = true
-        }
-      }catch(e){
-        if(q.length){
-          localStorage.setItem(APP_KEY, JSON.stringify(q))
-          changed = true
-        }
-      }
+    chrome.storage.onChanged.addListener((changes, area)=>{
+      if(area !== 'local') return
+      if(!changes.queuedItems && !changes[SAVED_LINKS_EXT_KEY]) return
 
-      try{
-        if(savedLinks.length){
-          const existingSaved = JSON.parse(localStorage.getItem(SAVED_LINKS_APP_KEY)||'[]')
-          const mergedSaved = mergeUniqueByUrl(savedLinks, existingSaved)
-          localStorage.setItem(SAVED_LINKS_APP_KEY, JSON.stringify(mergedSaved))
-          changed = true
-        }
-      }catch(e){
-        if(savedLinks.length){
-          localStorage.setItem(SAVED_LINKS_APP_KEY, JSON.stringify(savedLinks))
-          changed = true
-        }
-      }
-
-      chrome.storage.local.set({queuedItems: [], [SAVED_LINKS_EXT_KEY]: []}, ()=>{
-        if(changed) location.reload()
+      syncAppStateFromExtension({
+        queuedItems: changes.queuedItems ? changes.queuedItems.newValue : [],
+        [SAVED_LINKS_EXT_KEY]: changes[SAVED_LINKS_EXT_KEY] ? changes[SAVED_LINKS_EXT_KEY].newValue : []
       })
     })
       return
