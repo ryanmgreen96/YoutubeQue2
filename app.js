@@ -762,7 +762,6 @@ async function triggerRandomPage(pageId){
   if(!page || !page.isRandom || !page.randomPlaylistUrl) return
 
   if(page.randomNeedsShuffle || !Array.isArray(page.randomShuffledItems) || !page.randomShuffledItems.length){
-    if(!confirm('Load this playlist now?')) return
     try{
       const videos = await fetchPlaylistVideos(page.randomPlaylistUrl)
       const rangedVideos = applyPlaylistRange(videos, page.randomRangeStart, page.randomRangeEnd)
@@ -783,7 +782,6 @@ async function triggerRandomPage(pageId){
   }
 
   if(page.randomCurrentIndex < 0){
-    if(!confirm('This playlist is complete. Start again from the oldest item?')) return
     page.randomCurrentIndex = initialPlaylistSequenceIndex(page.randomShuffledItems)
     page.randomNeedsShuffle = false
     savePages()
@@ -849,7 +847,6 @@ async function triggerHeaderRandomLink(linkId){
   if(!link || !link.isRandom) return
 
   if(link.needsShuffle || !link.shuffledItems.length){
-    if(!confirm('Load this playlist now?')) return
     try{
       const videos = await fetchPlaylistVideos(link.url)
       if(!videos.length){
@@ -869,7 +866,6 @@ async function triggerHeaderRandomLink(linkId){
   }
 
   if(link.currentIndex < 0){
-    if(!confirm('This playlist is complete. Start again from the oldest item?')) return
     link.currentIndex = initialPlaylistSequenceIndex(link.shuffledItems)
     link.needsShuffle = false
     saveHeaderLinks()
@@ -943,7 +939,6 @@ async function triggerRandomPlaylistSlot(pageId, tabId){
   if(!slot) return
 
   if(slot.needsShuffle || !slot.shuffledItems.length){
-    if(!confirm('Load this playlist now?')) return
     try{
       const videos = await fetchPlaylistVideos(slot.playlistUrl)
       if(!videos.length){
@@ -968,7 +963,6 @@ async function triggerRandomPlaylistSlot(pageId, tabId){
   if(!slot) return
 
   if(slot.currentIndex < 0){
-    if(!confirm('This playlist is complete. Start again from the oldest item?')) return
     slot = {
       ...slot,
       currentIndex: initialPlaylistSequenceIndex(slot.shuffledItems),
@@ -2110,19 +2104,6 @@ function editItem(id){ const it = items.find(i=>i.id===id); if(!it) return; cons
 function renderLeftNav(){
   if(!leftNavEl) return
   leftNavEl.innerHTML = ''
-
-  const homeRow = document.createElement('div')
-  homeRow.className = 'page-link-row'
-  const homeButton = document.createElement('button')
-  homeButton.type = 'button'
-  homeButton.className = `page-link${currentPageId==='home' ? ' selected' : ''}`
-  homeButton.textContent = 'Home'
-  homeButton.addEventListener('click', ()=>{
-    if(editMode && selectedItemIds.size){ moveSelectedItemsToPage('home'); return }
-    setCurrentPage('home')
-  })
-  homeRow.appendChild(homeButton)
-  leftNavEl.appendChild(homeRow)
 
   headerLinks.forEach(link=>{
     const row = document.createElement('div')
