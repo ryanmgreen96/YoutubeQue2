@@ -1,6 +1,8 @@
 const APP_URL = 'https://ryanmgreen96.github.io/YoutubeQue2/' // GitHub Pages URL for your repo
 const SAVED_LINKS_KEY = 'savedVideoLinks'
 const QUEUE_MODE_KEY = 'ytQueueClickMode'
+const LIBRARY_PAGE_ID = 'library'
+const LIBRARY_TAB_ID = 'default'
 
 async function getQueueMode(){
   const res = await chrome.storage.local.get({[QUEUE_MODE_KEY]: false})
@@ -157,7 +159,80 @@ function extractSavedLinkFromTab(tab){
   }
 }
 
+function isArchiveOrgUrl(rawUrl){
+  if(!rawUrl) return false
+  try{
+    const host = new URL(rawUrl).hostname.replace(/^www\./, '')
+    return host === 'archive.org' || host.endsWith('.archive.org')
+  }catch(e){
+    return false
+  }
+}
+
+function cleanArchiveTitle(rawTitle){
+  const base = ((rawTitle || '').trim() || '')
+  if(!base) return ''
+  return base
+    .replace(/\s*:\s*Free Download, Borrow, and Streaming\s*:\s*Internet Archive\s*$/i, '')
+    .replace(/\s*:\s*Internet Archive\s*$/i, '')
+    .replace(/\s*-\s*Internet Archive\s*$/i, '')
+    .trim()
+}
+
+function fallbackTitleFromUrl(rawUrl){
+  try{
+    const parsed = new URL(rawUrl)
+    const part = parsed.pathname.split('/').filter(Boolean).pop() || parsed.hostname
+    return decodeURIComponent(part).replace(/[-_]+/g, ' ').trim() || parsed.hostname
+  }catch(e){
+    return rawUrl || 'Archive item'
+  }
+}
+
+function closeTabAfterSave(tabId){
+  if(typeof tabId !== 'number') return
+  chrome.tabs.remove(tabId, ()=>{ void chrome.runtime.lastError })
+}
+
+async function buildArchiveLibraryItem(tab){
+  const url = tab && typeof tab.url === 'string' ? tab.url : ''
+  if(!url) return null
+
+  const tabTitle = cleanArchiveTitle(tab && tab.title)
+  const fetchedTitle = tabTitle ? '' : cleanArchiveTitle(await fetchPageTitle(url))
+  const title = tabTitle || fetchedTitle || fallbackTitleFromUrl(url)
+
+  return {
+    id: uid(),
+    url,
+    title,
+    created: new Date().toISOString(),
+    publishedAt: '',
+    pageId: LIBRARY_PAGE_ID,
+    tabId: LIBRARY_TAB_ID,
+    favorite: false,
+    videoId: null
+  }
+}
+
 chrome.action.onClicked.addListener((tab)=>{
+  if(isArchiveOrgUrl(tab && tab.url)){
+    ;(async ()=>{
+      const archiveItem = await buildArchiveLibraryItem(tab)
+      if(!archiveItem) return
+
+      chrome.storage.local.get({queuedItems:[]}, (res)=>{
+        const current = Array.isArray(res.queuedItems) ? res.queuedItems : []
+        const deduped = current.filter((item)=>item && item.url !== archiveItem.url)
+        deduped.unshift(archiveItem)
+        chrome.storage.local.set({queuedItems: deduped}, ()=>{
+          closeTabAfterSave(tab && tab.id)
+        })
+      })
+    })()
+    return
+  }
+
   const itemData = extractSavedLinkFromTab(tab)
   if(!itemData) return
 
@@ -173,7 +248,9 @@ chrome.action.onClicked.addListener((tab)=>{
     const current = res[SAVED_LINKS_KEY] || []
     const deduped = current.filter((link)=>link.url !== item.url)
     deduped.unshift(item)
-    chrome.storage.local.set({[SAVED_LINKS_KEY]: deduped})
+    chrome.storage.local.set({[SAVED_LINKS_KEY]: deduped}, ()=>{
+      closeTabAfterSave(tab && tab.id)
+    })
   })
 })
 

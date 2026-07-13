@@ -11,6 +11,8 @@ const THEME_INDEX_KEY = 'ytThemeIndex_v1'
 const SCROLL_POSITIONS_KEY = 'ytScrollPositions_v1'
 const LAST_VIEWED_KEY = 'ytLastViewedItem_v1'
 const RANDOM_PLAYLISTS_KEY = 'ytRandomPlaylists_v1'
+const LIBRARY_PAGE_ID = 'library'
+const LIBRARY_PAGE_TITLE = 'Library'
 const sections = document.getElementById('sections')
 const leftNavEl = document.getElementById('left-nav')
 const addPageBtn = document.getElementById('add-page-btn')
@@ -204,6 +206,35 @@ function clearTimer(){
   activeTimerLabel = ''
   renderThemeSwitcher()
 }
+function isLibraryPage(pageId){
+  return normalizePageId(pageId) === LIBRARY_PAGE_ID
+}
+function ensureLibraryPageExists(){
+  const existing = pages.find((page)=>page && page.id===LIBRARY_PAGE_ID)
+  if(existing){
+    if(existing.title !== LIBRARY_PAGE_TITLE){
+      existing.title = LIBRARY_PAGE_TITLE
+      savePages()
+    }
+    return
+  }
+
+  const libraryPage = {
+    id: LIBRARY_PAGE_ID,
+    title: LIBRARY_PAGE_TITLE,
+    created: new Date().toISOString()
+  }
+
+  pages.unshift(libraryPage)
+  pageTabs[LIBRARY_PAGE_ID] = [getDefaultTab()]
+  activeTabs[LIBRARY_PAGE_ID] = 'default'
+  pageTitleFilters[LIBRARY_PAGE_ID] = []
+
+  savePages()
+  savePageTabs()
+  saveActiveTabs()
+  savePageTitleFilters()
+}
 function playAlarmBeep(){
   try{
     const ctx = new (window.AudioContext || window.webkitAudioContext)()
@@ -356,6 +387,14 @@ function renderThemeSwitcher(){
   timerBtn.textContent = '⏰'
   timerBtn.addEventListener('click', startTimerFromPrompt)
   themeSwitcherEl.appendChild(timerBtn)
+
+  const libraryBtn = document.createElement('button')
+  libraryBtn.type = 'button'
+  libraryBtn.className = `theme-cycle-btn library-btn${isLibraryPage(currentPageId) ? ' selected' : ''}`
+  libraryBtn.title = 'Open Library page'
+  libraryBtn.textContent = '📚'
+  libraryBtn.addEventListener('click', ()=>{ setCurrentPage(LIBRARY_PAGE_ID) })
+  themeSwitcherEl.appendChild(libraryBtn)
 }
 function loadPages(){
   try{
@@ -1238,6 +1277,7 @@ function getHoldDialogModel(){
     const page = pages.find(item=>item.id===holdDialogState.pageId)
     if(!page) return null
     const index = pages.findIndex(item=>item.id===page.id)
+    const isLibrary = isLibraryPage(page.id)
     return {
       title: `Page: ${page.title}`,
       linkEditorVisible: false,
@@ -1250,9 +1290,9 @@ function getHoldDialogModel(){
       canEdit: !!page.isRandom,
       canMoveUp: index > 0,
       canMoveDown: index < pages.length - 1,
-      canDelete: true,
-      randomVisible: true,
-      randomChecked: !!page.isRandom,
+      canDelete: !isLibrary,
+      randomVisible: !isLibrary,
+      randomChecked: !isLibrary && !!page.isRandom,
       onToggleRandom: (checked)=>setPageRandomMode(page.id, checked),
       onEdit: ()=>{
         const applied = updateRandomPageSettings(
@@ -1267,6 +1307,7 @@ function getHoldDialogModel(){
       onMoveUp: ()=>{ movePage(page.id, -1); renderHoldDialog() },
       onMoveDown: ()=>{ movePage(page.id, 1); renderHoldDialog() },
       onDelete: ()=>{
+        if(isLibrary) return
         if(!confirm(`Delete page "${page.title}" and all videos in it?`)) return
         closeHoldDialog()
         deletePage(page.id)
@@ -1390,7 +1431,7 @@ function openLinkHoldDialog(linkId){
 
 function normalizePageId(pageId){ return pageId || 'home' }
 function normalizeTabId(tabId){ return tabId || 'default' }
-function getPageTitle(pageId){ if(pageId==='home') return 'Home'; const page = pages.find(item=>item.id===pageId); return page ? page.title : 'Home' }
+function getPageTitle(pageId){ if(pageId==='home') return 'Home'; if(pageId===LIBRARY_PAGE_ID) return LIBRARY_PAGE_TITLE; const page = pages.find(item=>item.id===pageId); return page ? page.title : 'Home' }
 function getDefaultTab(){ return {id:'default', title:'Main'} }
 function getPageTabs(pageId){
   const pid = normalizePageId(pageId)
@@ -1478,7 +1519,7 @@ function addPage(title){
 }
 function deletePage(pageId){
   const pid = normalizePageId(pageId)
-  if(pid === 'home') return
+  if(pid === 'home' || pid === LIBRARY_PAGE_ID) return
 
   pages = pages.filter(page=>page.id !== pid)
   delete pageTabs[pid]
@@ -1511,7 +1552,7 @@ function ensurePageTabIntegrity(){
   getPageTabs('home')
   getActiveTabId('home')
 
-  const validPageIds = new Set(['home', ...pages.map(page=>page.id)])
+  const validPageIds = new Set(['home', LIBRARY_PAGE_ID, ...pages.map(page=>page.id)])
 
   Object.keys(pageTabs).forEach(pid=>{
     if(!validPageIds.has(pid)){
@@ -1549,6 +1590,10 @@ function ensurePageTabIntegrity(){
   pages.forEach(page=>{
     if(!Array.isArray(pageTitleFilters[page.id])){
       pageTitleFilters[page.id] = []
+      changedFilters = true
+    }
+    if(page.id===LIBRARY_PAGE_ID && page.title !== LIBRARY_PAGE_TITLE){
+      page.title = LIBRARY_PAGE_TITLE
       changedFilters = true
     }
   })
@@ -2051,7 +2096,9 @@ function renderLeftNav(){
     button.className = `page-link${currentPageId===page.id ? ' selected' : ''}${page.isRandom ? ' random-page-link' : ''}`
     button.textContent = page.title
     button.title = page.isRandom ? `${page.title} - random playlist` : page.title
-    const holdPress = attachLongPress(button, ()=>openPageHoldDialog(page.id))
+    const holdPress = isLibraryPage(page.id)
+      ? {consume: ()=>false}
+      : attachLongPress(button, ()=>openPageHoldDialog(page.id))
     button.addEventListener('click', ()=>{
       if(holdPress.consume()) return
       if(page.isRandom){
@@ -2239,13 +2286,19 @@ function renderTabBar(pageId){
 }
 
 function render(){ sections.innerHTML=''
-  if(currentPageId !== 'home') renderTabBar(currentPageId)
+  if(currentPageId !== 'home' && !isLibraryPage(currentPageId)) renderTabBar(currentPageId)
   const activeTabId = getActiveTabId(currentPageId)
   const list = items.filter(i=>normalizePageId(i.pageId)===currentPageId && normalizeTabId(i.tabId)===activeTabId)
   const groups = {today:[], yesterday:[], earlier:[]}
   const now = new Date();
 
   if(currentPageId !== 'home'){
+    if(isLibraryPage(currentPageId)){
+      const heading = document.createElement('h2')
+      heading.className = 'page-heading'
+      heading.textContent = LIBRARY_PAGE_TITLE
+      sections.appendChild(heading)
+    }
     renderRandomPlaylistButton(currentPageId, activeTabId)
     const sortedList = buildChronologicalListWithDividers(list)
     if(sortedList.length){
@@ -2457,6 +2510,7 @@ window.addEventListener('load', ()=>{
     pages = []
     savePages()
   }
+  ensureLibraryPageExists()
   ensurePageTabIntegrity()
   currentPageId = 'home'
   renderLeftNav()
