@@ -365,6 +365,14 @@ function renderThemeSwitcher(){
   const theme = THEMES[activeThemeIndex] || THEMES[0]
   themeSwitcherEl.innerHTML = ''
 
+  const libraryBtn = document.createElement('button')
+  libraryBtn.type = 'button'
+  libraryBtn.className = `theme-cycle-btn library-btn${isLibraryPage(currentPageId) ? ' selected' : ''}`
+  libraryBtn.title = 'Open Library page'
+  libraryBtn.textContent = '📚'
+  libraryBtn.addEventListener('click', ()=>{ setCurrentPage(LIBRARY_PAGE_ID) })
+  themeSwitcherEl.appendChild(libraryBtn)
+
   const btn = document.createElement('button')
   btn.type = 'button'
   btn.className = 'theme-cycle-btn'
@@ -387,14 +395,6 @@ function renderThemeSwitcher(){
   timerBtn.textContent = '⏰'
   timerBtn.addEventListener('click', startTimerFromPrompt)
   themeSwitcherEl.appendChild(timerBtn)
-
-  const libraryBtn = document.createElement('button')
-  libraryBtn.type = 'button'
-  libraryBtn.className = `theme-cycle-btn library-btn${isLibraryPage(currentPageId) ? ' selected' : ''}`
-  libraryBtn.title = 'Open Library page'
-  libraryBtn.textContent = '📚'
-  libraryBtn.addEventListener('click', ()=>{ setCurrentPage(LIBRARY_PAGE_ID) })
-  themeSwitcherEl.appendChild(libraryBtn)
 }
 function loadPages(){
   try{
@@ -1690,6 +1690,67 @@ function moveSelectedItemsToPage(pageId){
   renderLeftNav()
   render()
 }
+function moveSingleItemToPage(itemId, pageId){
+  const targetPageId = normalizePageId(pageId)
+  const tabs = getPageTabs(targetPageId)
+  let targetTabId = getActiveTabId(targetPageId)
+
+  if(tabs.length > 1){
+    const options = tabs.map((tab, index)=>`${index + 1}. ${tab.title}`).join('\n')
+    const input = prompt(`Move to which tab?\n${options}`, '1')
+    if(input===null) return false
+    const selectedIndex = Number(input) - 1
+    if(!Number.isInteger(selectedIndex) || selectedIndex < 0 || selectedIndex >= tabs.length) return false
+    targetTabId = tabs[selectedIndex].id
+  }
+
+  let moved = false
+  items = items.map((item)=>{
+    if(item.id !== itemId) return item
+    moved = true
+    return {...item, pageId: targetPageId, tabId: targetTabId}
+  })
+  if(!moved) return false
+
+  save()
+  render()
+  return true
+}
+function manageItemWithPrompt(itemId){
+  const item = items.find((entry)=>entry.id===itemId)
+  if(!item) return
+
+  const action = prompt('Manage link: type rename, delete, or move', 'rename')
+  if(!action) return
+  const next = action.trim().toLowerCase()
+
+  if(next==='rename' || next==='edit'){
+    const nextTitle = prompt('Rename title', item.title || item.url)
+    if(nextTitle===null) return
+    const trimmed = nextTitle.trim()
+    if(!trimmed) return
+    item.title = trimmed
+    save()
+    render()
+    return
+  }
+
+  if(next==='delete'){
+    if(confirm('Delete this link?')) removeItem(itemId)
+    return
+  }
+
+  if(next==='move'){
+    const options = ['home', ...pages.filter((page)=>!isLibraryPage(page.id)).map((page)=>page.id)]
+    const labels = ['1. Home', ...pages.filter((page)=>!isLibraryPage(page.id)).map((page, index)=>`${index + 2}. ${page.title}`)]
+    const input = prompt(`Move to which page?\n${labels.join('\n')}`, '1')
+    if(input===null) return
+    const index = Number(input) - 1
+    if(!Number.isInteger(index) || index < 0 || index >= options.length) return
+    const moved = moveSingleItemToPage(itemId, options[index])
+    if(moved && isLibraryPage(currentPageId)) render()
+  }
+}
 function toggleEditMode(){
   pageDeleteMode = false
   deleteMode = false
@@ -2088,6 +2149,7 @@ function renderLeftNav(){
   })
 
   pages.forEach(page=>{
+    if(isLibraryPage(page.id)) return
     const row = document.createElement('div')
     row.className = 'page-link-row'
 
@@ -2411,7 +2473,13 @@ function renderSection(title, list){
     const el = node.querySelector('.item')
     const img = node.querySelector('.thumb')
     const ttl = node.querySelector('.title')
-    img.src = it.videoId ? makeThumbUrl(it.videoId) : ''
+    if(isLibraryPage(currentPageId)){
+      img.style.display = 'none'
+      el.classList.add('library-item')
+    }else{
+      img.style.display = ''
+      img.src = it.videoId ? makeThumbUrl(it.videoId) : ''
+    }
     const rawTitle = it.title || it.url
     ttl.textContent = currentPageId==='home' ? rawTitle : applyPageTitleFilters(rawTitle, currentPageId)
     el.classList.toggle('is-editing', editMode)
@@ -2441,7 +2509,7 @@ function renderSection(title, list){
 
     // long-press to edit
     let pressTimer = null
-    el.addEventListener('mousedown', ()=>{ if(editMode) return; pressTimer = setTimeout(()=>{ editItem(it.id) },600) })
+    el.addEventListener('mousedown', ()=>{ if(editMode) return; pressTimer = setTimeout(()=>{ manageItemWithPrompt(it.id) },600) })
     el.addEventListener('mouseup', ()=>{ clearTimeout(pressTimer) })
     el.addEventListener('mouseleave', ()=>{ clearTimeout(pressTimer) })
 

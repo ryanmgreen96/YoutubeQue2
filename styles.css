@@ -86,6 +86,9 @@ main{display:grid;grid-template-columns:10% 75% 15%;height:100vh;overflow:hidden
 .delete-mode-btn.selected{background:#d58172;color:#1a0f0d;border-color:#d58172}
 .grid{display:grid;grid-template-columns:repeat(6,1fr);gap:var(--gap)}
 .item{position:relative;background:var(--card);border-radius:6px;overflow:hidden;cursor:pointer;display:flex;flex-direction:column}
+.item.library-item{min-height:0;justify-content:center}
+.item.library-item .meta{padding:10px}
+.item.library-item .title{min-height:0;max-height:none;-webkit-line-clamp:unset;display:block}
 .queue-divider-item{position:relative;display:flex;justify-content:center;align-items:center;min-height:140px;background:transparent}
 .queue-divider-line{width:30px;height:100%;min-height:140px;border-radius:9px;transform:rotate(-6deg);background:linear-gradient(180deg,#72757a,#4f5358)}
 .item.is-editing::before{content:'';position:absolute;top:8px;left:8px;width:14px;height:14px;border:1px solid rgba(255,204,0,0.85);border-radius:3px;background:rgba(11,18,32,0.85);z-index:2}
