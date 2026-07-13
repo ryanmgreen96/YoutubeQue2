@@ -415,7 +415,7 @@ function loadPages(){
               ))
           : []
         const parsedIndex = Number(page.randomCurrentIndex)
-        const randomCurrentIndex = Number.isInteger(parsedIndex) && parsedIndex >= 0
+        const randomCurrentIndex = Number.isInteger(parsedIndex) && parsedIndex >= -1
           ? Math.min(parsedIndex, randomShuffledItems.length)
           : 0
         const parsedRangeStart = Number(page.randomRangeStart)
@@ -541,7 +541,7 @@ function normalizeRandomPlaylistSlot(slot){
   const playlistUrl = normalizePlaylistUrl(slot.playlistUrl || '')
   if(!playlistUrl) return null
 
-  const title = (typeof slot.title === 'string' ? slot.title : '').trim() || 'Random Playlist'
+  const title = (typeof slot.title === 'string' ? slot.title : '').trim() || 'Playlist Sequence'
   const shuffledItems = Array.isArray(slot.shuffledItems)
     ? slot.shuffledItems
         .filter((item)=>item && typeof item.url === 'string')
@@ -554,7 +554,7 @@ function normalizeRandomPlaylistSlot(slot){
     : []
 
   const parsedIndex = Number(slot.currentIndex)
-  const currentIndex = Number.isInteger(parsedIndex) && parsedIndex >= 0 ? parsedIndex : 0
+  const currentIndex = Number.isInteger(parsedIndex) && parsedIndex >= -1 ? parsedIndex : 0
 
   return {
     title,
@@ -616,15 +616,11 @@ function deleteRandomPlaylistSlotsForPage(pageId){
   })
   if(changed) saveRandomPlaylistSlots()
 }
-function shufflePlaylistItems(list){
-  const copy = list.slice()
-  for(let index = copy.length - 1; index > 0; index -= 1){
-    const swapIndex = Math.floor(Math.random() * (index + 1))
-    const hold = copy[index]
-    copy[index] = copy[swapIndex]
-    copy[swapIndex] = hold
-  }
-  return copy
+function preparePlaylistSequence(list){
+  return Array.isArray(list) ? list.slice() : []
+}
+function initialPlaylistSequenceIndex(list){
+  return Array.isArray(list) && list.length ? (list.length - 1) : -1
 }
 function applyPlaylistRange(items, start, end){
   const safeStart = Number.isInteger(start) && start > 0 ? start : 1
@@ -634,15 +630,15 @@ function applyPlaylistRange(items, start, end){
   return items.slice(fromIndex, Math.max(fromIndex, toIndex))
 }
 function playlistSlotStatus(slot){
-  if(!slot || slot.needsShuffle || !slot.shuffledItems.length) return 'Ready to shuffle'
-  if(slot.currentIndex >= slot.shuffledItems.length) return 'Needs reshuffle'
-  return 'Shuffle active'
+  if(!slot || slot.needsShuffle || !slot.shuffledItems.length) return 'Ready to load'
+  if(slot.currentIndex < 0) return 'Sequence complete'
+  return `Next: ${slot.currentIndex + 1}`
 }
 function linkShuffleStatus(link){
   if(!link || !link.isRandom) return ''
-  if(link.needsShuffle || !link.shuffledItems.length) return 'shuffle ready'
-  if(link.currentIndex >= link.shuffledItems.length) return 'reshuffle needed'
-  return 'shuffle active'
+  if(link.needsShuffle || !link.shuffledItems.length) return 'playlist ready'
+  if(link.currentIndex < 0) return 'playlist complete'
+  return `next ${link.currentIndex + 1}`
 }
 function normalizePlaylistVideos(items){
   const seen = new Set()
@@ -709,7 +705,7 @@ function setHeaderLinkRandomMode(id, enabled){
   if(enabled){
     const playlistUrl = normalizePlaylistUrl(link.url)
     if(!playlistUrl){
-      alert('Random mode requires a valid YouTube playlist URL.')
+      alert('Playlist mode requires a valid YouTube playlist URL.')
       return false
     }
     link.url = playlistUrl
@@ -735,7 +731,7 @@ function setPageRandomMode(pageId, enabled){
     if(urlInput === null) return false
     const playlistUrl = normalizePlaylistUrl(urlInput)
     if(!playlistUrl){
-      alert('Random playlist requires a valid YouTube playlist URL.')
+      alert('Playlist mode requires a valid YouTube playlist URL.')
       return false
     }
     const samePlaylist = page.randomPlaylistUrl === playlistUrl
@@ -766,7 +762,7 @@ async function triggerRandomPage(pageId){
   if(!page || !page.isRandom || !page.randomPlaylistUrl) return
 
   if(page.randomNeedsShuffle || !Array.isArray(page.randomShuffledItems) || !page.randomShuffledItems.length){
-    if(!confirm('Shuffle this playlist now?')) return
+    if(!confirm('Load this playlist now?')) return
     try{
       const videos = await fetchPlaylistVideos(page.randomPlaylistUrl)
       const rangedVideos = applyPlaylistRange(videos, page.randomRangeStart, page.randomRangeEnd)
@@ -774,21 +770,21 @@ async function triggerRandomPage(pageId){
         alert('No videos were found in that playlist.')
         return
       }
-      page.randomShuffledItems = shufflePlaylistItems(rangedVideos)
-      page.randomCurrentIndex = 0
+      page.randomShuffledItems = preparePlaylistSequence(rangedVideos)
+      page.randomCurrentIndex = initialPlaylistSequenceIndex(page.randomShuffledItems)
       page.randomNeedsShuffle = false
       savePages()
       renderLeftNav()
+      return
     }catch(e){
       alert(e && e.message ? e.message : 'Could not load that playlist from the extension.')
       return
     }
   }
 
-  if(page.randomCurrentIndex >= page.randomShuffledItems.length){
-    if(!confirm('This playlist has been used all the way through. It needs to be reshuffled. Reshuffle now?')) return
-    page.randomShuffledItems = shufflePlaylistItems(page.randomShuffledItems)
-    page.randomCurrentIndex = 0
+  if(page.randomCurrentIndex < 0){
+    if(!confirm('This playlist is complete. Start again from the oldest item?')) return
+    page.randomCurrentIndex = initialPlaylistSequenceIndex(page.randomShuffledItems)
     page.randomNeedsShuffle = false
     savePages()
     renderLeftNav()
@@ -800,7 +796,7 @@ async function triggerRandomPage(pageId){
     return
   }
 
-  page.randomCurrentIndex += 1
+  page.randomCurrentIndex -= 1
   savePages()
   renderLeftNav()
 
@@ -840,7 +836,7 @@ function updateRandomPageSettings(pageId, nextUrlInput, nextRangeStartInput, nex
 
   if(playlistChanged || rangeChanged){
     page.randomShuffledItems = []
-    page.randomCurrentIndex = 0
+    page.randomCurrentIndex = -1
     page.randomNeedsShuffle = true
   }
 
@@ -853,28 +849,28 @@ async function triggerHeaderRandomLink(linkId){
   if(!link || !link.isRandom) return
 
   if(link.needsShuffle || !link.shuffledItems.length){
-    if(!confirm('Shuffle this playlist now?')) return
+    if(!confirm('Load this playlist now?')) return
     try{
       const videos = await fetchPlaylistVideos(link.url)
       if(!videos.length){
         alert('No videos were found in that playlist.')
         return
       }
-      link.shuffledItems = shufflePlaylistItems(videos)
-      link.currentIndex = 0
+      link.shuffledItems = preparePlaylistSequence(videos)
+      link.currentIndex = initialPlaylistSequenceIndex(link.shuffledItems)
       link.needsShuffle = false
       saveHeaderLinks()
       renderLeftNav()
+      return
     }catch(e){
       alert(e && e.message ? e.message : 'Could not load that playlist from the extension.')
       return
     }
   }
 
-  if(link.currentIndex >= link.shuffledItems.length){
-    if(!confirm('This playlist has been used all the way through. It needs to be reshuffled. Reshuffle now?')) return
-    link.shuffledItems = shufflePlaylistItems(link.shuffledItems)
-    link.currentIndex = 0
+  if(link.currentIndex < 0){
+    if(!confirm('This playlist is complete. Start again from the oldest item?')) return
+    link.currentIndex = initialPlaylistSequenceIndex(link.shuffledItems)
     link.needsShuffle = false
     saveHeaderLinks()
     renderLeftNav()
@@ -886,7 +882,7 @@ async function triggerHeaderRandomLink(linkId){
     return
   }
 
-  link.currentIndex += 1
+  link.currentIndex -= 1
   saveHeaderLinks()
   renderLeftNav()
 
@@ -906,10 +902,10 @@ function promptForRandomPlaylistSlot(existingSlot){
     return null
   }
 
-  const titleInput = prompt('Button label', existingSlot ? existingSlot.title : 'Random Playlist')
+  const titleInput = prompt('Button label', existingSlot ? existingSlot.title : 'Playlist Sequence')
   if(titleInput === null) return null
 
-  const title = titleInput.trim() || (existingSlot ? existingSlot.title : '') || 'Random Playlist'
+  const title = titleInput.trim() || (existingSlot ? existingSlot.title : '') || 'Playlist Sequence'
   const samePlaylist = !!existingSlot && existingSlot.playlistUrl === playlistUrl
 
   return {
@@ -926,11 +922,11 @@ function configureRandomPlaylistSlot(pageId){
   const existingSlot = getRandomPlaylistSlot(pid, tid)
 
   if(existingSlot){
-    const action = prompt('Random playlist button already exists here. Type: edit or remove', 'edit')
+    const action = prompt('Playlist sequence button already exists here. Type: edit or remove', 'edit')
     if(!action) return
     const next = action.trim().toLowerCase()
     if(next === 'remove' || next === 'delete'){
-      if(confirm('Remove the random playlist button from this tab?')) removeRandomPlaylistSlot(pid, tid)
+      if(confirm('Remove the playlist sequence button from this tab?')) removeRandomPlaylistSlot(pid, tid)
       return
     }
     if(next !== 'edit') return
@@ -947,7 +943,7 @@ async function triggerRandomPlaylistSlot(pageId, tabId){
   if(!slot) return
 
   if(slot.needsShuffle || !slot.shuffledItems.length){
-    if(!confirm('Shuffle this playlist now?')) return
+    if(!confirm('Load this playlist now?')) return
     try{
       const videos = await fetchPlaylistVideos(slot.playlistUrl)
       if(!videos.length){
@@ -956,11 +952,12 @@ async function triggerRandomPlaylistSlot(pageId, tabId){
       }
       slot = {
         ...slot,
-        shuffledItems: shufflePlaylistItems(videos),
-        currentIndex: 0,
+        shuffledItems: preparePlaylistSequence(videos),
+        currentIndex: initialPlaylistSequenceIndex(videos),
         needsShuffle: false
       }
       setRandomPlaylistSlot(pid, tid, slot)
+      return
     }catch(e){
       alert(e && e.message ? e.message : 'Could not load that playlist from the extension.')
       return
@@ -970,12 +967,11 @@ async function triggerRandomPlaylistSlot(pageId, tabId){
   slot = getRandomPlaylistSlot(pid, tid)
   if(!slot) return
 
-  if(slot.currentIndex >= slot.shuffledItems.length){
-    if(!confirm('This playlist has been used all the way through. It needs to be reshuffled. Reshuffle now?')) return
+  if(slot.currentIndex < 0){
+    if(!confirm('This playlist is complete. Start again from the oldest item?')) return
     slot = {
       ...slot,
-      shuffledItems: shufflePlaylistItems(slot.shuffledItems),
-      currentIndex: 0,
+      currentIndex: initialPlaylistSequenceIndex(slot.shuffledItems),
       needsShuffle: false
     }
     setRandomPlaylistSlot(pid, tid, slot)
@@ -987,7 +983,7 @@ async function triggerRandomPlaylistSlot(pageId, tabId){
     return
   }
 
-  setRandomPlaylistSlot(pid, tid, {...slot, currentIndex: slot.currentIndex + 1})
+  setRandomPlaylistSlot(pid, tid, {...slot, currentIndex: slot.currentIndex - 1})
   try{
     await openExternalUrl(nextVideo.url)
   }catch(e){
@@ -2157,7 +2153,7 @@ function renderLeftNav(){
     button.type = 'button'
     button.className = `page-link${currentPageId===page.id ? ' selected' : ''}${page.isRandom ? ' random-page-link' : ''}`
     button.textContent = page.title
-    button.title = page.isRandom ? `${page.title} - random playlist` : page.title
+    button.title = page.isRandom ? `${page.title} - playlist sequence` : page.title
     const holdPress = isLibraryPage(page.id)
       ? {consume: ()=>false}
       : attachLongPress(button, ()=>openPageHoldDialog(page.id))
@@ -2230,8 +2226,8 @@ function renderTabBar(pageId){
     const randomPlaylistToggle = document.createElement('button')
     randomPlaylistToggle.type = 'button'
     randomPlaylistToggle.className = `main-tab title-filter-toggle${getRandomPlaylistSlot(pid, activeTabId) ? ' selected' : ''}`
-    randomPlaylistToggle.title = 'Add or edit random playlist button'
-    randomPlaylistToggle.setAttribute('aria-label', 'Add or edit random playlist button')
+    randomPlaylistToggle.title = 'Add or edit playlist sequence button'
+    randomPlaylistToggle.setAttribute('aria-label', 'Add or edit playlist sequence button')
     randomPlaylistToggle.textContent = '?'
     randomPlaylistToggle.addEventListener('click', ()=>{ configureRandomPlaylistSlot(pid) })
     row.appendChild(randomPlaylistToggle)
