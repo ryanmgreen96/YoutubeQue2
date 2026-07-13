@@ -2496,9 +2496,14 @@ function handleParams(){ const p = new URLSearchParams(location.search); if(p.ha
   const videoId = p.get('videoId'); const title = p.get('title')? decodeURIComponent(p.get('title')) : '';
   const url = `https://www.youtube.com/watch?v=${videoId}`
   addItem({url,title:title||`YouTube video ${videoId}`,videoId,pageId:'home',created:new Date().toISOString()})
+}
+  if(p.has('openPage')){
+    const targetPage = normalizePageId((p.get('openPage') || '').trim())
+    if(targetPage === LIBRARY_PAGE_ID) setCurrentPage(LIBRARY_PAGE_ID)
+  }
   // remove params from url
-  history.replaceState({},document.title,location.pathname)
-}}
+  if(location.search) history.replaceState({},document.title,location.pathname)
+}
 
 window.addEventListener('load', ()=>{
   if('serviceWorker' in navigator){

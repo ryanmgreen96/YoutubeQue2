@@ -194,6 +194,11 @@ function closeTabAfterSave(tabId){
   chrome.tabs.remove(tabId, ()=>{ void chrome.runtime.lastError })
 }
 
+function openLibraryPage(){
+  const target = `${APP_URL}?openPage=${encodeURIComponent(LIBRARY_PAGE_ID)}`
+  chrome.tabs.create({url: target}, ()=>{ void chrome.runtime.lastError })
+}
+
 async function buildArchiveLibraryItem(tab){
   const url = tab && typeof tab.url === 'string' ? tab.url : ''
   if(!url) return null
@@ -227,6 +232,7 @@ chrome.action.onClicked.addListener((tab)=>{
         deduped.unshift(archiveItem)
         chrome.storage.local.set({queuedItems: deduped}, ()=>{
           closeTabAfterSave(tab && tab.id)
+          openLibraryPage()
         })
       })
     })()
