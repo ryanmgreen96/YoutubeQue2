@@ -159,6 +159,82 @@ function extractSavedLinkFromTab(tab){
   }
 }
 
+function parseIsoDurationToSeconds(raw){
+  const value = safeText(raw)
+  if(!value) return 0
+  const match = value.match(/^P(?:(\d+)D)?T?(?:(\d+)H)?(?:(\d+)M)?(?:(\d+)S)?$/i)
+  if(!match) return 0
+  const days = Number(match[1] || 0)
+  const hours = Number(match[2] || 0)
+  const minutes = Number(match[3] || 0)
+  const seconds = Number(match[4] || 0)
+  if(!Number.isFinite(days + hours + minutes + seconds)) return 0
+  return (days * 86400) + (hours * 3600) + (minutes * 60) + seconds
+}
+
+async function fetchVideoDurationSeconds(url){
+  try{
+    const res = await fetch(url)
+    const txt = await res.text()
+    let doc
+    try{ doc = new DOMParser().parseFromString(txt, 'text/html') }catch(e){ doc = null }
+    if(!doc) return 0
+
+    const metaCandidates = [
+      doc.querySelector('meta[itemprop="duration"]')?.getAttribute('content'),
+      doc.querySelector('meta[property="og:video:duration"]')?.getAttribute('content')
+    ].filter(Boolean)
+
+    for(const candidate of metaCandidates){
+      const numeric = Number(candidate)
+      if(Number.isFinite(numeric) && numeric > 0) return Math.round(numeric)
+      const parsed = parseIsoDurationToSeconds(candidate)
+      if(parsed > 0) return parsed
+    }
+
+    const jsonLdBlocks = Array.from(doc.querySelectorAll('script[type="application/ld+json"]')).map(node=>node.textContent || '')
+    for(const block of jsonLdBlocks){
+      try{
+        const data = JSON.parse(block)
+        const entries = Array.isArray(data) ? data : [data]
+        for(const entry of entries){
+          const parsed = parseIsoDurationToSeconds(entry && entry.duration)
+          if(parsed > 0) return parsed
+        }
+      }catch(e){ }
+    }
+  }catch(e){ }
+
+  return 0
+}
+
+async function extractSavedLinkFromTabWithDuration(tab){
+  const fallbackUrl = (tab && typeof tab.url === 'string') ? tab.url : ''
+  if(!fallbackUrl) return null
+
+  const videoUrl = extractVideoUrlFromTab(fallbackUrl)
+  const rawTitle = ((tab && tab.title) || '').trim()
+
+  if(videoUrl){
+    const durationSeconds = await fetchVideoDurationSeconds(videoUrl)
+    return {
+      url: videoUrl,
+      title: rawTitle.replace(/\s*-\s*YouTube\s*$/i, '').trim() || 'YouTube video',
+      durationSeconds
+    }
+  }
+
+  try{
+    const pageUrl = new URL(fallbackUrl)
+    return {
+      url: pageUrl.href,
+      title: rawTitle || pageUrl.hostname.replace(/^www\./, '') || pageUrl.href
+    }
+  }catch(e){
+    return rawTitle || fallbackUrl ? {url: fallbackUrl, title: rawTitle || fallbackUrl} : null
+  }
+}
+
 function isArchiveOrgUrl(rawUrl){
   if(!rawUrl) return false
   try{
@@ -233,25 +309,28 @@ chrome.action.onClicked.addListener((tab)=>{
     return
   }
 
-  const itemData = extractSavedLinkFromTab(tab)
-  if(!itemData) return
+  ;(async ()=>{
+    const itemData = await extractSavedLinkFromTabWithDuration(tab)
+    if(!itemData) return
 
-  const item = {
-    id: uid(),
-    url: itemData.url,
-    title: itemData.title,
-    created: new Date().toISOString(),
-    publishedAt: ''
-  }
+    const item = {
+      id: uid(),
+      url: itemData.url,
+      title: itemData.title,
+      created: new Date().toISOString(),
+      publishedAt: '',
+      durationSeconds: Number(itemData.durationSeconds) || 0
+    }
 
-  chrome.storage.local.get({[SAVED_LINKS_KEY]:[]}, (res)=>{
-    const current = res[SAVED_LINKS_KEY] || []
-    const deduped = current.filter((link)=>link.url !== item.url)
-    deduped.unshift(item)
-    chrome.storage.local.set({[SAVED_LINKS_KEY]: deduped}, ()=>{
-      closeTabAfterSave(tab && tab.id)
+    chrome.storage.local.get({[SAVED_LINKS_KEY]:[]}, (res)=>{
+      const current = res[SAVED_LINKS_KEY] || []
+      const deduped = current.filter((link)=>link.url !== item.url)
+      deduped.unshift(item)
+      chrome.storage.local.set({[SAVED_LINKS_KEY]: deduped}, ()=>{
+        closeTabAfterSave(tab && tab.id)
+      })
     })
-  })
+  })()
 })
 
 chrome.commands.onCommand.addListener((command)=>{

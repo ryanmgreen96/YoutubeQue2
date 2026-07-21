@@ -1913,6 +1913,42 @@ function isYouTubeUrl(url){
   }
 }
 
+function parseDurationTextToSeconds(value){
+  const raw = (value || '').trim()
+  if(!raw) return 0
+  const match = raw.match(/^(\d{1,3}:)?\d{1,2}:\d{2}$/)
+  if(!match) return 0
+  const parts = raw.split(':').map((part)=>Number(part))
+  if(parts.some((part)=>!Number.isFinite(part) || part < 0)) return 0
+  if(parts.length===2){
+    const [m, s] = parts
+    if(s > 59) return 0
+    return (m * 60) + s
+  }
+  const [h, m, s] = parts
+  if(m > 59 || s > 59) return 0
+  return (h * 3600) + (m * 60) + s
+}
+
+function getSavedLinkDurationSeconds(link){
+  const direct = Number(link && link.durationSeconds)
+  if(Number.isFinite(direct) && direct > 0) return Math.round(direct)
+
+  const title = (link && typeof link.title==='string') ? link.title : ''
+  const matches = title.match(/\b(?:\d{1,3}:)?\d{1,2}:\d{2}\b/g) || []
+  let maxSeconds = 0
+  matches.forEach((token)=>{
+    const seconds = parseDurationTextToSeconds(token)
+    if(seconds > maxSeconds) maxSeconds = seconds
+  })
+  return maxSeconds
+}
+
+function isLongSavedVideo(link){
+  if(!link || !isYouTubeUrl(link.url)) return false
+  return getSavedLinkDurationSeconds(link) >= (20 * 60)
+}
+
 function makeThumbUrl(vid){ return `https://i.ytimg.com/vi/${vid}/hqdefault.jpg` }
 
 function isDividerItem(item){ return item && item.type === 'divider' }
@@ -2459,6 +2495,7 @@ function renderSavedLinks(){
     a.textContent = link.title || link.url
     a.title = link.title || link.url
     if(!isYouTubeUrl(link.url)) a.classList.add('saved-link-website')
+    else if(isLongSavedVideo(link)) a.classList.add('saved-link-long')
     a.addEventListener('click', (ev)=>{
       ev.preventDefault()
       window.open(link.url, '_blank', 'noopener,noreferrer')
