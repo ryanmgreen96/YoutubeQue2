@@ -13,6 +13,8 @@ const LAST_VIEWED_KEY = 'ytLastViewedItem_v1'
 const RANDOM_PLAYLISTS_KEY = 'ytRandomPlaylists_v1'
 const LIBRARY_PAGE_ID = 'library'
 const LIBRARY_PAGE_TITLE = 'Library'
+const GYM_PAGE_ID = 'gym'
+const GYM_PAGE_TITLE = 'Gym'
 const sections = document.getElementById('sections')
 const leftNavEl = document.getElementById('left-nav')
 const addPageBtn = document.getElementById('add-page-btn')
@@ -209,6 +211,13 @@ function clearTimer(){
 function isLibraryPage(pageId){
   return normalizePageId(pageId) === LIBRARY_PAGE_ID
 }
+function isGymPage(pageId){
+  return normalizePageId(pageId) === GYM_PAGE_ID
+}
+function isProtectedPage(pageId){
+  const pid = normalizePageId(pageId)
+  return pid === LIBRARY_PAGE_ID || pid === GYM_PAGE_ID
+}
 function ensureLibraryPageExists(){
   const existing = pages.find((page)=>page && page.id===LIBRARY_PAGE_ID)
   if(existing){
@@ -229,6 +238,32 @@ function ensureLibraryPageExists(){
   pageTabs[LIBRARY_PAGE_ID] = [getDefaultTab()]
   activeTabs[LIBRARY_PAGE_ID] = 'default'
   pageTitleFilters[LIBRARY_PAGE_ID] = []
+
+  savePages()
+  savePageTabs()
+  saveActiveTabs()
+  savePageTitleFilters()
+}
+function ensureGymPageExists(){
+  const existing = pages.find((page)=>page && page.id===GYM_PAGE_ID)
+  if(existing){
+    if(existing.title !== GYM_PAGE_TITLE){
+      existing.title = GYM_PAGE_TITLE
+      savePages()
+    }
+    return
+  }
+
+  const gymPage = {
+    id: GYM_PAGE_ID,
+    title: GYM_PAGE_TITLE,
+    created: new Date().toISOString()
+  }
+
+  pages.unshift(gymPage)
+  pageTabs[GYM_PAGE_ID] = [getDefaultTab()]
+  activeTabs[GYM_PAGE_ID] = 'default'
+  pageTitleFilters[GYM_PAGE_ID] = []
 
   savePages()
   savePageTabs()
@@ -372,6 +407,28 @@ function renderThemeSwitcher(){
   libraryBtn.textContent = '📚'
   libraryBtn.addEventListener('click', ()=>{ setCurrentPage(LIBRARY_PAGE_ID) })
   themeSwitcherEl.appendChild(libraryBtn)
+
+  const gymBtn = document.createElement('button')
+  gymBtn.type = 'button'
+  gymBtn.className = `theme-cycle-btn gym-btn${isGymPage(currentPageId) ? ' selected' : ''}`
+  gymBtn.title = editMode && selectedItemIds.size
+    ? `Move ${selectedItemIds.size} selected video${selectedItemIds.size===1 ? '' : 's'} to ${GYM_PAGE_TITLE}`
+    : `Open ${GYM_PAGE_TITLE} page`
+  gymBtn.textContent = '🏋️'
+  const gymHold = attachLongPress(gymBtn, ()=>{
+    if(currentPageId!=='home') setCurrentPage('home')
+    if(!editMode) toggleEditMode()
+    alert('Selection mode ON. Pick videos, then tap the dumbbell to move them to Gym.')
+  })
+  gymBtn.addEventListener('click', ()=>{
+    if(gymHold.consume()) return
+    if(editMode && selectedItemIds.size){
+      moveSelectedItemsToPage(GYM_PAGE_ID)
+      return
+    }
+    setCurrentPage(GYM_PAGE_ID)
+  })
+  themeSwitcherEl.appendChild(gymBtn)
 
   const btn = document.createElement('button')
   btn.type = 'button'
@@ -1267,7 +1324,7 @@ function getHoldDialogModel(){
     const page = pages.find(item=>item.id===holdDialogState.pageId)
     if(!page) return null
     const index = pages.findIndex(item=>item.id===page.id)
-    const isLibrary = isLibraryPage(page.id)
+    const isSpecial = isProtectedPage(page.id)
     return {
       title: `Page: ${page.title}`,
       linkEditorVisible: false,
@@ -1280,9 +1337,9 @@ function getHoldDialogModel(){
       canEdit: !!page.isRandom,
       canMoveUp: index > 0,
       canMoveDown: index < pages.length - 1,
-      canDelete: !isLibrary,
-      randomVisible: !isLibrary,
-      randomChecked: !isLibrary && !!page.isRandom,
+      canDelete: !isSpecial,
+      randomVisible: !isSpecial,
+      randomChecked: !isSpecial && !!page.isRandom,
       onToggleRandom: (checked)=>setPageRandomMode(page.id, checked),
       onEdit: ()=>{
         const applied = updateRandomPageSettings(
@@ -1297,7 +1354,7 @@ function getHoldDialogModel(){
       onMoveUp: ()=>{ movePage(page.id, -1); renderHoldDialog() },
       onMoveDown: ()=>{ movePage(page.id, 1); renderHoldDialog() },
       onDelete: ()=>{
-        if(isLibrary) return
+        if(isSpecial) return
         if(!confirm(`Delete page "${page.title}" and all videos in it?`)) return
         closeHoldDialog()
         deletePage(page.id)
@@ -1421,7 +1478,7 @@ function openLinkHoldDialog(linkId){
 
 function normalizePageId(pageId){ return pageId || 'home' }
 function normalizeTabId(tabId){ return tabId || 'default' }
-function getPageTitle(pageId){ if(pageId==='home') return 'Home'; if(pageId===LIBRARY_PAGE_ID) return LIBRARY_PAGE_TITLE; const page = pages.find(item=>item.id===pageId); return page ? page.title : 'Home' }
+function getPageTitle(pageId){ if(pageId==='home') return 'Home'; if(pageId===LIBRARY_PAGE_ID) return LIBRARY_PAGE_TITLE; if(pageId===GYM_PAGE_ID) return GYM_PAGE_TITLE; const page = pages.find(item=>item.id===pageId); return page ? page.title : 'Home' }
 function getDefaultTab(){ return {id:'default', title:'Main'} }
 function getPageTabs(pageId){
   const pid = normalizePageId(pageId)
@@ -1509,7 +1566,7 @@ function addPage(title){
 }
 function deletePage(pageId){
   const pid = normalizePageId(pageId)
-  if(pid === 'home' || pid === LIBRARY_PAGE_ID) return
+  if(pid === 'home' || isProtectedPage(pid)) return
 
   pages = pages.filter(page=>page.id !== pid)
   delete pageTabs[pid]
@@ -1542,7 +1599,7 @@ function ensurePageTabIntegrity(){
   getPageTabs('home')
   getActiveTabId('home')
 
-  const validPageIds = new Set(['home', LIBRARY_PAGE_ID, ...pages.map(page=>page.id)])
+  const validPageIds = new Set(['home', LIBRARY_PAGE_ID, GYM_PAGE_ID, ...pages.map(page=>page.id)])
 
   Object.keys(pageTabs).forEach(pid=>{
     if(!validPageIds.has(pid)){
@@ -1584,6 +1641,10 @@ function ensurePageTabIntegrity(){
     }
     if(page.id===LIBRARY_PAGE_ID && page.title !== LIBRARY_PAGE_TITLE){
       page.title = LIBRARY_PAGE_TITLE
+      changedFilters = true
+    }
+    if(page.id===GYM_PAGE_ID && page.title !== GYM_PAGE_TITLE){
+      page.title = GYM_PAGE_TITLE
       changedFilters = true
     }
   })
@@ -2126,7 +2187,7 @@ function renderLeftNav(){
   })
 
   pages.forEach(page=>{
-    if(isLibraryPage(page.id)) return
+    if(isProtectedPage(page.id)) return
     const row = document.createElement('div')
     row.className = 'page-link-row'
 
@@ -2325,7 +2386,7 @@ function renderTabBar(pageId){
 }
 
 function render(){ sections.innerHTML=''
-  if(currentPageId !== 'home' && !isLibraryPage(currentPageId)) renderTabBar(currentPageId)
+  if(currentPageId !== 'home' && !isProtectedPage(currentPageId)) renderTabBar(currentPageId)
   const activeTabId = getActiveTabId(currentPageId)
   const list = items.filter(i=>normalizePageId(i.pageId)===currentPageId && normalizeTabId(i.tabId)===activeTabId)
   const groups = {today:[], yesterday:[], earlier:[]}
@@ -2336,6 +2397,11 @@ function render(){ sections.innerHTML=''
       const heading = document.createElement('h2')
       heading.className = 'page-heading'
       heading.textContent = LIBRARY_PAGE_TITLE
+      sections.appendChild(heading)
+    }else if(isGymPage(currentPageId)){
+      const heading = document.createElement('h2')
+      heading.className = 'page-heading'
+      heading.textContent = GYM_PAGE_TITLE
       sections.appendChild(heading)
     }
     renderRandomPlaylistButton(currentPageId, activeTabId)
@@ -2545,6 +2611,7 @@ function handleParams(){ const p = new URLSearchParams(location.search); if(p.ha
   if(p.has('openPage')){
     const targetPage = normalizePageId((p.get('openPage') || '').trim())
     if(targetPage === LIBRARY_PAGE_ID) setCurrentPage(LIBRARY_PAGE_ID)
+    if(targetPage === GYM_PAGE_ID) setCurrentPage(GYM_PAGE_ID)
   }
   // remove params from url
   if(location.search) history.replaceState({},document.title,location.pathname)
@@ -2561,6 +2628,7 @@ window.addEventListener('load', ()=>{
     savePages()
   }
   ensureLibraryPageExists()
+  ensureGymPageExists()
   ensurePageTabIntegrity()
   currentPageId = 'home'
   renderLeftNav()
