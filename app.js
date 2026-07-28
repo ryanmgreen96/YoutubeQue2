@@ -13,6 +13,7 @@ const LAST_VIEWED_KEY = 'ytLastViewedItem_v1'
 const RANDOM_PLAYLISTS_KEY = 'ytRandomPlaylists_v1'
 const NOTEBOOK_TEXT_KEY = 'ytNotebookText_v1'
 const NOTEBOOK_SCROLL_KEY = 'ytNotebookScroll_v1'
+const NOTEBOOK_CURSOR_KEY = 'ytNotebookCursor_v1'
 const LIBRARY_PAGE_ID = 'library'
 const LIBRARY_PAGE_TITLE = 'Library'
 const GYM_PAGE_ID = 'gym'
@@ -299,16 +300,29 @@ function playAlarmBeep(){
 }
 function saveNotebookState(){
   if(!noteTextareaEl) return
+  const cursorPos = noteTextareaEl.selectionStart ?? noteTextareaEl.value.length
   localStorage.setItem(NOTEBOOK_TEXT_KEY, noteTextareaEl.value)
   localStorage.setItem(NOTEBOOK_SCROLL_KEY, String(noteTextareaEl.scrollTop || 0))
+  localStorage.setItem(NOTEBOOK_CURSOR_KEY, String(cursorPos))
 }
 function loadNotebookState(){
   if(!noteTextareaEl) return
   noteTextareaEl.value = localStorage.getItem(NOTEBOOK_TEXT_KEY) || ''
   const savedScroll = Number(localStorage.getItem(NOTEBOOK_SCROLL_KEY) || '0')
+  const savedCursor = Number(localStorage.getItem(NOTEBOOK_CURSOR_KEY) || '0')
+  const safeCursor = Number.isFinite(savedCursor) ? Math.max(0, Math.min(savedCursor, noteTextareaEl.value.length)) : noteTextareaEl.value.length
   if(Number.isFinite(savedScroll)) {
     requestAnimationFrame(()=>{
       noteTextareaEl.scrollTop = savedScroll
+      requestAnimationFrame(()=>{
+        noteTextareaEl.focus()
+        noteTextareaEl.setSelectionRange(safeCursor, safeCursor)
+      })
+    })
+  } else {
+    requestAnimationFrame(()=>{
+      noteTextareaEl.focus()
+      noteTextareaEl.setSelectionRange(safeCursor, safeCursor)
     })
   }
 }
@@ -317,7 +331,6 @@ function openNotebook(){
   notePanelEl.classList.remove('hidden')
   notePanelEl.setAttribute('aria-hidden', 'false')
   loadNotebookState()
-  noteTextareaEl.focus()
 }
 function closeNotebook(){
   if(!notePanelEl || !noteTextareaEl) return
