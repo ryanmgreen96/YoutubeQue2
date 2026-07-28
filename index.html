@@ -27,6 +27,10 @@
       </div>
     </aside>
     <section class="content-area">
+      <div id="note-panel" class="note-panel hidden" aria-hidden="true">
+        <button id="note-close-btn" class="note-close-btn" type="button" title="Close notepad" aria-label="Close notepad">×</button>
+        <textarea id="note-textarea" class="note-textarea" spellcheck="false" placeholder="Write something..."></textarea>
+      </div>
       <div id="sections"></div>
     </section>
     <aside class="side-bar right-bar">
@@ -45,13 +49,6 @@
       </div>
     </div>
   </template>
-
-  <div id="note-overlay" class="note-overlay hidden" aria-hidden="true">
-    <div class="note-overlay-backdrop"></div>
-    <div class="note-sheet" role="dialog" aria-modal="true" aria-label="Notepad">
-      <textarea id="note-textarea" class="note-textarea" spellcheck="false" placeholder="Write something..."></textarea>
-    </div>
-  </div>
 
   <div id="hold-action-dialog" class="hold-dialog hidden" aria-hidden="true">
     <div class="hold-dialog-backdrop"></div>

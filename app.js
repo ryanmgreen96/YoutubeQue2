@@ -31,7 +31,8 @@ const holdDialogEl = document.getElementById('hold-action-dialog')
 const holdDialogBackdropEl = holdDialogEl ? holdDialogEl.querySelector('.hold-dialog-backdrop') : null
 const holdDialogTitleEl = document.getElementById('hold-dialog-title')
 const noteToggleBtn = document.getElementById('note-toggle-btn')
-const noteOverlayEl = document.getElementById('note-overlay')
+const notePanelEl = document.getElementById('note-panel')
+const noteCloseBtn = document.getElementById('note-close-btn')
 const noteTextareaEl = document.getElementById('note-textarea')
 const holdLinkEditorEl = document.getElementById('hold-link-editor')
 const holdLinkTitleInputEl = document.getElementById('hold-link-title-input')
@@ -312,17 +313,17 @@ function loadNotebookState(){
   }
 }
 function openNotebook(){
-  if(!noteOverlayEl || !noteTextareaEl) return
-  noteOverlayEl.classList.remove('hidden')
-  noteOverlayEl.setAttribute('aria-hidden', 'false')
+  if(!notePanelEl || !noteTextareaEl) return
+  notePanelEl.classList.remove('hidden')
+  notePanelEl.setAttribute('aria-hidden', 'false')
   loadNotebookState()
   noteTextareaEl.focus()
 }
 function closeNotebook(){
-  if(!noteOverlayEl || !noteTextareaEl) return
+  if(!notePanelEl || !noteTextareaEl) return
   saveNotebookState()
-  noteOverlayEl.classList.add('hidden')
-  noteOverlayEl.setAttribute('aria-hidden', 'true')
+  notePanelEl.classList.add('hidden')
+  notePanelEl.setAttribute('aria-hidden', 'true')
 }
 function showTimerToast(message){
   const existing = document.getElementById('timer-toast')
@@ -2666,10 +2667,30 @@ if(sections){
 
 if(holdDialogBackdropEl) holdDialogBackdropEl.addEventListener('click', closeHoldDialog)
 if(holdExitBtn) holdExitBtn.addEventListener('click', closeHoldDialog)
+
+if(noteToggleBtn){
+  noteToggleBtn.addEventListener('click', (event)=>{
+    event.stopPropagation()
+    if(notePanelEl && !notePanelEl.classList.contains('hidden')){
+      closeNotebook()
+    } else {
+      openNotebook()
+    }
+  })
+}
+if(noteCloseBtn){
+  noteCloseBtn.addEventListener('click', closeNotebook)
+}
+if(noteTextareaEl){
+  noteTextareaEl.addEventListener('input', saveNotebookState)
+  noteTextareaEl.addEventListener('scroll', saveNotebookState, {passive:true})
+}
+
 window.addEventListener('keydown', (ev)=>{
   if(ev.key!=='Escape') return
   closeHoldDialog()
   closeTitleFilterOverlay()
+  if(notePanelEl && !notePanelEl.classList.contains('hidden')) closeNotebook()
 })
 
 // handle url params (extension will open app with params)
