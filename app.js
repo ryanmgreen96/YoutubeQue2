@@ -11,6 +11,8 @@ const THEME_INDEX_KEY = 'ytThemeIndex_v1'
 const SCROLL_POSITIONS_KEY = 'ytScrollPositions_v1'
 const LAST_VIEWED_KEY = 'ytLastViewedItem_v1'
 const RANDOM_PLAYLISTS_KEY = 'ytRandomPlaylists_v1'
+const NOTEBOOK_TEXT_KEY = 'ytNotebookText_v1'
+const NOTEBOOK_SCROLL_KEY = 'ytNotebookScroll_v1'
 const LIBRARY_PAGE_ID = 'library'
 const LIBRARY_PAGE_TITLE = 'Library'
 const GYM_PAGE_ID = 'gym'
@@ -28,6 +30,9 @@ const template = document.getElementById('item-template')
 const holdDialogEl = document.getElementById('hold-action-dialog')
 const holdDialogBackdropEl = holdDialogEl ? holdDialogEl.querySelector('.hold-dialog-backdrop') : null
 const holdDialogTitleEl = document.getElementById('hold-dialog-title')
+const noteToggleBtn = document.getElementById('note-toggle-btn')
+const noteOverlayEl = document.getElementById('note-overlay')
+const noteTextareaEl = document.getElementById('note-textarea')
 const holdLinkEditorEl = document.getElementById('hold-link-editor')
 const holdLinkTitleInputEl = document.getElementById('hold-link-title-input')
 const holdLinkUrlInputEl = document.getElementById('hold-link-url-input')
@@ -290,6 +295,34 @@ function playAlarmBeep(){
     })
     setTimeout(()=>{ try{ ctx.close() }catch(e){} }, (offset + 0.5) * 1000)
   }catch(e){}
+}
+function saveNotebookState(){
+  if(!noteTextareaEl) return
+  localStorage.setItem(NOTEBOOK_TEXT_KEY, noteTextareaEl.value)
+  localStorage.setItem(NOTEBOOK_SCROLL_KEY, String(noteTextareaEl.scrollTop || 0))
+}
+function loadNotebookState(){
+  if(!noteTextareaEl) return
+  noteTextareaEl.value = localStorage.getItem(NOTEBOOK_TEXT_KEY) || ''
+  const savedScroll = Number(localStorage.getItem(NOTEBOOK_SCROLL_KEY) || '0')
+  if(Number.isFinite(savedScroll)) {
+    requestAnimationFrame(()=>{
+      noteTextareaEl.scrollTop = savedScroll
+    })
+  }
+}
+function openNotebook(){
+  if(!noteOverlayEl || !noteTextareaEl) return
+  noteOverlayEl.classList.remove('hidden')
+  noteOverlayEl.setAttribute('aria-hidden', 'false')
+  loadNotebookState()
+  noteTextareaEl.focus()
+}
+function closeNotebook(){
+  if(!noteOverlayEl || !noteTextareaEl) return
+  saveNotebookState()
+  noteOverlayEl.classList.add('hidden')
+  noteOverlayEl.setAttribute('aria-hidden', 'true')
 }
 function showTimerToast(message){
   const existing = document.getElementById('timer-toast')

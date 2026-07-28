@@ -31,6 +31,9 @@
     </section>
     <aside class="side-bar right-bar">
       <div id="saved-links" class="saved-links"></div>
+      <div class="right-bar-footer">
+        <button id="note-toggle-btn" class="left-note-btn" type="button" title="Open notepad" aria-label="Open notepad">📝</button>
+      </div>
     </aside>
   </main>
 
@@ -42,6 +45,13 @@
       </div>
     </div>
   </template>
+
+  <div id="note-overlay" class="note-overlay hidden" aria-hidden="true">
+    <div class="note-overlay-backdrop"></div>
+    <div class="note-sheet" role="dialog" aria-modal="true" aria-label="Notepad">
+      <textarea id="note-textarea" class="note-textarea" spellcheck="false" placeholder="Write something..."></textarea>
+    </div>
+  </div>
 
   <div id="hold-action-dialog" class="hold-dialog hidden" aria-hidden="true">
     <div class="hold-dialog-backdrop"></div>
