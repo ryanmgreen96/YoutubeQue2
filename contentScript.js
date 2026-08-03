@@ -267,17 +267,39 @@
     return (nested.getAttribute && (nested.getAttribute('href') || nested.getAttribute('data-href'))) || nested.href || ''
   }
 
-  function mergeUniqueByUrl(incoming, existing){
-    const seen = new Set()
-    const merged = []
+  function mergeSavedLinksPreserveExistingPosition(incoming, existing){
+    const cleanedExisting = []
+    const existingByUrl = new Map()
 
-    incoming.concat(existing).forEach((item)=>{
-      if(!item || !item.url || seen.has(item.url)) return
-      seen.add(item.url)
-      merged.push(item)
+    ;(Array.isArray(existing) ? existing : []).forEach((item)=>{
+      if(!item || !item.url || existingByUrl.has(item.url)) return
+      existingByUrl.set(item.url, cleanedExisting.length)
+      cleanedExisting.push(item)
     })
 
-    return merged
+    const newItems = []
+    const seenNewUrls = new Set()
+
+    ;(Array.isArray(incoming) ? incoming : []).forEach((item)=>{
+      if(!item || !item.url) return
+      const existingIndex = existingByUrl.get(item.url)
+
+      if(Number.isInteger(existingIndex)){
+        const oldItem = cleanedExisting[existingIndex]
+        cleanedExisting[existingIndex] = {
+          ...item,
+          id: oldItem && oldItem.id ? oldItem.id : item.id,
+          created: oldItem && oldItem.created ? oldItem.created : item.created
+        }
+        return
+      }
+
+      if(seenNewUrls.has(item.url)) return
+      seenNewUrls.add(item.url)
+      newItems.push(item)
+    })
+
+    return newItems.concat(cleanedExisting)
   }
 
   function syncAppStateFromExtension(res){
@@ -302,7 +324,7 @@
     try{
       if(savedLinks.length){
         const existingSaved = JSON.parse(localStorage.getItem(SAVED_LINKS_APP_KEY)||'[]')
-        const mergedSaved = mergeUniqueByUrl(savedLinks, existingSaved)
+        const mergedSaved = mergeSavedLinksPreserveExistingPosition(savedLinks, existingSaved)
         localStorage.setItem(SAVED_LINKS_APP_KEY, JSON.stringify(mergedSaved))
         changed = true
       }
