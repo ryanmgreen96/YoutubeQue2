@@ -15,6 +15,7 @@ const NOTEBOOK_TEXT_KEY = 'ytNotebookText_v1'
 const NOTEBOOK_SCROLL_KEY = 'ytNotebookScroll_v1'
 const NOTEBOOK_CURSOR_KEY = 'ytNotebookCursor_v1'
 const SAVED_SHELVES_KEY = 'ytSavedShelves_v1'
+const HOME_OLD_HIDDEN_KEY = 'ytHomeOldHidden_v1'
 const LIBRARY_PAGE_ID = 'library'
 const LIBRARY_PAGE_TITLE = 'Library'
 const GYM_PAGE_ID = 'gym'
@@ -60,6 +61,7 @@ let pageTitleFilters = loadPageTitleFilters()
 let savedLinks = loadSavedLinks()
 let savedShelves = loadSavedShelves()
 let activeShelfAssignId = ''
+let homeOldHidden = loadHomeOldHidden()
 let headerLinks = loadHeaderLinks()
 let topbarRows = loadTopbarRows()
 let activeTopbarRowId = loadTopbarActiveRowId()
@@ -590,6 +592,8 @@ function loadSavedShelves(){
   }catch(e){ return [] }
 }
 function saveSavedShelves(){ localStorage.setItem(SAVED_SHELVES_KEY, JSON.stringify(savedShelves)) }
+function loadHomeOldHidden(){ return localStorage.getItem(HOME_OLD_HIDDEN_KEY) === '1' }
+function saveHomeOldHidden(){ localStorage.setItem(HOME_OLD_HIDDEN_KEY, homeOldHidden ? '1' : '0') }
 function ensureSavedShelvesIntegrity(){
   const validIds = new Set(savedLinks.map((link)=>link.id))
   let changed = false
@@ -649,6 +653,11 @@ function toggleSavedShelfCollapsed(shelfId){
 function toggleSavedShelfAssignMode(shelfId){
   activeShelfAssignId = activeShelfAssignId===shelfId ? '' : shelfId
   renderSavedLinks()
+}
+function toggleHomeOldHidden(){
+  homeOldHidden = !homeOldHidden
+  saveHomeOldHidden()
+  render()
 }
 function loadScrollPositions(){
   try{
@@ -1216,12 +1225,20 @@ function getActiveTopbarRow(){
   ensureTopbarState()
   return topbarRows.find(row=>row.id===activeTopbarRowId) || topbarRows[0]
 }
-function makeFaviconUrl(url){
+function makeFaviconCandidates(url){
   try{
-    const host = new URL(url).hostname
-    return `https://www.google.com/s2/favicons?domain=${encodeURIComponent(host)}&sz=64`
+    const parsed = new URL(url)
+    const host = parsed.hostname
+    const origin = parsed.origin
+    return [
+      `${origin}/favicon.ico`,
+      `${origin}/favicon.png`,
+      `${origin}/apple-touch-icon.png`,
+      `${origin}/favicon-32x32.png`,
+      `https://icons.duckduckgo.com/ip3/${encodeURIComponent(host)}.ico`
+    ]
   }catch(e){
-    return ''
+    return []
   }
 }
 function fallbackGlyph(title, url){
@@ -2307,7 +2324,9 @@ function renderHeaderLinks(){
 
     const img = document.createElement('img')
     img.className = 'topbar-link-favicon'
-    img.src = makeFaviconUrl(link.url)
+    const faviconCandidates = makeFaviconCandidates(link.url)
+    let faviconIndex = 0
+    img.src = faviconCandidates[faviconIndex] || ''
     img.alt = ''
 
     const fallback = document.createElement('span')
@@ -2315,6 +2334,11 @@ function renderHeaderLinks(){
     fallback.textContent = fallbackGlyph(link.title, link.url)
 
     img.addEventListener('error', ()=>{
+      faviconIndex += 1
+      if(faviconIndex < faviconCandidates.length){
+        img.src = faviconCandidates[faviconIndex]
+        return
+      }
       img.style.display = 'none'
       fallback.style.display = 'inline-flex'
     })
@@ -2617,7 +2641,7 @@ function render(){ sections.innerHTML=''
   })
 
   if(groups.recent.length) renderSection('', groups.recent, true)
-  if(groups.old.length) renderSection('Old', groups.old)
+  if(groups.old.length) renderSection('Old', groups.old, false, homeOldHidden)
   if(!groups.recent.length && !groups.old.length){
     const empty = document.createElement('p')
     empty.style.padding = '12px'
@@ -2728,7 +2752,7 @@ function renderSavedLinks(){
   savedLinksEl.appendChild(shelvesWrap)
 }
 
-function renderSection(title, list, showHomeControls = false){
+function renderSection(title, list, showHomeControls = false, hideGrid = false){
   const s = document.createElement('div'); s.className='section'
   if(title || showHomeControls){
     const header = document.createElement('div')
@@ -2754,7 +2778,20 @@ function renderSection(title, list, showHomeControls = false){
       deleteButton.addEventListener('click', toggleDeleteMode)
       header.appendChild(deleteButton)
     }
+    if(title==='Old' && currentPageId==='home'){
+      const oldToggleButton = document.createElement('button')
+      oldToggleButton.type = 'button'
+      oldToggleButton.className = 'edit-mode-btn'
+      oldToggleButton.textContent = homeOldHidden ? 'Show' : 'Hide'
+      oldToggleButton.title = homeOldHidden ? 'Show old videos' : 'Hide old videos'
+      oldToggleButton.addEventListener('click', toggleHomeOldHidden)
+      header.appendChild(oldToggleButton)
+    }
     s.appendChild(header)
+  }
+  if(hideGrid){
+    sections.appendChild(s)
+    return
   }
   const g = document.createElement('div'); g.className='grid'
   list.forEach(it=>{
