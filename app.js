@@ -592,7 +592,10 @@ function loadSavedShelves(){
   }catch(e){ return [] }
 }
 function saveSavedShelves(){ localStorage.setItem(SAVED_SHELVES_KEY, JSON.stringify(savedShelves)) }
-function loadHomeOldHidden(){ return localStorage.getItem(HOME_OLD_HIDDEN_KEY) === '1' }
+function loadHomeOldHidden(){
+  const raw = localStorage.getItem(HOME_OLD_HIDDEN_KEY)
+  return raw === '1' || raw === 'true'
+}
 function saveHomeOldHidden(){ localStorage.setItem(HOME_OLD_HIDDEN_KEY, homeOldHidden ? '1' : '0') }
 function ensureSavedShelvesIntegrity(){
   const validIds = new Set(savedLinks.map((link)=>link.id))
@@ -2759,7 +2762,14 @@ function renderSection(title, list, showHomeControls = false, hideGrid = false){
     header.className = 'section-header'
     if(title){
       const h = document.createElement('h2')
-      h.textContent = title
+      if(title==='Old' && currentPageId==='home'){
+        h.textContent = `${homeOldHidden ? '▸' : '▾'} Old`
+        h.title = homeOldHidden ? 'Show old videos' : 'Hide old videos'
+        h.style.cursor = 'pointer'
+        h.addEventListener('click', toggleHomeOldHidden)
+      }else{
+        h.textContent = title
+      }
       header.appendChild(h)
     }
     if(showHomeControls && currentPageId==='home'){
@@ -2777,15 +2787,6 @@ function renderSection(title, list, showHomeControls = false, hideGrid = false){
       deleteButton.title = 'Delete mode'
       deleteButton.addEventListener('click', toggleDeleteMode)
       header.appendChild(deleteButton)
-    }
-    if(title==='Old' && currentPageId==='home'){
-      const oldToggleButton = document.createElement('button')
-      oldToggleButton.type = 'button'
-      oldToggleButton.className = 'edit-mode-btn'
-      oldToggleButton.textContent = homeOldHidden ? 'Show' : 'Hide'
-      oldToggleButton.title = homeOldHidden ? 'Show old videos' : 'Hide old videos'
-      oldToggleButton.addEventListener('click', toggleHomeOldHidden)
-      header.appendChild(oldToggleButton)
     }
     s.appendChild(header)
   }
