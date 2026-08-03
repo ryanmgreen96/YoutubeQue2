@@ -69,7 +69,7 @@ main{display:grid;grid-template-columns:10% 75% 15%;height:100vh;overflow:hidden
 .saved-shelf{border:none;border-radius:0;background:transparent;overflow:visible}
 .saved-shelf-btn{width:100%;border:none;border-radius:0;padding:2px 0;text-align:left;font-size:11px;letter-spacing:0.03em;color:#f0e0bc;background:transparent}
 .saved-shelf-btn.is-assigning{color:#fff3d9;text-decoration:underline}
-.saved-shelf-list{margin:0;padding:6px 8px 8px 16px;list-style:disc;display:flex;flex-direction:column;gap:5px}
+.saved-shelf-list{margin:0;padding:6px 0 8px 0;list-style:none;display:flex;flex-direction:column;gap:5px}
 .saved-shelf-list a{font-size:10px;line-height:1.2;color:var(--text-soft);text-decoration:none;word-break:break-word;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
 .saved-shelf-list a:hover{text-decoration:underline;color:#fff}
 #sections{padding:12px;display:flex;flex-direction:column;gap:18px;flex:1;overflow:auto;overscroll-behavior:contain;scrollbar-gutter:stable}

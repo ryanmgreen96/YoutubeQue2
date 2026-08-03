@@ -2149,7 +2149,25 @@ function addItem({url,title,videoId,favorite=false,pageId='home',tabId='default'
   render()
 }
 
-function removeItem(id){ items = items.filter(i=>i.id!==id); selectedItemIds.delete(id); save(); render() }
+function renderPreservingSectionScroll(){
+  if(!sections){
+    render()
+    return
+  }
+  const prevTop = Number(sections.scrollTop) || 0
+  render()
+  sections.scrollTop = prevTop
+  requestAnimationFrame(()=>{
+    sections.scrollTop = prevTop
+  })
+}
+
+function removeItem(id){
+  items = items.filter(i=>i.id!==id)
+  selectedItemIds.delete(id)
+  save()
+  renderPreservingSectionScroll()
+}
 
 function toggleFav(id){ const it = items.find(i=>i.id===id); if(!it) return; it.favorite=!it.favorite; save(); render() }
 
@@ -2619,9 +2637,7 @@ function renderSavedLinks(){
   }
 
   const activeShelf = savedShelves.find((shelf)=>shelf.id===activeShelfAssignId) || null
-  const visibleSavedLinks = activeShelf
-    ? savedLinks
-    : savedLinks.filter((link)=>!isSavedLinkShelved(link.id))
+  const visibleSavedLinks = savedLinks.filter((link)=>!isSavedLinkShelved(link.id))
 
   const list = document.createElement('ul')
   list.className = 'saved-links-list'
