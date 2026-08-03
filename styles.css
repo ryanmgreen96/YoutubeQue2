@@ -30,9 +30,10 @@ main{display:grid;grid-template-columns:10% 75% 15%;height:100vh;overflow:hidden
 .left-bar-title{font-size:11px;letter-spacing:0.08em;text-transform:uppercase;color:var(--text-soft)}
 .left-nav{display:flex;flex-direction:column;gap:6px;max-height:calc(100vh - 145px);overflow:auto;padding-right:2px}
 .right-bar{display:flex;flex-direction:column;justify-content:space-between}
-.right-bar-footer{margin-top:auto;display:flex;justify-content:flex-end;padding:12px 12px 12px 0}
+.right-bar-footer{margin-top:auto;display:flex;justify-content:flex-end;align-items:center;gap:8px;padding:12px 12px 12px 0}
 .left-note-btn{width:28px;height:28px;padding:0;border-radius:999px;font-size:15px;line-height:1;display:flex;align-items:center;justify-content:center;color:#f2f2f2;border:1px solid rgba(255,255,255,0.14);background:rgba(255,255,255,0.06)}
 .left-note-btn:hover{background:rgba(255,255,255,0.12)}
+.shelf-add-btn{font-size:18px;font-weight:700;color:#ffe6b7;border-color:color-mix(in srgb, var(--accent) 42%, rgba(255,255,255,0.14));background:color-mix(in srgb, var(--accent) 16%, rgba(255,255,255,0.05))}
 .note-panel{position:relative;z-index:2;margin:12px 12px 0 12px;padding:12px;border-radius:10px;background:#d8d8d8;color:#151515;box-shadow:0 8px 24px rgba(0,0,0,0.18)}
 .note-panel.hidden{display:none}
 .note-close-btn{position:absolute;top:8px;right:8px;width:24px;height:24px;padding:0;border:none;border-radius:999px;background:rgba(0,0,0,0.08);color:#222;font-size:16px;line-height:1;display:flex;align-items:center;justify-content:center}
@@ -63,6 +64,14 @@ main{display:grid;grid-template-columns:10% 75% 15%;height:100vh;overflow:hidden
 .saved-links-list a.saved-link-long{color:#e2bf6b}
 .saved-links-list a.saved-link-website{color:#e16b6b}
 .saved-links-list a:hover{text-decoration:underline;color:#fff}
+.saved-links-list a.saved-link-shelf-active{color:#ffe4b2;text-decoration:underline}
+.saved-shelves{display:flex;flex-direction:column;gap:7px}
+.saved-shelf{border:none;border-radius:0;background:transparent;overflow:visible}
+.saved-shelf-btn{width:100%;border:none;border-radius:0;padding:2px 0;text-align:left;font-size:11px;letter-spacing:0.03em;color:#f0e0bc;background:transparent}
+.saved-shelf-btn.is-assigning{color:#fff3d9;text-decoration:underline}
+.saved-shelf-list{margin:0;padding:6px 8px 8px 16px;list-style:disc;display:flex;flex-direction:column;gap:5px}
+.saved-shelf-list a{font-size:10px;line-height:1.2;color:var(--text-soft);text-decoration:none;word-break:break-word;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+.saved-shelf-list a:hover{text-decoration:underline;color:#fff}
 #sections{padding:12px;display:flex;flex-direction:column;gap:18px;flex:1;overflow:auto;overscroll-behavior:contain;scrollbar-gutter:stable}
 .tab-row{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin:0 0 2px 4px}
 .main-tab-wrap{display:flex;align-items:center;gap:4px}

@@ -14,6 +14,7 @@ const RANDOM_PLAYLISTS_KEY = 'ytRandomPlaylists_v1'
 const NOTEBOOK_TEXT_KEY = 'ytNotebookText_v1'
 const NOTEBOOK_SCROLL_KEY = 'ytNotebookScroll_v1'
 const NOTEBOOK_CURSOR_KEY = 'ytNotebookCursor_v1'
+const SAVED_SHELVES_KEY = 'ytSavedShelves_v1'
 const LIBRARY_PAGE_ID = 'library'
 const LIBRARY_PAGE_TITLE = 'Library'
 const GYM_PAGE_ID = 'gym'
@@ -32,6 +33,7 @@ const holdDialogEl = document.getElementById('hold-action-dialog')
 const holdDialogBackdropEl = holdDialogEl ? holdDialogEl.querySelector('.hold-dialog-backdrop') : null
 const holdDialogTitleEl = document.getElementById('hold-dialog-title')
 const noteToggleBtn = document.getElementById('note-toggle-btn')
+const shelfAddBtn = document.getElementById('shelf-add-btn')
 const notePanelEl = document.getElementById('note-panel')
 const noteCloseBtn = document.getElementById('note-close-btn')
 const noteTextareaEl = document.getElementById('note-textarea')
@@ -56,6 +58,8 @@ let pageTabs = loadPageTabs()
 let activeTabs = loadActiveTabs()
 let pageTitleFilters = loadPageTitleFilters()
 let savedLinks = loadSavedLinks()
+let savedShelves = loadSavedShelves()
+let activeShelfAssignId = ''
 let headerLinks = loadHeaderLinks()
 let topbarRows = loadTopbarRows()
 let activeTopbarRowId = loadTopbarActiveRowId()
@@ -569,6 +573,83 @@ function loadPageTitleFilters(){
 function savePageTitleFilters(){ localStorage.setItem(PAGE_TITLE_FILTERS_KEY, JSON.stringify(pageTitleFilters)) }
 function loadSavedLinks(){ try{ return JSON.parse(localStorage.getItem(SAVED_LINKS_APP_KEY)||'[]') }catch(e){return[]}}
 function saveSavedLinks(){ localStorage.setItem(SAVED_LINKS_APP_KEY, JSON.stringify(savedLinks)) }
+function loadSavedShelves(){
+  try{
+    const parsed = JSON.parse(localStorage.getItem(SAVED_SHELVES_KEY) || '[]')
+    if(!Array.isArray(parsed)) return []
+    return parsed
+      .filter((shelf)=>shelf && shelf.id)
+      .map((shelf)=>(
+        {
+          id: shelf.id,
+          title: (typeof shelf.title==='string' && shelf.title.trim()) ? shelf.title.trim() : 'Saved list',
+          itemIds: Array.isArray(shelf.itemIds) ? shelf.itemIds.filter((id)=>typeof id==='string' && id.trim()) : [],
+          collapsed: !!shelf.collapsed
+        }
+      ))
+  }catch(e){ return [] }
+}
+function saveSavedShelves(){ localStorage.setItem(SAVED_SHELVES_KEY, JSON.stringify(savedShelves)) }
+function ensureSavedShelvesIntegrity(){
+  const validIds = new Set(savedLinks.map((link)=>link.id))
+  let changed = false
+
+  savedShelves = savedShelves
+    .filter((shelf)=>shelf && shelf.id)
+    .map((shelf)=>{
+      const nextIds = (Array.isArray(shelf.itemIds) ? shelf.itemIds : []).filter((id)=>validIds.has(id))
+      if(nextIds.length !== (Array.isArray(shelf.itemIds) ? shelf.itemIds.length : 0)) changed = true
+      return {
+        ...shelf,
+        title: (typeof shelf.title==='string' && shelf.title.trim()) ? shelf.title.trim() : 'Saved list',
+        itemIds: nextIds,
+        collapsed: !!shelf.collapsed
+      }
+    })
+
+  if(activeShelfAssignId && !savedShelves.some((shelf)=>shelf.id===activeShelfAssignId)){
+    activeShelfAssignId = ''
+    changed = true
+  }
+
+  if(changed) saveSavedShelves()
+}
+function createSavedShelf(){
+  const nextNumber = savedShelves.length + 1
+  const shelf = {
+    id: uid(),
+    title: `List ${nextNumber}`,
+    itemIds: [],
+    collapsed: false
+  }
+  savedShelves.push(shelf)
+  activeShelfAssignId = shelf.id
+  saveSavedShelves()
+  renderSavedLinks()
+}
+function isSavedLinkShelved(linkId){
+  return savedShelves.some((shelf)=>Array.isArray(shelf.itemIds) && shelf.itemIds.includes(linkId))
+}
+function toggleSavedLinkInShelf(shelfId, linkId){
+  const shelf = savedShelves.find((entry)=>entry.id===shelfId)
+  if(!shelf) return
+  if(!Array.isArray(shelf.itemIds)) shelf.itemIds = []
+  if(shelf.itemIds.includes(linkId)) shelf.itemIds = shelf.itemIds.filter((id)=>id!==linkId)
+  else shelf.itemIds.push(linkId)
+  saveSavedShelves()
+  renderSavedLinks()
+}
+function toggleSavedShelfCollapsed(shelfId){
+  const shelf = savedShelves.find((entry)=>entry.id===shelfId)
+  if(!shelf) return
+  shelf.collapsed = !shelf.collapsed
+  saveSavedShelves()
+  renderSavedLinks()
+}
+function toggleSavedShelfAssignMode(shelfId){
+  activeShelfAssignId = activeShelfAssignId===shelfId ? '' : shelfId
+  renderSavedLinks()
+}
 function loadScrollPositions(){
   try{
     const parsed = JSON.parse(localStorage.getItem(SCROLL_POSITIONS_KEY)||'{}')
@@ -592,7 +673,16 @@ function loadRandomPlaylistSlots(){
   }catch(e){ return {} }
 }
 function saveRandomPlaylistSlots(){ localStorage.setItem(RANDOM_PLAYLISTS_KEY, JSON.stringify(randomPlaylistSlots)) }
-function removeSavedLink(id){ savedLinks = savedLinks.filter(link=>link.id!==id); saveSavedLinks(); renderSavedLinks() }
+function removeSavedLink(id){
+  savedLinks = savedLinks.filter((link)=>link.id!==id)
+  savedShelves = savedShelves.map((shelf)=>({
+    ...shelf,
+    itemIds: Array.isArray(shelf.itemIds) ? shelf.itemIds.filter((itemId)=>itemId!==id) : []
+  }))
+  saveSavedLinks()
+  saveSavedShelves()
+  renderSavedLinks()
+}
 function loadTopbarRows(){
   try{
     const parsed = JSON.parse(localStorage.getItem(TOPBAR_ROWS_KEY)||'[]')
@@ -2472,7 +2562,7 @@ function render(){ sections.innerHTML=''
   if(currentPageId !== 'home' && !isProtectedPage(currentPageId)) renderTabBar(currentPageId)
   const activeTabId = getActiveTabId(currentPageId)
   const list = items.filter(i=>normalizePageId(i.pageId)===currentPageId && normalizeTabId(i.tabId)===activeTabId)
-  const groups = {today:[], yesterday:[], earlier:[]}
+  const groups = {recent:[], old:[]}
   const now = new Date();
 
   if(currentPageId !== 'home'){
@@ -2504,15 +2594,13 @@ function render(){ sections.innerHTML=''
   list.forEach(it=>{
     const d = new Date(it.created)
     const diff = Math.floor((now - d)/(1000*60*60*24))
-    if(diff===0) groups.today.push(it)
-    else if(diff===1) groups.yesterday.push(it)
-    else groups.earlier.push(it)
+    if(diff<=2) groups.recent.push(it)
+    else groups.old.push(it)
   })
 
-  if(groups.today.length) renderSection('Today', groups.today)
-  if(groups.yesterday.length) renderSection('Yesterday', groups.yesterday)
-  if(groups.earlier.length) renderSection('Earlier', groups.earlier)
-  if(!groups.today.length && !groups.yesterday.length && !groups.earlier.length){
+  if(groups.recent.length) renderSection('', groups.recent, true)
+  if(groups.old.length) renderSection('Old', groups.old)
+  if(!groups.recent.length && !groups.old.length){
     const empty = document.createElement('p')
     empty.style.padding = '12px'
     empty.style.color = '#9fb0d6'
@@ -2523,47 +2611,118 @@ function render(){ sections.innerHTML=''
 
 function renderSavedLinks(){
   if(!savedLinksEl) return
-  if(!savedLinks.length){
+  ensureSavedShelvesIntegrity()
+
+  if(!savedLinks.length && !savedShelves.length){
     savedLinksEl.innerHTML = ''
     return
   }
 
-  const title = document.createElement('div')
-  title.className = 'saved-links-title'
-  title.textContent = 'Saved for later'
+  const activeShelf = savedShelves.find((shelf)=>shelf.id===activeShelfAssignId) || null
+  const visibleSavedLinks = activeShelf
+    ? savedLinks
+    : savedLinks.filter((link)=>!isSavedLinkShelved(link.id))
 
   const list = document.createElement('ul')
   list.className = 'saved-links-list'
 
-  savedLinks.forEach((link)=>{
+  visibleSavedLinks.forEach((link)=>{
     const li = document.createElement('li')
     const a = document.createElement('a')
+    const isInActiveShelf = !!(activeShelf && activeShelf.itemIds.includes(link.id))
     a.href = link.url
+    a.dataset.linkId = link.id
     a.textContent = link.title || link.url
     a.title = link.title || link.url
     if(!isYouTubeUrl(link.url)) a.classList.add('saved-link-website')
     else if(isLongSavedVideo(link)) a.classList.add('saved-link-long')
+    if(isInActiveShelf) a.classList.add('saved-link-shelf-active')
     a.addEventListener('click', (ev)=>{
       ev.preventDefault()
+      if(activeShelf){
+        toggleSavedLinkInShelf(activeShelf.id, link.id)
+        return
+      }
       window.open(link.url, '_blank', 'noopener,noreferrer')
+    })
+    a.addEventListener('contextmenu', (ev)=>{
+      ev.preventDefault()
       removeSavedLink(link.id)
     })
     li.appendChild(a)
     list.appendChild(li)
   })
 
+  const shelvesWrap = document.createElement('div')
+  shelvesWrap.className = 'saved-shelves'
+
+  savedShelves.forEach((shelf)=>{
+    const shelfEl = document.createElement('div')
+    shelfEl.className = 'saved-shelf'
+
+    const shelfBtn = document.createElement('button')
+    shelfBtn.type = 'button'
+    shelfBtn.className = `saved-shelf-btn${activeShelfAssignId===shelf.id ? ' is-assigning' : ''}`
+    shelfBtn.textContent = `${shelf.collapsed ? '▸' : '▾'} ${shelf.title}`
+    shelfBtn.title = 'Left click to show/hide items. Right click to toggle add mode.'
+    shelfBtn.addEventListener('click', ()=>{ toggleSavedShelfCollapsed(shelf.id) })
+    shelfBtn.addEventListener('contextmenu', (ev)=>{
+      ev.preventDefault()
+      toggleSavedShelfAssignMode(shelf.id)
+    })
+    shelfEl.appendChild(shelfBtn)
+
+    if(!shelf.collapsed){
+      const shelfList = document.createElement('ul')
+      shelfList.className = 'saved-shelf-list'
+      const links = shelf.itemIds
+        .map((itemId)=>savedLinks.find((link)=>link.id===itemId))
+        .filter(Boolean)
+
+      links.forEach((link)=>{
+        const li = document.createElement('li')
+        const a = document.createElement('a')
+        a.href = link.url
+        a.textContent = link.title || link.url
+        a.title = link.title || link.url
+        a.addEventListener('click', (ev)=>{
+          ev.preventDefault()
+          if(activeShelfAssignId===shelf.id){
+            toggleSavedLinkInShelf(shelf.id, link.id)
+            return
+          }
+          window.open(link.url, '_blank', 'noopener,noreferrer')
+        })
+        a.addEventListener('contextmenu', (ev)=>{
+          ev.preventDefault()
+          removeSavedLink(link.id)
+        })
+        li.appendChild(a)
+        shelfList.appendChild(li)
+      })
+
+      shelfEl.appendChild(shelfList)
+    }
+
+    shelvesWrap.appendChild(shelfEl)
+  })
+
   savedLinksEl.innerHTML = ''
-  savedLinksEl.appendChild(title)
   savedLinksEl.appendChild(list)
+  savedLinksEl.appendChild(shelvesWrap)
 }
 
-function renderSection(title, list){
+function renderSection(title, list, showHomeControls = false){
   const s = document.createElement('div'); s.className='section'
-  if(title){
+  if(title || showHomeControls){
     const header = document.createElement('div')
     header.className = 'section-header'
-    const h = document.createElement('h2'); h.textContent=title; header.appendChild(h)
-    if(title==='Today' && currentPageId==='home'){
+    if(title){
+      const h = document.createElement('h2')
+      h.textContent = title
+      header.appendChild(h)
+    }
+    if(showHomeControls && currentPageId==='home'){
       const editButton = document.createElement('button')
       editButton.type = 'button'
       editButton.className = 'edit-mode-btn'
@@ -2613,6 +2772,12 @@ function renderSection(title, list){
     el.classList.toggle('is-selected', selectedItemIds.has(it.id))
     el.classList.toggle('is-range-flag', rangeFlagStartId===it.id || rangeFlagEndId===it.id)
     el.classList.toggle('is-last-viewed', lastViewedItemId===it.id)
+    if(currentPageId==='home'){
+      el.addEventListener('contextmenu', (ev)=>{
+        ev.preventDefault()
+        removeItem(it.id)
+      })
+    }
     el.addEventListener('click', ()=>{
       if(dividerInsertMode && currentPageId!=='home'){
         const inserted = addDividerBeforeItem(it.id)
@@ -2690,6 +2855,9 @@ if(noteToggleBtn){
       openNotebook()
     }
   })
+}
+if(shelfAddBtn){
+  shelfAddBtn.addEventListener('click', ()=>{ createSavedShelf() })
 }
 if(noteCloseBtn){
   noteCloseBtn.addEventListener('click', closeNotebook)
