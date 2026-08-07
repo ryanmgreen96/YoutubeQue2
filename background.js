@@ -792,8 +792,11 @@ async function fetchPagePublishedAt(url){
 
     const rawDatePatterns = [
       /"publishDate"\s*:\s*"([^"]+)"/i,
+      /\\"publishDate\\"\s*:\s*\\"([^\\"]+)\\"/i,
       /"uploadDate"\s*:\s*"([^"]+)"/i,
+      /\\"uploadDate\\"\s*:\s*\\"([^\\"]+)\\"/i,
       /"datePublished"\s*:\s*"([^"]+)"/i,
+      /\\"datePublished\\"\s*:\s*\\"([^\\"]+)\\"/i,
       /itemprop="datePublished"\s+content="([^"]+)"/i
     ]
     for(const pattern of rawDatePatterns){
@@ -801,6 +804,22 @@ async function fetchPagePublishedAt(url){
       if(!match || !match[1]) continue
       const parsed = Date.parse(match[1])
       if(!Number.isNaN(parsed)) return new Date(parsed).toISOString()
+    }
+
+    const rawTextDatePatterns = [
+      /"dateText"\s*:\s*\{\s*"simpleText"\s*:\s*"([^"]+)"\s*\}/i,
+      /\\"dateText\\"\s*:\s*\{\s*\\"simpleText\\"\s*:\s*\\"([^\\"]+)\\"\s*\}/i,
+      /"publishedTimeText"\s*:\s*\{\s*"simpleText"\s*:\s*"([^"]+)"\s*\}/i,
+      /\\"publishedTimeText\\"\s*:\s*\{\s*\\"simpleText\\"\s*:\s*\\"([^\\"]+)\\"\s*\}/i
+    ]
+    for(const pattern of rawTextDatePatterns){
+      const match = txt.match(pattern)
+      if(!match || !match[1]) continue
+      const dateText = (match[1] || '').replace(/\\u0026/g, '&')
+      const parsed = Date.parse(dateText)
+      if(!Number.isNaN(parsed)) return new Date(parsed).toISOString()
+      const relative = parseYouTubeRelativeDate(dateText)
+      if(relative) return relative
     }
   }catch(e){ }
   return ''
