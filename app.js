@@ -45,6 +45,7 @@ const holdPageRandomEditorEl = document.getElementById('hold-page-random-editor'
 const holdPageRandomUrlInputEl = document.getElementById('hold-page-random-url-input')
 const holdPageRangeStartInputEl = document.getElementById('hold-page-range-start-input')
 const holdPageRangeEndInputEl = document.getElementById('hold-page-range-end-input')
+const holdPageReverseCheckboxEl = document.getElementById('hold-page-reverse-checkbox')
 const holdRandomRowEl = document.getElementById('hold-random-row')
 const holdRandomCheckboxEl = document.getElementById('hold-random-checkbox')
 const holdEditBtn = document.getElementById('hold-edit-btn')
@@ -538,7 +539,8 @@ function loadPages(){
           randomCurrentIndex,
           randomNeedsShuffle: !!page.isRandom && !!playlistUrl ? (!!page.randomNeedsShuffle || !randomShuffledItems.length) : true,
           randomRangeStart: Number.isInteger(parsedRangeStart) && parsedRangeStart > 0 ? parsedRangeStart : 1,
-          randomRangeEnd: Number.isInteger(parsedRangeEnd) && parsedRangeEnd > 0 ? parsedRangeEnd : 0
+          randomRangeEnd: Number.isInteger(parsedRangeEnd) && parsedRangeEnd > 0 ? parsedRangeEnd : 0,
+          randomReverse: !!page.randomReverse
         }
       })
   }catch(e){return[]}
@@ -711,7 +713,8 @@ function loadTopbarRows(){
               .map(link=>({
                 id: link.id,
                 title: typeof link.title==='string' ? link.title : link.url,
-                url: typeof link.url==='string' ? link.url : ''
+                url: typeof link.url==='string' ? link.url : '',
+                iconUrl: normalizeIconUrl(link.iconUrl || '')
               }))
           : []
       }))
@@ -739,6 +742,16 @@ function normalizePlaylistUrl(value){
     const listId = (parsed.searchParams.get('list') || '').trim()
     if(!listId) return ''
     return `https://www.youtube.com/playlist?list=${encodeURIComponent(listId)}`
+  }catch(e){ return '' }
+}
+
+function normalizeIconUrl(value){
+  const url = normalizeUrl(value)
+  if(!url) return ''
+  try{
+    const parsed = new URL(url)
+    if(!(parsed.protocol === 'http:' || parsed.protocol === 'https:')) return ''
+    return parsed.toString()
   }catch(e){ return '' }
 }
 
@@ -948,6 +961,7 @@ function setPageRandomMode(pageId, enabled){
     page.randomNeedsShuffle = samePlaylist ? !!page.randomNeedsShuffle : true
     page.randomRangeStart = Number.isInteger(page.randomRangeStart) && page.randomRangeStart > 0 ? page.randomRangeStart : 1
     page.randomRangeEnd = Number.isInteger(page.randomRangeEnd) && page.randomRangeEnd > 0 ? page.randomRangeEnd : 0
+    page.randomReverse = !!page.randomReverse
   }else{
     page.isRandom = false
     page.randomPlaylistUrl = ''
@@ -956,6 +970,7 @@ function setPageRandomMode(pageId, enabled){
     page.randomNeedsShuffle = true
     page.randomRangeStart = 1
     page.randomRangeEnd = 0
+    page.randomReverse = false
   }
 
   savePages()
@@ -975,7 +990,8 @@ async function triggerRandomPage(pageId){
         alert('No videos were found in that playlist.')
         return
       }
-      page.randomShuffledItems = preparePlaylistSequence(rangedVideos)
+      const prepared = preparePlaylistSequence(rangedVideos)
+      page.randomShuffledItems = page.randomReverse ? prepared.reverse() : prepared
       page.randomCurrentIndex = initialPlaylistSequenceIndex(page.randomShuffledItems)
       page.randomNeedsShuffle = false
       savePages()
@@ -1010,7 +1026,7 @@ async function triggerRandomPage(pageId){
     window.open(nextVideo.url, '_blank', 'noopener,noreferrer')
   }
 }
-function updateRandomPageSettings(pageId, nextUrlInput, nextRangeStartInput, nextRangeEndInput){
+function updateRandomPageSettings(pageId, nextUrlInput, nextRangeStartInput, nextRangeEndInput, reverseOrder){
   const pid = normalizePageId(pageId)
   const page = pages.find((item)=>item.id===pid)
   if(!page || !page.isRandom) return false
@@ -1033,12 +1049,14 @@ function updateRandomPageSettings(pageId, nextUrlInput, nextRangeStartInput, nex
 
   const playlistChanged = page.randomPlaylistUrl !== playlistUrl
   const rangeChanged = (page.randomRangeStart || 1) !== rangeStart || (page.randomRangeEnd || 0) !== rangeEnd
+  const reverseChanged = !!page.randomReverse !== !!reverseOrder
 
   page.randomPlaylistUrl = playlistUrl
   page.randomRangeStart = rangeStart
   page.randomRangeEnd = rangeEnd
+  page.randomReverse = !!reverseOrder
 
-  if(playlistChanged || rangeChanged){
+  if(playlistChanged || rangeChanged || reverseChanged){
     page.randomShuffledItems = []
     page.randomCurrentIndex = -1
     page.randomNeedsShuffle = true
@@ -1228,21 +1246,25 @@ function getActiveTopbarRow(){
   ensureTopbarState()
   return topbarRows.find(row=>row.id===activeTopbarRowId) || topbarRows[0]
 }
-function makeFaviconCandidates(url){
+function makeFaviconCandidates(url, iconUrl = ''){
+  const candidates = []
+  const custom = normalizeIconUrl(iconUrl)
+  if(custom) candidates.push(custom)
   try{
     const parsed = new URL(url)
     const host = parsed.hostname
     const origin = parsed.origin
-    return [
+    candidates.push(
       `${origin}/favicon.ico`,
       `${origin}/favicon.png`,
       `${origin}/apple-touch-icon.png`,
       `${origin}/favicon-32x32.png`,
       `https://icons.duckduckgo.com/ip3/${encodeURIComponent(host)}.ico`
-    ]
+    )
   }catch(e){
-    return []
+    return candidates
   }
+  return Array.from(new Set(candidates))
 }
 function fallbackGlyph(title, url){
   const source = (title || '').trim() || (url || '').trim()
@@ -1277,7 +1299,9 @@ function addTopbarLink(){
   let defaultTitle = url
   try{ defaultTitle = new URL(url).hostname.replace(/^www\./i, '') }catch(e){}
   const titleInput = prompt('Label (optional)', defaultTitle)
-  const link = {id: uid(), title: (titleInput || '').trim() || defaultTitle, url}
+  const iconInput = prompt('Icon URL (optional)\nTip: paste a direct image URL like .ico/.png/.svg', '')
+  const iconUrl = normalizeIconUrl(iconInput || '')
+  const link = {id: uid(), title: (titleInput || '').trim() || defaultTitle, url, iconUrl}
   row.links.push(link)
   saveTopbarRows()
   renderHeaderLinks()
@@ -1295,6 +1319,32 @@ function editTopbarLink(linkId){
   if(titleInput===null) return
   link.url = url
   link.title = titleInput.trim() || link.title
+  saveTopbarRows()
+  renderHeaderLinks()
+}
+function setTopbarLinkIcon(linkId){
+  const row = getActiveTopbarRow()
+  if(!row) return
+  const link = row.links.find(item=>item.id===linkId)
+  if(!link) return
+  const iconInput = prompt(
+    'Set custom icon URL\nLeave empty to clear custom icon.',
+    link.iconUrl || ''
+  )
+  if(iconInput===null) return
+  const trimmed = iconInput.trim()
+  if(!trimmed){
+    link.iconUrl = ''
+    saveTopbarRows()
+    renderHeaderLinks()
+    return
+  }
+  const iconUrl = normalizeIconUrl(trimmed)
+  if(!iconUrl){
+    alert('Please enter a valid http(s) image URL.')
+    return
+  }
+  link.iconUrl = iconUrl
   saveTopbarRows()
   renderHeaderLinks()
 }
@@ -1491,6 +1541,7 @@ function getHoldDialogModel(){
       pageRandomUrl: page.randomPlaylistUrl || '',
       pageRangeStart: String(page.randomRangeStart || 1),
       pageRangeEnd: page.randomRangeEnd ? String(page.randomRangeEnd) : '',
+      pageRangeReverse: !!page.randomReverse,
       canEdit: !!page.isRandom,
       canMoveUp: index > 0,
       canMoveDown: index < pages.length - 1,
@@ -1503,7 +1554,8 @@ function getHoldDialogModel(){
           page.id,
           holdPageRandomUrlInputEl ? holdPageRandomUrlInputEl.value : '',
           holdPageRangeStartInputEl ? holdPageRangeStartInputEl.value : '',
-          holdPageRangeEndInputEl ? holdPageRangeEndInputEl.value : ''
+          holdPageRangeEndInputEl ? holdPageRangeEndInputEl.value : '',
+          !!(holdPageReverseCheckboxEl && holdPageReverseCheckboxEl.checked)
         )
         if(!applied) return
         renderHoldDialog()
@@ -1581,7 +1633,7 @@ function getHoldDialogModel(){
   return null
 }
 function renderHoldDialog(){
-  if(!holdDialogEl || !holdDialogTitleEl || !holdLinkEditorEl || !holdLinkTitleInputEl || !holdLinkUrlInputEl || !holdPageRandomEditorEl || !holdPageRandomUrlInputEl || !holdPageRangeStartInputEl || !holdPageRangeEndInputEl || !holdRandomRowEl || !holdRandomCheckboxEl || !holdEditBtn || !holdMoveUpBtn || !holdMoveDownBtn || !holdDeleteBtn) return
+  if(!holdDialogEl || !holdDialogTitleEl || !holdLinkEditorEl || !holdLinkTitleInputEl || !holdLinkUrlInputEl || !holdPageRandomEditorEl || !holdPageRandomUrlInputEl || !holdPageRangeStartInputEl || !holdPageRangeEndInputEl || !holdPageReverseCheckboxEl || !holdRandomRowEl || !holdRandomCheckboxEl || !holdEditBtn || !holdMoveUpBtn || !holdMoveDownBtn || !holdDeleteBtn) return
   const model = getHoldDialogModel()
   if(!model){
     closeHoldDialog()
@@ -1596,6 +1648,7 @@ function renderHoldDialog(){
   holdPageRandomUrlInputEl.value = model.pageRandomEditorVisible ? (model.pageRandomUrl || '') : ''
   holdPageRangeStartInputEl.value = model.pageRandomEditorVisible ? (model.pageRangeStart || '1') : ''
   holdPageRangeEndInputEl.value = model.pageRandomEditorVisible ? (model.pageRangeEnd || '') : ''
+  holdPageReverseCheckboxEl.checked = model.pageRandomEditorVisible ? !!model.pageRangeReverse : false
   holdEditBtn.disabled = !model.canEdit
   holdEditBtn.style.display = model.canEdit ? '' : 'none'
   holdEditBtn.textContent = (model.linkEditorVisible || model.pageRandomEditorVisible) ? 'Save changes' : 'Edit'
@@ -2327,7 +2380,7 @@ function renderHeaderLinks(){
 
     const img = document.createElement('img')
     img.className = 'topbar-link-favicon'
-    const faviconCandidates = makeFaviconCandidates(link.url)
+    const faviconCandidates = makeFaviconCandidates(link.url, link.iconUrl || '')
     let faviconIndex = 0
     img.src = faviconCandidates[faviconIndex] || ''
     img.alt = ''
@@ -2355,10 +2408,16 @@ function renderHeaderLinks(){
       window.open(link.url, '_blank', 'noopener,noreferrer')
     })
     const holdPress = attachLongPress(iconBtn, ()=>{
-      const action = prompt(`Manage link "${link.title}"\nType: edit or delete`, 'edit')
+      const action = prompt(`Manage link "${link.title}"\nType: edit, icon, clearicon, or delete`, 'edit')
       if(!action) return
       const next = action.trim().toLowerCase()
       if(next==='delete') deleteTopbarLink(link.id)
+      else if(next==='icon') setTopbarLinkIcon(link.id)
+      else if(next==='clearicon'){
+        link.iconUrl = ''
+        saveTopbarRows()
+        renderHeaderLinks()
+      }
       else editTopbarLink(link.id)
     })
 
@@ -2687,6 +2746,7 @@ function renderSavedLinks(){
         return
       }
       window.open(link.url, '_blank', 'noopener,noreferrer')
+      removeSavedLink(link.id)
     })
     a.addEventListener('contextmenu', (ev)=>{
       ev.preventDefault()
@@ -2735,6 +2795,7 @@ function renderSavedLinks(){
             return
           }
           window.open(link.url, '_blank', 'noopener,noreferrer')
+          removeSavedLink(link.id)
         })
         a.addEventListener('contextmenu', (ev)=>{
           ev.preventDefault()
