@@ -789,6 +789,19 @@ async function fetchPagePublishedAt(url){
         }
       }catch(e){ }
     }
+
+    const rawDatePatterns = [
+      /"publishDate"\s*:\s*"([^"]+)"/i,
+      /"uploadDate"\s*:\s*"([^"]+)"/i,
+      /"datePublished"\s*:\s*"([^"]+)"/i,
+      /itemprop="datePublished"\s+content="([^"]+)"/i
+    ]
+    for(const pattern of rawDatePatterns){
+      const match = txt.match(pattern)
+      if(!match || !match[1]) continue
+      const parsed = Date.parse(match[1])
+      if(!Number.isNaN(parsed)) return new Date(parsed).toISOString()
+    }
   }catch(e){ }
   return ''
 }

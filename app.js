@@ -91,6 +91,7 @@ let scrollPositions = loadScrollPositions()
 let lastViewedItemId = loadLastViewedItemId()
 let randomPlaylistSlots = loadRandomPlaylistSlots()
 let tabChronoSort = loadTabChronoSort()
+const chronoEnrichmentInFlight = new Set()
 
 const THEMES = [
   {
@@ -761,12 +762,12 @@ function promptTabChronoSort(pageId, tabId){
   const next = choice.trim().toLowerCase()
   if(next==='1' || next==='newest' || next==='new'){
     setTabChronoSortOrder(pageId, tabId, 'desc')
-    enrichChronologicalMetadataForTab(pageId, tabId)
+    maybeEnrichChronologicalMetadataForTab(pageId, tabId)
     return
   }
   if(next==='2' || next==='oldest' || next==='old'){
     setTabChronoSortOrder(pageId, tabId, 'asc')
-    enrichChronologicalMetadataForTab(pageId, tabId)
+    maybeEnrichChronologicalMetadataForTab(pageId, tabId)
   }
 }
 async function fetchVideoPublishedAt(url){
@@ -851,6 +852,26 @@ async function enrichChronologicalMetadataForTab(pageId, tabId){
     save()
     renderPreservingSectionScroll()
   }
+}
+function maybeEnrichChronologicalMetadataForTab(pageId, tabId){
+  const pid = normalizePageId(pageId)
+  const tid = normalizeTabId(tabId)
+  const key = getScrollKey(pid, tid)
+  if(chronoEnrichmentInFlight.has(key)) return
+
+  const hasMissingPublishDates = items.some((item)=>
+    !isDividerItem(item) &&
+    normalizePageId(item.pageId)===pid &&
+    normalizeTabId(item.tabId)===tid &&
+    isYouTubeUrl(item.url) &&
+    !item.publishedAt
+  )
+  if(!hasMissingPublishDates) return
+
+  chronoEnrichmentInFlight.add(key)
+  enrichChronologicalMetadataForTab(pid, tid)
+    .catch(()=>{})
+    .finally(()=>{ chronoEnrichmentInFlight.delete(key) })
 }
 function loadScrollPositions(){
   try{
@@ -2853,7 +2874,7 @@ function renderTabBar(pageId){
       ev.preventDefault()
       const next = getTabChronoSortOrder(pid, activeTabId)==='asc' ? 'desc' : 'asc'
       setTabChronoSortOrder(pid, activeTabId, next)
-      enrichChronologicalMetadataForTab(pid, activeTabId)
+      maybeEnrichChronologicalMetadataForTab(pid, activeTabId)
     })
     row.appendChild(chronoSortToggle)
 
@@ -2990,6 +3011,7 @@ function render(){ sections.innerHTML=''
     renderRandomPlaylistButton(currentPageId, activeTabId)
     const chronologicalOrder = getTabChronoSortOrder(currentPageId, activeTabId)
     const sortedList = buildChronologicalListWithDividers(list, chronologicalOrder)
+    maybeEnrichChronologicalMetadataForTab(currentPageId, activeTabId)
     if(sortedList.length){
       renderSection('', sortedList)
     }else{
