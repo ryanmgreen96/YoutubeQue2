@@ -782,11 +782,35 @@ async function fetchVideoPublishedAt(url){
 function parseTitleCalendarDate(title){
   const raw = (title || '').trim()
   if(!raw) return 0
-  const withComma = raw.match(/\b(january|february|march|april|may|june|july|august|september|october|november|december|jan|feb|mar|apr|jun|jul|aug|sep|sept|oct|nov|dec)\.?\s+\d{1,2},\s+\d{4}\b/i)
-  if(withComma){
-    const parsed = Date.parse(withComma[0])
-    if(!Number.isNaN(parsed)) return parsed
+
+  const monthPattern = /(january|february|march|april|may|june|july|august|september|october|november|december|jan|feb|mar|apr|jun|jul|aug|sep|sept|oct|nov|dec)\.?\s+(\d{1,2})(?:st|nd|rd|th)?(?:,?\s+(\d{4}))?/i
+  const monthMatch = raw.match(monthPattern)
+  if(monthMatch){
+    const monthToken = (monthMatch[1] || '').toLowerCase().replace('.', '')
+    const day = Number(monthMatch[2] || 0)
+    const explicitYear = Number(monthMatch[3] || 0)
+    const monthMap = {
+      jan: 0, january: 0,
+      feb: 1, february: 1,
+      mar: 2, march: 2,
+      apr: 3, april: 3,
+      may: 4,
+      jun: 5, june: 5,
+      jul: 6, july: 6,
+      aug: 7, august: 7,
+      sep: 8, sept: 8, september: 8,
+      oct: 9, october: 9,
+      nov: 10, november: 10,
+      dec: 11, december: 11
+    }
+    const monthIndex = monthMap[monthToken]
+    const year = Number.isInteger(explicitYear) && explicitYear > 0 ? explicitYear : new Date().getFullYear()
+    if(Number.isInteger(monthIndex) && day >= 1 && day <= 31){
+      const parsed = new Date(year, monthIndex, day, 12, 0, 0, 0).getTime()
+      if(Number.isFinite(parsed)) return parsed
+    }
   }
+
   const shortDash = raw.match(/\b\d{4}-\d{2}-\d{2}\b/)
   if(shortDash){
     const parsed = Date.parse(shortDash[0])
