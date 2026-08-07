@@ -762,13 +762,49 @@ function promptTabChronoSort(pageId, tabId){
   const next = choice.trim().toLowerCase()
   if(next==='1' || next==='newest' || next==='new'){
     setTabChronoSortOrder(pageId, tabId, 'desc')
+    logChronoDebugForTab(pageId, tabId, 'clock-set-newest')
     maybeEnrichChronologicalMetadataForTab(pageId, tabId)
     return
   }
   if(next==='2' || next==='oldest' || next==='old'){
     setTabChronoSortOrder(pageId, tabId, 'asc')
+    logChronoDebugForTab(pageId, tabId, 'clock-set-oldest')
     maybeEnrichChronologicalMetadataForTab(pageId, tabId)
   }
+}
+function isChronoDebugEnabled(){
+  return localStorage.getItem('ytDebugChrono') === '1'
+}
+function logChronoDebugForTab(pageId, tabId, reason){
+  if(!isChronoDebugEnabled()) return
+
+  const pid = normalizePageId(pageId)
+  const tid = normalizeTabId(tabId)
+  const order = getTabChronoSortOrder(pid, tid)
+  const rows = items
+    .filter((item)=>
+      !isDividerItem(item) &&
+      normalizePageId(item.pageId)===pid &&
+      normalizeTabId(item.tabId)===tid
+    )
+    .map((item)=>(
+      {
+        id: item.id,
+        title: (item.title || '').slice(0, 90),
+        publishedAt: item.publishedAt || '',
+        titleDateMs: parseTitleCalendarDate(item.title || ''),
+        created: item.created || '',
+        resolvedMs: itemChronologyMs(item),
+        url: item.url || ''
+      }
+    ))
+
+  rows.sort((a, b)=>order==='asc' ? (a.resolvedMs - b.resolvedMs) : (b.resolvedMs - a.resolvedMs))
+
+  const missingPublishedAt = rows.filter((row)=>!row.publishedAt).length
+  console.groupCollapsed(`[chrono] ${reason || 'debug'} page=${pid} tab=${tid} order=${order} rows=${rows.length} missingPublishedAt=${missingPublishedAt}`)
+  console.table(rows)
+  console.groupEnd()
 }
 async function fetchVideoPublishedAt(url){
   try{
@@ -777,7 +813,11 @@ async function fetchVideoPublishedAt(url){
     const payload = await requestExtensionAction('fetch-video-published-at', {url: normalizedUrl})
     const value = payload && typeof payload.publishedAt === 'string' ? payload.publishedAt : ''
     const parsed = Date.parse(value)
-    return Number.isNaN(parsed) ? '' : new Date(parsed).toISOString()
+    const normalized = Number.isNaN(parsed) ? '' : new Date(parsed).toISOString()
+    if(isChronoDebugEnabled()){
+      console.log('[chrono] fetchVideoPublishedAt', {url: normalizedUrl, publishedAt: normalized || '(empty)'})
+    }
+    return normalized
   }catch(e){ return '' }
 }
 function parseTitleCalendarDate(title){
@@ -838,6 +878,9 @@ async function enrichChronologicalMetadataForTab(pageId, tabId){
     isYouTubeUrl(item.url) &&
     !item.publishedAt
   )
+  if(isChronoDebugEnabled()){
+    console.log('[chrono] enrich start', {pageId: pid, tabId: tid, candidates: candidates.length})
+  }
   if(!candidates.length) return
 
   let changed = false
@@ -851,6 +894,9 @@ async function enrichChronologicalMetadataForTab(pageId, tabId){
   if(changed){
     save()
     renderPreservingSectionScroll()
+  }
+  if(isChronoDebugEnabled()){
+    logChronoDebugForTab(pid, tid, changed ? 'enrich-finished-updated' : 'enrich-finished-nochange')
   }
 }
 function maybeEnrichChronologicalMetadataForTab(pageId, tabId){
@@ -872,6 +918,57 @@ function maybeEnrichChronologicalMetadataForTab(pageId, tabId){
   enrichChronologicalMetadataForTab(pid, tid)
     .catch(()=>{})
     .finally(()=>{ chronoEnrichmentInFlight.delete(key) })
+}
+function chronologySourceForItem(item){
+  const publishedAt = (item && item.publishedAt) || ''
+  const publishedMs = Date.parse(publishedAt)
+  if(!Number.isNaN(publishedMs)) return {source:'publishedAt', ms: publishedMs, value: publishedAt}
+
+  const titleDateMs = parseTitleCalendarDate(item && item.title)
+  if(titleDateMs > 0) return {source:'titleDate', ms: titleDateMs, value: new Date(titleDateMs).toISOString()}
+
+  const created = (item && item.created) || ''
+  const createdMs = Date.parse(created)
+  if(!Number.isNaN(createdMs)) return {source:'created', ms: createdMs, value: created}
+
+  return {source:'none', ms: 0, value: ''}
+}
+function chronoDebugRows(pageId, tabId){
+  const pid = normalizePageId(pageId)
+  const tid = normalizeTabId(tabId)
+  return items
+    .filter((item)=>
+      !isDividerItem(item) &&
+      normalizePageId(item.pageId)===pid &&
+      normalizeTabId(item.tabId)===tid
+    )
+    .map((item)=>{
+      const source = chronologySourceForItem(item)
+      return {
+        id: item.id,
+        source: source.source,
+        checkedDate: source.value,
+        resolvedMs: source.ms,
+        publishedAt: item.publishedAt || '',
+        created: item.created || '',
+        title: (item.title || '').slice(0, 120),
+        url: item.url || ''
+      }
+    })
+    .sort((a, b)=>b.resolvedMs - a.resolvedMs)
+}
+function dumpChronologyDebug(pageId = currentPageId, tabId = getActiveTabId(pageId)){
+  const pid = normalizePageId(pageId)
+  const tid = normalizeTabId(tabId)
+  const rows = chronoDebugRows(pid, tid)
+  const missing = rows.filter((row)=>row.source==='created' || row.source==='none').length
+  console.groupCollapsed(`[chrono-dump] page=${pid} tab=${tid} rows=${rows.length} fallbackRows=${missing}`)
+  console.table(rows)
+  console.groupEnd()
+  return rows
+}
+function exposeChronologyDebug(){
+  window.ytChronoDump = (pageId, tabId)=>dumpChronologyDebug(pageId, tabId)
 }
 function loadScrollPositions(){
   try{
@@ -2861,23 +2958,6 @@ function renderTabBar(pageId){
     randomPlaylistToggle.addEventListener('click', ()=>{ configureRandomPlaylistSlot(pid) })
     row.appendChild(randomPlaylistToggle)
 
-    const chronoSortToggle = document.createElement('button')
-    chronoSortToggle.type = 'button'
-    chronoSortToggle.className = `main-tab title-filter-toggle${getTabChronoSortOrder(pid, activeTabId)==='asc' ? ' selected' : ''}`
-    chronoSortToggle.title = getTabChronoSortOrder(pid, activeTabId)==='asc'
-      ? 'Chronological order: oldest at top (click to change)'
-      : 'Chronological order: newest at top (click to change)'
-    chronoSortToggle.setAttribute('aria-label', 'Set chronological order for this tab')
-    chronoSortToggle.textContent = '🕒'
-    chronoSortToggle.addEventListener('click', ()=>{ promptTabChronoSort(pid, activeTabId) })
-    chronoSortToggle.addEventListener('contextmenu', (ev)=>{
-      ev.preventDefault()
-      const next = getTabChronoSortOrder(pid, activeTabId)==='asc' ? 'desc' : 'asc'
-      setTabChronoSortOrder(pid, activeTabId, next)
-      maybeEnrichChronologicalMetadataForTab(pid, activeTabId)
-    })
-    row.appendChild(chronoSortToggle)
-
     const info = document.createElement('button')
     info.type = 'button'
     info.className = `main-tab title-filter-toggle${titleFilterOverlayPageId===pid ? ' selected' : ''}`
@@ -3009,8 +3089,7 @@ function render(){ sections.innerHTML=''
       sections.appendChild(heading)
     }
     renderRandomPlaylistButton(currentPageId, activeTabId)
-    const chronologicalOrder = getTabChronoSortOrder(currentPageId, activeTabId)
-    const sortedList = buildChronologicalListWithDividers(list, chronologicalOrder)
+    const sortedList = buildChronologicalListWithDividers(list, 'desc')
     maybeEnrichChronologicalMetadataForTab(currentPageId, activeTabId)
     if(sortedList.length){
       renderSection('', sortedList)
@@ -3358,6 +3437,7 @@ window.addEventListener('load', ()=>{
   renderLeftNav()
   syncSavedPagesButton()
   syncPageDeleteModeButton()
+  exposeChronologyDebug()
   applyTheme(loadThemeIndex())
   renderHeaderLinks()
   handleParams()
