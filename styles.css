@@ -24,12 +24,12 @@ button.selected{background:var(--accent);color:#000;border-color:transparent}
 main{display:grid;grid-template-columns:10% 75% 15%;height:100vh;overflow:hidden}
 .side-bar{min-height:100%;background:rgba(255,255,255,0.02)}
 .left-bar{padding:12px}
-.left-bar-panel{display:flex;flex-direction:column;gap:10px;height:100%}
+.left-bar-panel{position:relative;display:flex;flex-direction:column;gap:10px;height:100%}
 .left-bar-header{display:flex;align-items:center;justify-content:flex-start;gap:8px}
 .left-bar-actions{display:flex;align-items:center;gap:6px}
 .left-bar-title{font-size:11px;letter-spacing:0.08em;text-transform:uppercase;color:var(--text-soft)}
-.left-nav{display:flex;flex-direction:column;gap:6px;max-height:calc(100vh - 145px);overflow:auto;padding-right:2px}
-.left-bar-footer{margin-top:auto;display:flex;justify-content:flex-start;align-items:center;padding-top:4px}
+.left-nav{display:flex;flex:1 1 auto;min-height:0;flex-direction:column;gap:6px;overflow:auto;padding-right:2px}
+.left-bar-footer{position:sticky;bottom:0;z-index:2;margin-top:auto;display:flex;justify-content:flex-start;align-items:center;padding-top:4px;background:linear-gradient(180deg, rgba(0,0,0,0), color-mix(in srgb, var(--bg) 92%, transparent) 30%)}
 .right-bar{display:flex;flex-direction:column;justify-content:space-between}
 .right-bar-footer{margin-top:auto;display:flex;justify-content:flex-end;align-items:center;gap:8px;padding:12px 12px 12px 0}
 .left-note-btn{width:28px;height:28px;padding:0;border-radius:999px;font-size:15px;line-height:1;display:flex;align-items:center;justify-content:center;color:#f2f2f2;border:1px solid rgba(255,255,255,0.14);background:rgba(255,255,255,0.06)}

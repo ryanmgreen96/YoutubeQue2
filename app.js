@@ -761,10 +761,71 @@ function promptTabChronoSort(pageId, tabId){
   const next = choice.trim().toLowerCase()
   if(next==='1' || next==='newest' || next==='new'){
     setTabChronoSortOrder(pageId, tabId, 'desc')
+    enrichChronologicalMetadataForTab(pageId, tabId)
     return
   }
   if(next==='2' || next==='oldest' || next==='old'){
     setTabChronoSortOrder(pageId, tabId, 'asc')
+    enrichChronologicalMetadataForTab(pageId, tabId)
+  }
+}
+async function fetchVideoPublishedAt(url){
+  try{
+    const normalizedUrl = normalizeUrl(url)
+    if(!normalizedUrl) return ''
+    const payload = await requestExtensionAction('fetch-video-published-at', {url: normalizedUrl})
+    const value = payload && typeof payload.publishedAt === 'string' ? payload.publishedAt : ''
+    const parsed = Date.parse(value)
+    return Number.isNaN(parsed) ? '' : new Date(parsed).toISOString()
+  }catch(e){ return '' }
+}
+function parseTitleCalendarDate(title){
+  const raw = (title || '').trim()
+  if(!raw) return 0
+  const withComma = raw.match(/\b(january|february|march|april|may|june|july|august|september|october|november|december|jan|feb|mar|apr|jun|jul|aug|sep|sept|oct|nov|dec)\.?\s+\d{1,2},\s+\d{4}\b/i)
+  if(withComma){
+    const parsed = Date.parse(withComma[0])
+    if(!Number.isNaN(parsed)) return parsed
+  }
+  const shortDash = raw.match(/\b\d{4}-\d{2}-\d{2}\b/)
+  if(shortDash){
+    const parsed = Date.parse(shortDash[0])
+    if(!Number.isNaN(parsed)) return parsed
+  }
+  return 0
+}
+function itemChronologyMs(item){
+  const published = Date.parse((item && item.publishedAt) || '')
+  if(!Number.isNaN(published)) return published
+  const titleDate = parseTitleCalendarDate(item && item.title)
+  if(titleDate > 0) return titleDate
+  const created = Date.parse((item && item.created) || '')
+  if(!Number.isNaN(created)) return created
+  return 0
+}
+async function enrichChronologicalMetadataForTab(pageId, tabId){
+  const pid = normalizePageId(pageId)
+  const tid = normalizeTabId(tabId)
+  const candidates = items.filter((item)=>
+    !isDividerItem(item) &&
+    normalizePageId(item.pageId)===pid &&
+    normalizeTabId(item.tabId)===tid &&
+    isYouTubeUrl(item.url) &&
+    !item.publishedAt
+  )
+  if(!candidates.length) return
+
+  let changed = false
+  for(const item of candidates.slice(0, 40)){
+    const publishedAt = await fetchVideoPublishedAt(item.url)
+    if(!publishedAt) continue
+    item.publishedAt = publishedAt
+    changed = true
+  }
+
+  if(changed){
+    save()
+    renderPreservingSectionScroll()
   }
 }
 function loadScrollPositions(){
@@ -2352,10 +2413,8 @@ function buildChronologicalListWithDividers(list, chronologicalOrder = 'desc'){
   const videos = list.filter(item=>!isDividerItem(item))
 
   const sortedVideos = videos.slice().sort((a, b)=>{
-    const aDate = new Date(a.publishedAt || a.created || 0).getTime()
-    const bDate = new Date(b.publishedAt || b.created || 0).getTime()
-    const aSafe = Number.isFinite(aDate) ? aDate : 0
-    const bSafe = Number.isFinite(bDate) ? bDate : 0
+    const aSafe = itemChronologyMs(a)
+    const bSafe = itemChronologyMs(b)
     return chronologicalOrder === 'asc' ? (aSafe - bSafe) : (bSafe - aSafe)
   })
 
@@ -2662,6 +2721,7 @@ function renderLeftNav(){
 
   pages.forEach(page=>{
     if(isProtectedPage(page.id)) return
+    if(!savedPagesAssignMode && isSavedPage(page.id)) return
     const row = document.createElement('div')
     row.className = 'page-link-row'
 
@@ -2677,6 +2737,9 @@ function renderLeftNav(){
       if(holdPress.consume()) return
       if(savedPagesAssignMode){
         toggleSavedPage(page.id)
+        savedPagesAssignMode = false
+        syncSavedPagesButton()
+        renderLeftNav()
         return
       }
       if(page.isRandom){
@@ -2766,6 +2829,7 @@ function renderTabBar(pageId){
       ev.preventDefault()
       const next = getTabChronoSortOrder(pid, activeTabId)==='asc' ? 'desc' : 'asc'
       setTabChronoSortOrder(pid, activeTabId, next)
+      enrichChronologicalMetadataForTab(pid, activeTabId)
     })
     row.appendChild(chronoSortToggle)
 

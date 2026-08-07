@@ -376,6 +376,22 @@
         return
       }
 
+      if(data.action === 'fetch-video-published-at'){
+        chrome.runtime.sendMessage({type:'fetch-video-published-at', url: data.payload && data.payload.url}, (response)=>{
+          if(chrome.runtime.lastError){
+            respond({ok:false, error: chrome.runtime.lastError.message || 'Extension unavailable'})
+            return
+          }
+
+          respond({
+            ok: !!(response && response.ok),
+            payload: {publishedAt: response && typeof response.publishedAt === 'string' ? response.publishedAt : ''},
+            error: response && response.error ? response.error : ''
+          })
+        })
+        return
+      }
+
       if(data.action === 'open-url'){
         chrome.runtime.sendMessage({type:'open-url', url: data.payload && data.payload.url}, (response)=>{
           if(chrome.runtime.lastError){

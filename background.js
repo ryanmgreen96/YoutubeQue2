@@ -930,6 +930,19 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse)=>{
     return true
   }
 
+  if(message.type === 'fetch-video-published-at'){
+    const targetUrl = safeText(message.url)
+    if(!targetUrl){
+      sendResponse({ok:false, publishedAt:'', error:'Missing URL'})
+      return true
+    }
+
+    fetchPagePublishedAt(targetUrl)
+      .then((publishedAt)=>sendResponse({ok:true, publishedAt: publishedAt || ''}))
+      .catch(()=>sendResponse({ok:false, publishedAt:'', error:'Could not fetch publish date'}))
+    return true
+  }
+
   if(message.type === 'queue-video-url'){
     const playlistUrl = canonicalPlaylistUrlFromUrl(message.url || '')
     if(playlistUrl){
