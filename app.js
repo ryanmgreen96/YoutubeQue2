@@ -714,7 +714,7 @@ function loadTopbarRows(){
                 id: link.id,
                 title: typeof link.title==='string' ? link.title : link.url,
                 url: typeof link.url==='string' ? link.url : '',
-                iconUrl: normalizeIconUrl(link.iconUrl || '')
+                iconUrl: normalizeIconChoice(link.iconUrl || '')
               }))
           : []
       }))
@@ -753,6 +753,29 @@ function normalizeIconUrl(value){
     if(!(parsed.protocol === 'http:' || parsed.protocol === 'https:')) return ''
     return parsed.toString()
   }catch(e){ return '' }
+}
+
+function looksLikeImageUrl(url){
+  try{
+    const parsed = new URL(url)
+    return /\.(ico|png|svg|jpe?g|webp|gif)$/i.test(parsed.pathname || '')
+  }catch(e){ return false }
+}
+
+function colorFaviconFromHost(host){
+  const cleanHost = (host || '').trim().replace(/^www\./i, '')
+  if(!cleanHost) return ''
+  return `https://www.google.com/s2/favicons?domain=${encodeURIComponent(cleanHost)}&sz=64`
+}
+
+function normalizeIconChoice(value){
+  const direct = normalizeIconUrl(value)
+  if(!direct) return ''
+  try{
+    const parsed = new URL(direct)
+    if(looksLikeImageUrl(direct)) return direct
+    return colorFaviconFromHost(parsed.hostname) || direct
+  }catch(e){ return direct }
 }
 
 function normalizeRandomPlaylistSlot(slot){
@@ -1248,13 +1271,15 @@ function getActiveTopbarRow(){
 }
 function makeFaviconCandidates(url, iconUrl = ''){
   const candidates = []
-  const custom = normalizeIconUrl(iconUrl)
+  const custom = normalizeIconChoice(iconUrl)
   if(custom) candidates.push(custom)
   try{
     const parsed = new URL(url)
     const host = parsed.hostname
     const origin = parsed.origin
     candidates.push(
+      colorFaviconFromHost(host),
+      `https://api.faviconkit.com/${encodeURIComponent(host)}/64`,
       `${origin}/favicon.ico`,
       `${origin}/favicon.png`,
       `${origin}/apple-touch-icon.png`,
@@ -1299,8 +1324,8 @@ function addTopbarLink(){
   let defaultTitle = url
   try{ defaultTitle = new URL(url).hostname.replace(/^www\./i, '') }catch(e){}
   const titleInput = prompt('Label (optional)', defaultTitle)
-  const iconInput = prompt('Icon URL (optional)\nTip: paste a direct image URL like .ico/.png/.svg', '')
-  const iconUrl = normalizeIconUrl(iconInput || '')
+  const iconInput = prompt('Icon URL or website (optional)\nPaste image URL OR domain like netflix.com for colored favicon', '')
+  const iconUrl = normalizeIconChoice(iconInput || '')
   const link = {id: uid(), title: (titleInput || '').trim() || defaultTitle, url, iconUrl}
   row.links.push(link)
   saveTopbarRows()
@@ -1339,9 +1364,9 @@ function setTopbarLinkIcon(linkId){
     renderHeaderLinks()
     return
   }
-  const iconUrl = normalizeIconUrl(trimmed)
+  const iconUrl = normalizeIconChoice(trimmed)
   if(!iconUrl){
-    alert('Please enter a valid http(s) image URL.')
+    alert('Please enter a valid image URL or website/domain.')
     return
   }
   link.iconUrl = iconUrl
