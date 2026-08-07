@@ -420,6 +420,7 @@
         const hrefSource = hrefFromTarget(target)
         const videoUrl = videoUrlFromHref(hrefSource)
         const playlistUrl = playlistUrlFromHref(hrefSource) || playlistUrlFromCurrentPage()
+
         const shouldQueuePlaylist = shouldQueuePlaylistFromTarget(target, hrefSource, videoUrl, playlistUrl)
 
         if(shouldQueuePlaylist){

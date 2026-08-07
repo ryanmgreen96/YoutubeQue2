@@ -16,6 +16,8 @@ const NOTEBOOK_SCROLL_KEY = 'ytNotebookScroll_v1'
 const NOTEBOOK_CURSOR_KEY = 'ytNotebookCursor_v1'
 const SAVED_SHELVES_KEY = 'ytSavedShelves_v1'
 const HOME_OLD_HIDDEN_KEY = 'ytHomeOldHidden_v1'
+const SAVED_PAGES_KEY = 'ytSavedPages_v1'
+const TAB_CHRONO_SORT_KEY = 'ytTabChronoSort_v1'
 const LIBRARY_PAGE_ID = 'library'
 const LIBRARY_PAGE_TITLE = 'Library'
 const GYM_PAGE_ID = 'gym'
@@ -25,6 +27,7 @@ const leftNavEl = document.getElementById('left-nav')
 const addPageBtn = document.getElementById('add-page-btn')
 const deletePageItemsBtn = document.getElementById('delete-page-items-btn')
 const addLinkBtn = document.getElementById('add-link-btn')
+const savedPagesBtn = document.getElementById('saved-pages-btn')
 const savedLinksEl = document.getElementById('saved-links')
 const topbarRolesEl = document.getElementById('topbar-roles')
 const topbarLinksEl = document.getElementById('topbar-links')
@@ -61,6 +64,9 @@ let activeTabs = loadActiveTabs()
 let pageTitleFilters = loadPageTitleFilters()
 let savedLinks = loadSavedLinks()
 let savedShelves = loadSavedShelves()
+let savedPageIds = loadSavedPageIds()
+let savedPagesPanelOpen = false
+let savedPagesAssignMode = false
 let activeShelfAssignId = ''
 let homeOldHidden = loadHomeOldHidden()
 let headerLinks = loadHeaderLinks()
@@ -84,6 +90,7 @@ let swRegistration = null
 let scrollPositions = loadScrollPositions()
 let lastViewedItemId = loadLastViewedItemId()
 let randomPlaylistSlots = loadRandomPlaylistSlots()
+let tabChronoSort = loadTabChronoSort()
 
 const THEMES = [
   {
@@ -594,6 +601,26 @@ function loadSavedShelves(){
   }catch(e){ return [] }
 }
 function saveSavedShelves(){ localStorage.setItem(SAVED_SHELVES_KEY, JSON.stringify(savedShelves)) }
+function loadSavedPageIds(){
+  try{
+    const parsed = JSON.parse(localStorage.getItem(SAVED_PAGES_KEY) || '[]')
+    if(!Array.isArray(parsed)) return []
+    return Array.from(new Set(parsed.filter((id)=>typeof id === 'string' && id.trim()).map((id)=>id.trim())))
+  }catch(e){ return [] }
+}
+function saveSavedPageIds(){ localStorage.setItem(SAVED_PAGES_KEY, JSON.stringify(savedPageIds)) }
+function loadTabChronoSort(){
+  try{
+    const parsed = JSON.parse(localStorage.getItem(TAB_CHRONO_SORT_KEY) || '{}')
+    if(!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return {}
+    const next = {}
+    Object.keys(parsed).forEach((key)=>{
+      next[key] = parsed[key] === 'asc' ? 'asc' : 'desc'
+    })
+    return next
+  }catch(e){ return {} }
+}
+function saveTabChronoSort(){ localStorage.setItem(TAB_CHRONO_SORT_KEY, JSON.stringify(tabChronoSort)) }
 function loadHomeOldHidden(){
   const raw = localStorage.getItem(HOME_OLD_HIDDEN_KEY)
   return raw === '1' || raw === 'true'
@@ -663,6 +690,82 @@ function toggleHomeOldHidden(){
   homeOldHidden = !homeOldHidden
   saveHomeOldHidden()
   render()
+}
+function isSavedPage(pageId){
+  const pid = normalizePageId(pageId)
+  return savedPageIds.includes(pid)
+}
+function getSavedPages(){
+  return pages.filter((page)=>!isProtectedPage(page.id) && isSavedPage(page.id))
+}
+function toggleSavedPage(pageId){
+  const pid = normalizePageId(pageId)
+  if(isProtectedPage(pid)) return
+  if(savedPageIds.includes(pid)) savedPageIds = savedPageIds.filter((id)=>id!==pid)
+  else savedPageIds.push(pid)
+  saveSavedPageIds()
+  renderLeftNav()
+}
+function toggleSavedPagesPanel(){
+  savedPagesPanelOpen = !savedPagesPanelOpen
+  if(savedPagesPanelOpen) savedPagesAssignMode = false
+  renderLeftNav()
+}
+function toggleSavedPagesAssignMode(){
+  savedPagesAssignMode = !savedPagesAssignMode
+  if(savedPagesAssignMode) savedPagesPanelOpen = false
+  renderLeftNav()
+}
+function syncSavedPagesButton(){
+  if(!savedPagesBtn) return
+  savedPagesBtn.classList.toggle('selected', savedPagesPanelOpen)
+  savedPagesBtn.classList.toggle('assigning', savedPagesAssignMode)
+  savedPagesBtn.title = savedPagesAssignMode
+    ? 'Saved-page select mode ON (left-click page names to save/unsave)'
+    : (savedPagesPanelOpen ? 'Close saved pages list' : 'Open saved pages list')
+}
+function getTabChronoSortOrder(pageId, tabId){
+  const key = getScrollKey(pageId, tabId)
+  return tabChronoSort[key] === 'asc' ? 'asc' : 'desc'
+}
+function setTabChronoSortOrder(pageId, tabId, order){
+  const key = getScrollKey(pageId, tabId)
+  tabChronoSort[key] = order === 'asc' ? 'asc' : 'desc'
+  saveTabChronoSort()
+  render()
+}
+function removeTabChronoSortForTab(pageId, tabId){
+  const key = getScrollKey(pageId, tabId)
+  if(!tabChronoSort[key]) return
+  delete tabChronoSort[key]
+  saveTabChronoSort()
+}
+function removeTabChronoSortForPage(pageId){
+  const prefix = `${normalizePageId(pageId)}::`
+  let changed = false
+  Object.keys(tabChronoSort).forEach((key)=>{
+    if(!key.startsWith(prefix)) return
+    delete tabChronoSort[key]
+    changed = true
+  })
+  if(changed) saveTabChronoSort()
+}
+function promptTabChronoSort(pageId, tabId){
+  const current = getTabChronoSortOrder(pageId, tabId)
+  const currentLabel = current === 'asc' ? 'Oldest first' : 'Newest first'
+  const choice = prompt(
+    `Chronological order for this tab\nCurrent: ${currentLabel}\n\nType:\n1 = Newest at top\n2 = Oldest at top`,
+    current === 'asc' ? '2' : '1'
+  )
+  if(choice===null) return
+  const next = choice.trim().toLowerCase()
+  if(next==='1' || next==='newest' || next==='new'){
+    setTabChronoSortOrder(pageId, tabId, 'desc')
+    return
+  }
+  if(next==='2' || next==='oldest' || next==='old'){
+    setTabChronoSortOrder(pageId, tabId, 'asc')
+  }
 }
 function loadScrollPositions(){
   try{
@@ -1777,6 +1880,8 @@ function deleteTabFromPage(pageId, tabId){
     saveRandomPlaylistSlots()
   }
 
+  removeTabChronoSortForTab(pid, tid)
+
   pageTabs[pid] = nextTabs
   if(normalizeTabId(activeTabs[pid])===tid) activeTabs[pid] = fallbackTabId
   savePageTabs()
@@ -1810,6 +1915,9 @@ function deletePage(pageId){
 
   items = items.filter(item=>normalizePageId(item.pageId)!==pid)
   deleteRandomPlaylistSlotsForPage(pid)
+  savedPageIds = savedPageIds.filter((id)=>id!==pid)
+  saveSavedPageIds()
+  removeTabChronoSortForPage(pid)
 
   savePages()
   savePageTabs()
@@ -1830,6 +1938,8 @@ function ensurePageTabIntegrity(){
   let changedItems = false
   let changedFilters = false
   let changedRandomPlaylists = false
+  let changedSavedPages = false
+  let changedTabChrono = false
 
   getPageTabs('home')
   getActiveTabId('home')
@@ -1924,6 +2034,35 @@ function ensurePageTabIntegrity(){
     }
   })
 
+  savedPageIds = savedPageIds.filter((pid)=>{
+    const keep = validPageIds.has(normalizePageId(pid)) && !isProtectedPage(pid) && pid!=='home'
+    if(!keep) changedSavedPages = true
+    return keep
+  })
+
+  Object.keys(tabChronoSort).forEach((key)=>{
+    const parts = key.split('::')
+    const pid = normalizePageId(parts[0])
+    const tid = normalizeTabId(parts[1])
+    if(!validPageIds.has(pid)){
+      delete tabChronoSort[key]
+      changedTabChrono = true
+      return
+    }
+    const tabs = pageTabs[pid] || [getDefaultTab()]
+    const tabIds = new Set(tabs.map((tab)=>tab.id))
+    if(!tabIds.has(tid)){
+      delete tabChronoSort[key]
+      changedTabChrono = true
+      return
+    }
+    const normalized = tabChronoSort[key] === 'asc' ? 'asc' : 'desc'
+    if(normalized !== tabChronoSort[key]){
+      tabChronoSort[key] = normalized
+      changedTabChrono = true
+    }
+  })
+
   validPageIds.forEach(pid=>{
     const tabs = pageTabs[pid]
     if(!Array.isArray(tabs) || !tabs.length){
@@ -1952,6 +2091,8 @@ function ensurePageTabIntegrity(){
   if(changedActive) saveActiveTabs()
   if(changedFilters) savePageTitleFilters()
   if(changedRandomPlaylists) saveRandomPlaylistSlots()
+  if(changedSavedPages) saveSavedPageIds()
+  if(changedTabChrono) saveTabChronoSort()
   if(changedItems) save()
 }
 function moveSelectedItemsToPage(pageId){
@@ -2114,6 +2255,7 @@ function setCurrentPage(pageId){
   saveScrollPositionForCurrentView()
   dividerInsertMode = false
   currentPageId = known ? pid : 'home'
+  savedPagesPanelOpen = false
   getPageTabs(currentPageId)
   getActiveTabId(currentPageId)
   editMode = false
@@ -2204,7 +2346,7 @@ function addDividerBeforeItem(targetItemId){
   return true
 }
 
-function buildChronologicalListWithDividers(list){
+function buildChronologicalListWithDividers(list, chronologicalOrder = 'desc'){
   const dividersByAnchor = new Map()
   const orphans = []
   const videos = list.filter(item=>!isDividerItem(item))
@@ -2214,7 +2356,7 @@ function buildChronologicalListWithDividers(list){
     const bDate = new Date(b.publishedAt || b.created || 0).getTime()
     const aSafe = Number.isFinite(aDate) ? aDate : 0
     const bSafe = Number.isFinite(bDate) ? bDate : 0
-    return bSafe - aSafe
+    return chronologicalOrder === 'asc' ? (aSafe - bSafe) : (bSafe - aSafe)
   })
 
   list
@@ -2467,6 +2609,36 @@ function editItem(id){ const it = items.find(i=>i.id===id); if(!it) return; cons
 function renderLeftNav(){
   if(!leftNavEl) return
   leftNavEl.innerHTML = ''
+  syncSavedPagesButton()
+
+  if(savedPagesPanelOpen){
+    const savedPages = getSavedPages()
+    const note = document.createElement('div')
+    note.className = 'left-nav-note'
+    note.textContent = savedPages.length ? 'Saved pages' : 'No saved pages yet'
+    leftNavEl.appendChild(note)
+
+    savedPages.forEach((page)=>{
+      const row = document.createElement('div')
+      row.className = 'page-link-row'
+
+      const button = document.createElement('button')
+      button.type = 'button'
+      button.className = `page-link saved-page-link${currentPageId===page.id ? ' selected' : ''}`
+      button.textContent = page.title
+      button.title = page.title
+      button.addEventListener('click', ()=>{ setCurrentPage(page.id) })
+      button.addEventListener('contextmenu', (ev)=>{
+        ev.preventDefault()
+        toggleSavedPage(page.id)
+      })
+
+      row.appendChild(button)
+      leftNavEl.appendChild(row)
+    })
+
+    return
+  }
 
   headerLinks.forEach(link=>{
     const row = document.createElement('div')
@@ -2503,6 +2675,10 @@ function renderLeftNav(){
       : attachLongPress(button, ()=>openPageHoldDialog(page.id))
     button.addEventListener('click', ()=>{
       if(holdPress.consume()) return
+      if(savedPagesAssignMode){
+        toggleSavedPage(page.id)
+        return
+      }
       if(page.isRandom){
         triggerRandomPage(page.id)
         return
@@ -2510,6 +2686,7 @@ function renderLeftNav(){
       if(editMode && selectedItemIds.size){ moveSelectedItemsToPage(page.id); return }
       setCurrentPage(page.id)
     })
+    if(savedPagesAssignMode && isSavedPage(page.id)) button.classList.add('saved-page-link')
     row.appendChild(button)
     leftNavEl.appendChild(row)
   })
@@ -2575,6 +2752,22 @@ function renderTabBar(pageId){
     randomPlaylistToggle.textContent = '?'
     randomPlaylistToggle.addEventListener('click', ()=>{ configureRandomPlaylistSlot(pid) })
     row.appendChild(randomPlaylistToggle)
+
+    const chronoSortToggle = document.createElement('button')
+    chronoSortToggle.type = 'button'
+    chronoSortToggle.className = `main-tab title-filter-toggle${getTabChronoSortOrder(pid, activeTabId)==='asc' ? ' selected' : ''}`
+    chronoSortToggle.title = getTabChronoSortOrder(pid, activeTabId)==='asc'
+      ? 'Chronological order: oldest at top (click to change)'
+      : 'Chronological order: newest at top (click to change)'
+    chronoSortToggle.setAttribute('aria-label', 'Set chronological order for this tab')
+    chronoSortToggle.textContent = '🕒'
+    chronoSortToggle.addEventListener('click', ()=>{ promptTabChronoSort(pid, activeTabId) })
+    chronoSortToggle.addEventListener('contextmenu', (ev)=>{
+      ev.preventDefault()
+      const next = getTabChronoSortOrder(pid, activeTabId)==='asc' ? 'desc' : 'asc'
+      setTabChronoSortOrder(pid, activeTabId, next)
+    })
+    row.appendChild(chronoSortToggle)
 
     const info = document.createElement('button')
     info.type = 'button'
@@ -2707,7 +2900,8 @@ function render(){ sections.innerHTML=''
       sections.appendChild(heading)
     }
     renderRandomPlaylistButton(currentPageId, activeTabId)
-    const sortedList = buildChronologicalListWithDividers(list)
+    const chronologicalOrder = getTabChronoSortOrder(currentPageId, activeTabId)
+    const sortedList = buildChronologicalListWithDividers(list, chronologicalOrder)
     if(sortedList.length){
       renderSection('', sortedList)
     }else{
@@ -2977,6 +3171,14 @@ if(deletePageItemsBtn){
   deletePageItemsBtn.addEventListener('click', togglePageDeleteMode)
 }
 
+if(savedPagesBtn){
+  savedPagesBtn.addEventListener('click', toggleSavedPagesPanel)
+  savedPagesBtn.addEventListener('contextmenu', (ev)=>{
+    ev.preventDefault()
+    toggleSavedPagesAssignMode()
+  })
+}
+
 if(sections){
   sections.addEventListener('scroll', ()=>{
     saveScrollPositionForCurrentView()
@@ -3044,6 +3246,7 @@ window.addEventListener('load', ()=>{
   ensurePageTabIntegrity()
   currentPageId = 'home'
   renderLeftNav()
+  syncSavedPagesButton()
   syncPageDeleteModeButton()
   applyTheme(loadThemeIndex())
   renderHeaderLinks()
