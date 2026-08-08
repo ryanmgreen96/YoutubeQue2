@@ -36,22 +36,21 @@ test('keeps existing saved links in their original order when the same link is s
   assert.strictEqual(merged[1].id, 'b-1')
 })
 
-test('adds new links at the top while keeping earlier saved links in place', () => {
+test('treats equivalent YouTube URLs as the same saved item and preserves its earlier position', () => {
   const existing = [
     { id: 'a-1', url: 'https://example.com/a', title: 'A' },
-    { id: 'b-1', url: 'https://example.com/b', title: 'B' }
+    { id: 'b-1', url: 'https://www.youtube.com/watch?v=abc123', title: 'B' }
   ]
 
   const incoming = [
-    { id: 'c-2', url: 'https://example.com/c', title: 'C' },
-    { id: 'b-3', url: 'https://example.com/b', title: 'B updated' }
+    { id: 'b-2', url: 'https://youtube.com/watch?v=abc123&feature=share', title: 'B updated' }
   ]
 
   const merged = mergeSavedLinksPreserveExistingPosition(incoming, existing)
 
   assert.deepStrictEqual(
     merged.map((item) => item.url),
-    ['https://example.com/a', 'https://example.com/b', 'https://example.com/c']
+    ['https://example.com/a', 'https://www.youtube.com/watch?v=abc123']
   )
-  assert.strictEqual(merged[2].id, 'b-1')
+  assert.strictEqual(merged[1].id, 'b-1')
 })

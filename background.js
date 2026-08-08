@@ -291,6 +291,40 @@ async function buildArchiveLibraryItem(tab){
   }
 }
 
+function getSavedLinkIdentity(value){
+  const raw = (value || '').trim()
+  if(!raw) return ''
+
+  try{
+    const parsed = new URL(raw)
+    const host = parsed.hostname.replace(/^www\./, '').toLowerCase()
+    const pathname = parsed.pathname || ''
+
+    if(host === 'youtu.be'){
+      const shortId = pathname.replace(/^\/+/, '').split('/')[0]
+      if(shortId) return `youtube:${shortId}`
+    }
+
+    if(host === 'youtube.com' || host.endsWith('.youtube.com')){
+      if(pathname === '/watch' || pathname.startsWith('/watch/')){
+        const videoId = parsed.searchParams.get('v') || ''
+        if(videoId) return `youtube:${videoId}`
+      }
+
+      if(pathname.startsWith('/shorts/')){
+        const parts = pathname.split('/').filter(Boolean)
+        const shortId = parts[1] || ''
+        if(shortId) return `youtube:${shortId}`
+      }
+    }
+
+    const normalized = parsed.toString().replace(/\/$/, '')
+    return normalized || raw.toLowerCase()
+  }catch(e){
+    return raw.toLowerCase()
+  }
+}
+
 chrome.action.onClicked.addListener((tab)=>{
   if(isArchiveOrgUrl(tab && tab.url)){
     ;(async ()=>{
@@ -324,8 +358,9 @@ chrome.action.onClicked.addListener((tab)=>{
 
     chrome.storage.local.get({[SAVED_LINKS_KEY]:[]}, (res)=>{
       const current = Array.isArray(res[SAVED_LINKS_KEY]) ? res[SAVED_LINKS_KEY] : []
-      const existingIndex = current.findIndex((link)=>link && link.url === item.url)
-      const next = current.filter((link)=>link && link.url !== item.url)
+      const itemKey = getSavedLinkIdentity(item.url)
+      const existingIndex = current.findIndex((link)=>getSavedLinkIdentity(link && link.url) === itemKey)
+      const next = current.filter((link)=>getSavedLinkIdentity(link && link.url) !== itemKey)
 
       if(existingIndex >= 0 && current[existingIndex]){
         const existingItem = current[existingIndex]

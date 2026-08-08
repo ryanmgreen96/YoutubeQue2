@@ -583,7 +583,58 @@ function loadPageTitleFilters(){
   }catch(e){ return {} }
 }
 function savePageTitleFilters(){ localStorage.setItem(PAGE_TITLE_FILTERS_KEY, JSON.stringify(pageTitleFilters)) }
-function loadSavedLinks(){ try{ return JSON.parse(localStorage.getItem(SAVED_LINKS_APP_KEY)||'[]') }catch(e){return[]}}
+function getSavedLinkIdentity(value){
+  const raw = (value || '').trim()
+  if(!raw) return ''
+
+  try{
+    const parsed = new URL(raw)
+    const host = parsed.hostname.replace(/^www\./, '').toLowerCase()
+    const pathname = parsed.pathname || ''
+
+    if(host === 'youtu.be'){
+      const shortId = pathname.replace(/^\/+/, '').split('/')[0]
+      if(shortId) return `youtube:${shortId}`
+    }
+
+    if(host === 'youtube.com' || host.endsWith('.youtube.com')){
+      if(pathname === '/watch' || pathname.startsWith('/watch/')){
+        const videoId = parsed.searchParams.get('v') || ''
+        if(videoId) return `youtube:${videoId}`
+      }
+
+      if(pathname.startsWith('/shorts/')){
+        const parts = pathname.split('/').filter(Boolean)
+        const shortId = parts[1] || ''
+        if(shortId) return `youtube:${shortId}`
+      }
+    }
+
+    const normalized = parsed.toString().replace(/\/$/, '')
+    return normalized || raw.toLowerCase()
+  }catch(e){
+    return raw.toLowerCase()
+  }
+}
+function loadSavedLinks(){
+  try{
+    const parsed = JSON.parse(localStorage.getItem(SAVED_LINKS_APP_KEY)||'[]')
+    if(!Array.isArray(parsed)) return []
+
+    const deduped = []
+    const seen = new Set()
+
+    parsed.forEach((item)=>{
+      if(!item || !item.url) return
+      const key = getSavedLinkIdentity(item.url)
+      if(!key || seen.has(key)) return
+      seen.add(key)
+      deduped.push({ ...item })
+    })
+
+    return deduped
+  }catch(e){ return [] }
+}
 function saveSavedLinks(){ localStorage.setItem(SAVED_LINKS_APP_KEY, JSON.stringify(savedLinks)) }
 function loadSavedShelves(){
   try{
