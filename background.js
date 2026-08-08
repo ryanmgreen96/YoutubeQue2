@@ -381,8 +381,7 @@ chrome.action.onClicked.addListener((tab)=>{
           orderIndex: getSavedLinkOrderIndex(existingItem)
         })
       }else{
-        const nextOrderIndex = next.reduce((max, entry)=>Math.max(max, getSavedLinkOrderIndex(entry)), 0) + 1
-        next.push({ ...item, orderIndex: nextOrderIndex })
+        next.push({ ...item, orderIndex: next.length })
       }
 
       chrome.storage.local.set({[SAVED_LINKS_KEY]: next}, ()=>{

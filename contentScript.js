@@ -343,8 +343,7 @@
         return
       }
 
-      const nextOrderIndex = merged.reduce((max, entry)=>Math.max(max, getSavedLinkOrderIndex(entry)), 0) + 1
-      merged.push({ ...item, orderIndex: nextOrderIndex })
+      merged.push({ ...item, orderIndex: merged.length })
     })
 
     return merged
