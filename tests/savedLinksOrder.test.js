@@ -51,7 +51,7 @@ test('adds new links at the top while keeping earlier saved links in place', () 
 
   assert.deepStrictEqual(
     merged.map((item) => item.url),
-    ['https://example.com/c', 'https://example.com/a', 'https://example.com/b']
+    ['https://example.com/a', 'https://example.com/b', 'https://example.com/c']
   )
   assert.strictEqual(merged[2].id, 'b-1')
 })

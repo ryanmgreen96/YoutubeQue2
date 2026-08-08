@@ -338,7 +338,7 @@ chrome.action.onClicked.addListener((tab)=>{
           url: existingItem.url || item.url
         })
       }else{
-        next.unshift(item)
+        next.push(item)
       }
 
       chrome.storage.local.set({[SAVED_LINKS_KEY]: next}, ()=>{

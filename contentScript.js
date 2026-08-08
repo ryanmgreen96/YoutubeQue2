@@ -302,7 +302,7 @@
       newItems.push({ ...item })
     })
 
-    return newItems.concat(existingItems)
+    return existingItems.concat(newItems)
   }
 
   function syncAppStateFromExtension(res){
