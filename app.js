@@ -616,6 +616,23 @@ function getSavedLinkIdentity(value){
     return raw.toLowerCase()
   }
 }
+function getSavedLinkOrderIndex(link){
+  const direct = Number(link && link.orderIndex)
+  if(Number.isInteger(direct) && direct >= 0) return direct
+  const fallback = Number(link && link.position)
+  return Number.isInteger(fallback) && fallback >= 0 ? fallback : 0
+}
+function sortSavedLinks(links){
+  return links
+    .map((link, index)=>({ link, index }))
+    .sort((a, b)=>{
+      const aOrder = getSavedLinkOrderIndex(a.link)
+      const bOrder = getSavedLinkOrderIndex(b.link)
+      if(aOrder !== bOrder) return aOrder - bOrder
+      return a.index - b.index
+    })
+    .map(({ link })=>link)
+}
 function loadSavedLinks(){
   try{
     const parsed = JSON.parse(localStorage.getItem(SAVED_LINKS_APP_KEY)||'[]')
@@ -629,10 +646,13 @@ function loadSavedLinks(){
       const key = getSavedLinkIdentity(item.url)
       if(!key || seen.has(key)) return
       seen.add(key)
-      deduped.push({ ...item })
+      const orderIndex = Number.isInteger(Number(item.orderIndex)) && Number(item.orderIndex) >= 0
+        ? Number(item.orderIndex)
+        : (Number.isInteger(Number(item.position)) && Number(item.position) >= 0 ? Number(item.position) : deduped.length)
+      deduped.push({ ...item, orderIndex })
     })
 
-    return deduped
+    return sortSavedLinks(deduped)
   }catch(e){ return [] }
 }
 function saveSavedLinks(){ localStorage.setItem(SAVED_LINKS_APP_KEY, JSON.stringify(savedLinks)) }
@@ -3253,7 +3273,7 @@ function renderSavedLinks(){
   }
 
   const activeShelf = savedShelves.find((shelf)=>shelf.id===activeShelfAssignId) || null
-  const visibleSavedLinks = savedLinks.filter((link)=>!isSavedLinkShelved(link.id))
+  const visibleSavedLinks = sortSavedLinks(savedLinks.filter((link)=>!isSavedLinkShelved(link.id)))
 
   const list = document.createElement('ul')
   list.className = 'saved-links-list'

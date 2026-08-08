@@ -325,6 +325,13 @@ function getSavedLinkIdentity(value){
   }
 }
 
+function getSavedLinkOrderIndex(link){
+  const direct = Number(link && link.orderIndex)
+  if(Number.isInteger(direct) && direct >= 0) return direct
+  const fallback = Number(link && link.position)
+  return Number.isInteger(fallback) && fallback >= 0 ? fallback : 0
+}
+
 chrome.action.onClicked.addListener((tab)=>{
   if(isArchiveOrgUrl(tab && tab.url)){
     ;(async ()=>{
@@ -370,10 +377,12 @@ chrome.action.onClicked.addListener((tab)=>{
           id: existingItem.id || item.id,
           created: existingItem.created || item.created,
           title: item.title || existingItem.title,
-          url: existingItem.url || item.url
+          url: existingItem.url || item.url,
+          orderIndex: getSavedLinkOrderIndex(existingItem)
         })
       }else{
-        next.push(item)
+        const nextOrderIndex = next.reduce((max, entry)=>Math.max(max, getSavedLinkOrderIndex(entry)), 0) + 1
+        next.push({ ...item, orderIndex: nextOrderIndex })
       }
 
       chrome.storage.local.set({[SAVED_LINKS_KEY]: next}, ()=>{

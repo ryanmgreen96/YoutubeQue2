@@ -301,6 +301,13 @@
     }
   }
 
+  function getSavedLinkOrderIndex(link){
+    const direct = Number(link && link.orderIndex)
+    if(Number.isInteger(direct) && direct >= 0) return direct
+    const fallback = Number(link && link.position)
+    return Number.isInteger(fallback) && fallback >= 0 ? fallback : 0
+  }
+
   function mergeSavedLinksPreserveExistingPosition(incoming, existing){
     const merged = []
     const existingByKey = new Map()
@@ -310,7 +317,7 @@
       const key = getSavedLinkIdentity(item.url)
       if(!key || existingByKey.has(key)) return
       existingByKey.set(key, merged.length)
-      merged.push({ ...item })
+      merged.push({ ...item, orderIndex: getSavedLinkOrderIndex(item) })
     })
 
     const seenNewKeys = new Set()
@@ -330,12 +337,14 @@
           id: currentItem.id || item.id,
           created: currentItem.created || item.created,
           title: item.title || currentItem.title,
-          url: currentItem.url || item.url
+          url: currentItem.url || item.url,
+          orderIndex: getSavedLinkOrderIndex(currentItem)
         }
         return
       }
 
-      merged.push({ ...item })
+      const nextOrderIndex = merged.reduce((max, entry)=>Math.max(max, getSavedLinkOrderIndex(entry)), 0) + 1
+      merged.push({ ...item, orderIndex: nextOrderIndex })
     })
 
     return merged
