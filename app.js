@@ -991,6 +991,13 @@ async function chronoDumpCopy(pageId = currentPageId, tabId = getActiveTabId(pag
     console.log('[chrono-dump] copied full JSON to clipboard')
     return true
   }catch(e){
+    if(typeof window.copy === 'function'){
+      try{
+        window.copy(json)
+        console.log('[chrono-dump] copied full JSON to clipboard via DevTools copy()')
+        return true
+      }catch(copyErr){ }
+    }
     console.warn('[chrono-dump] clipboard copy failed, returning JSON string')
     return json
   }
@@ -1011,11 +1018,28 @@ function chronoDumpDownload(pageId = currentPageId, tabId = getActiveTabId(pageI
   setTimeout(()=>URL.revokeObjectURL(url), 1000)
   return payload
 }
+function chronoDumpOpen(pageId = currentPageId, tabId = getActiveTabId(pageId)){
+  const json = chronoDumpJson(pageId, tabId)
+  const escaped = json
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+  const win = window.open('', '_blank', 'noopener,noreferrer')
+  if(!win){
+    console.warn('[chrono-dump] popup blocked; use ytChronoDumpDownload() instead')
+    return false
+  }
+  win.document.open()
+  win.document.write(`<pre style="white-space:pre-wrap;word-break:break-word;font:12px/1.4 ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;padding:16px;margin:0;">${escaped}</pre>`)
+  win.document.close()
+  return true
+}
 function exposeChronologyDebug(){
   window.ytChronoDump = (pageId, tabId)=>dumpChronologyDebug(pageId, tabId)
   window.ytChronoDumpJson = (pageId, tabId)=>chronoDumpJson(pageId, tabId)
   window.ytChronoDumpCopy = (pageId, tabId)=>chronoDumpCopy(pageId, tabId)
   window.ytChronoDumpDownload = (pageId, tabId)=>chronoDumpDownload(pageId, tabId)
+  window.ytChronoDumpOpen = (pageId, tabId)=>chronoDumpOpen(pageId, tabId)
 }
 function loadScrollPositions(){
   try{
