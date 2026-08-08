@@ -967,8 +967,55 @@ function dumpChronologyDebug(pageId = currentPageId, tabId = getActiveTabId(page
   console.groupEnd()
   return rows
 }
+function chronoDumpPayload(pageId = currentPageId, tabId = getActiveTabId(pageId)){
+  const pid = normalizePageId(pageId)
+  const tid = normalizeTabId(tabId)
+  const rows = chronoDebugRows(pid, tid)
+  const fallbackRows = rows.filter((row)=>row.source==='created' || row.source==='none').length
+  return {
+    pageId: pid,
+    tabId: tid,
+    totalRows: rows.length,
+    fallbackRows,
+    generatedAt: new Date().toISOString(),
+    rows
+  }
+}
+function chronoDumpJson(pageId = currentPageId, tabId = getActiveTabId(pageId)){
+  return JSON.stringify(chronoDumpPayload(pageId, tabId), null, 2)
+}
+async function chronoDumpCopy(pageId = currentPageId, tabId = getActiveTabId(pageId)){
+  const json = chronoDumpJson(pageId, tabId)
+  try{
+    await navigator.clipboard.writeText(json)
+    console.log('[chrono-dump] copied full JSON to clipboard')
+    return true
+  }catch(e){
+    console.warn('[chrono-dump] clipboard copy failed, returning JSON string')
+    return json
+  }
+}
+function chronoDumpDownload(pageId = currentPageId, tabId = getActiveTabId(pageId)){
+  const payload = chronoDumpPayload(pageId, tabId)
+  const json = JSON.stringify(payload, null, 2)
+  const blob = new Blob([json], {type: 'application/json'})
+  const url = URL.createObjectURL(blob)
+  const a = document.createElement('a')
+  const safePage = String(payload.pageId || 'page').replace(/[^a-z0-9_-]+/gi, '_')
+  const safeTab = String(payload.tabId || 'tab').replace(/[^a-z0-9_-]+/gi, '_')
+  a.href = url
+  a.download = `chrono-dump-${safePage}-${safeTab}.json`
+  document.body.appendChild(a)
+  a.click()
+  a.remove()
+  setTimeout(()=>URL.revokeObjectURL(url), 1000)
+  return payload
+}
 function exposeChronologyDebug(){
   window.ytChronoDump = (pageId, tabId)=>dumpChronologyDebug(pageId, tabId)
+  window.ytChronoDumpJson = (pageId, tabId)=>chronoDumpJson(pageId, tabId)
+  window.ytChronoDumpCopy = (pageId, tabId)=>chronoDumpCopy(pageId, tabId)
+  window.ytChronoDumpDownload = (pageId, tabId)=>chronoDumpDownload(pageId, tabId)
 }
 function loadScrollPositions(){
   try{

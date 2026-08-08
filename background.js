@@ -366,6 +366,34 @@ function parseYouTubeRelativeDate(text){
   return new Date(Date.now() - (value * offset)).toISOString()
 }
 
+function parseYouTubeAbsoluteDateText(text){
+  const raw = safeText(text).replace(/\u2022/g, ' ')
+  if(!raw) return ''
+
+  const normalized = raw
+    .replace(/^(streamed\s+live\s+on|streamed\s+on|premiered|published\s+on|uploaded\s+on)\s+/i, '')
+    .replace(/\s+/g, ' ')
+    .trim()
+
+  const patterns = [
+    /\b(january|february|march|april|may|june|july|august|september|october|november|december|jan|feb|mar|apr|jun|jul|aug|sep|sept|oct|nov|dec)\.?\s+\d{1,2}(?:st|nd|rd|th)?(?:,\s*|\s+)\d{4}\b/i,
+    /\b\d{1,2}\s+(january|february|march|april|may|june|july|august|september|october|november|december)\s+\d{4}\b/i,
+    /\b\d{4}-\d{2}-\d{2}\b/
+  ]
+
+  for(const pattern of patterns){
+    const match = normalized.match(pattern)
+    if(!match || !match[0]) continue
+    const parsed = Date.parse(match[0])
+    if(!Number.isNaN(parsed)) return new Date(parsed).toISOString()
+  }
+
+  const directParsed = Date.parse(normalized)
+  if(!Number.isNaN(directParsed)) return new Date(directParsed).toISOString()
+
+  return ''
+}
+
 function parseBalancedJsonFrom(html, start){
   if(start < 0) return null
 
@@ -759,7 +787,21 @@ async function fetchPageTitle(url){
 
 async function fetchPagePublishedAt(url){
   try{
-    const res = await fetch(url)
+    let requestUrl = url
+    try{
+      const parsed = new URL(url)
+      const host = parsed.hostname.replace(/^www\./, '')
+      if((host === 'youtube.com' || host.endsWith('.youtube.com')) && parsed.pathname === '/watch'){
+        const vid = safeText(parsed.searchParams.get('v'))
+        if(vid) requestUrl = `https://www.youtube.com/watch?v=${encodeURIComponent(vid)}`
+      }
+      if(host === 'youtu.be'){
+        const vid = safeText(parsed.pathname.split('/').filter(Boolean)[0])
+        if(vid) requestUrl = `https://www.youtube.com/watch?v=${encodeURIComponent(vid)}`
+      }
+    }catch(e){ }
+
+    const res = await fetch(requestUrl, {credentials: 'include'})
     const txt = await res.text()
     let doc
     try{ doc = new DOMParser().parseFromString(txt, 'text/html') }catch(e){ doc = null }
@@ -816,6 +858,8 @@ async function fetchPagePublishedAt(url){
       const match = txt.match(pattern)
       if(!match || !match[1]) continue
       const dateText = (match[1] || '').replace(/\\u0026/g, '&')
+      const absolute = parseYouTubeAbsoluteDateText(dateText)
+      if(absolute) return absolute
       const parsed = Date.parse(dateText)
       if(!Number.isNaN(parsed)) return new Date(parsed).toISOString()
       const relative = parseYouTubeRelativeDate(dateText)
