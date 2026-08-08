@@ -2546,23 +2546,11 @@ function setCurrentPage(pageId){
 function extractVideoId(url){
   try{
     const u = new URL(url)
-    const fromQuery = (u.searchParams.get('v') || '').trim()
-    if(fromQuery) return fromQuery
-
-    const host = u.hostname.replace(/^www\./, '').toLowerCase()
-    if(host === 'youtu.be'){
-      const shortId = (u.pathname.split('/').filter(Boolean)[0] || '').trim()
-      return shortId || null
+    if(u.hostname.includes('youtube')){
+      if(u.searchParams.has('v')) return u.searchParams.get('v')
+      const parts = u.pathname.split('/')
+      return parts.pop() || parts.pop()
     }
-
-    if(host.includes('youtube') || host.includes('yout-ube')){
-      const shortsId = (u.pathname.startsWith('/shorts/') ? (u.pathname.split('/').filter(Boolean)[1] || '') : '').trim()
-      if(shortsId) return shortsId
-      const parts = u.pathname.split('/').filter(Boolean)
-      const tail = (parts[parts.length - 1] || '').trim()
-      return tail || null
-    }
-
     return null
   }catch(e){return null}
 }
@@ -2570,28 +2558,20 @@ function extractVideoId(url){
 function isYouTubeUrl(url){
   try{
     const host = new URL(url).hostname.replace(/^www\./, '')
-    if(host === 'youtube.com' || host.endsWith('.youtube.com') || host === 'youtu.be') return true
-    if(host.includes('yout-ube')) return true
-    return !!extractVideoId(url)
+    return host === 'youtube.com' || host.endsWith('.youtube.com') || host === 'youtu.be'
   }catch(e){
     return false
   }
 }
 
-    const normalizedUrl = normalizeUrl(url)
-    if(!normalizedUrl) return ''
-
-    const videoId = extractVideoId(normalizedUrl)
-    const requestUrl = videoId
-      ? `https://www.youtube.com/watch?v=${encodeURIComponent(videoId)}`
-      : normalizedUrl
-
-    const payload = await requestExtensionAction('fetch-video-published-at', {url: requestUrl})
+function parseDurationTextToSeconds(value){
+  const raw = (value || '').trim()
+  if(!raw) return 0
   const match = raw.match(/^(\d{1,3}:)?\d{1,2}:\d{2}$/)
   if(!match) return 0
   const parts = raw.split(':').map((part)=>Number(part))
   if(parts.some((part)=>!Number.isFinite(part) || part < 0)) return 0
-      console.log('[chrono] fetchVideoPublishedAt', {url: requestUrl, publishedAt: normalized || '(empty)'})
+  if(parts.length===2){
     const [m, s] = parts
     if(s > 59) return 0
     return (m * 60) + s
