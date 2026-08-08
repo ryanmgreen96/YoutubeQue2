@@ -323,10 +323,25 @@ chrome.action.onClicked.addListener((tab)=>{
     }
 
     chrome.storage.local.get({[SAVED_LINKS_KEY]:[]}, (res)=>{
-      const current = res[SAVED_LINKS_KEY] || []
-      const deduped = current.filter((link)=>link.url !== item.url)
-      deduped.unshift(item)
-      chrome.storage.local.set({[SAVED_LINKS_KEY]: deduped}, ()=>{
+      const current = Array.isArray(res[SAVED_LINKS_KEY]) ? res[SAVED_LINKS_KEY] : []
+      const existingIndex = current.findIndex((link)=>link && link.url === item.url)
+      const next = current.filter((link)=>link && link.url !== item.url)
+
+      if(existingIndex >= 0 && current[existingIndex]){
+        const existingItem = current[existingIndex]
+        next.splice(existingIndex, 0, {
+          ...existingItem,
+          ...item,
+          id: existingItem.id || item.id,
+          created: existingItem.created || item.created,
+          title: item.title || existingItem.title,
+          url: existingItem.url || item.url
+        })
+      }else{
+        next.unshift(item)
+      }
+
+      chrome.storage.local.set({[SAVED_LINKS_KEY]: next}, ()=>{
         closeTabAfterSave(tab && tab.id)
       })
     })

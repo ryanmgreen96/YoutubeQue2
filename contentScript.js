@@ -268,38 +268,40 @@
   }
 
   function mergeSavedLinksPreserveExistingPosition(incoming, existing){
-    const cleanedExisting = []
+    const merged = []
     const existingByUrl = new Map()
 
     ;(Array.isArray(existing) ? existing : []).forEach((item)=>{
       if(!item || !item.url || existingByUrl.has(item.url)) return
-      existingByUrl.set(item.url, cleanedExisting.length)
-      cleanedExisting.push(item)
+      existingByUrl.set(item.url, merged.length)
+      merged.push({ ...item })
     })
 
-    const newItems = []
     const seenNewUrls = new Set()
 
     ;(Array.isArray(incoming) ? incoming : []).forEach((item)=>{
       if(!item || !item.url) return
-      const existingIndex = existingByUrl.get(item.url)
+      if(seenNewUrls.has(item.url)) return
+      seenNewUrls.add(item.url)
 
-      if(Number.isInteger(existingIndex)){
-        const oldItem = cleanedExisting[existingIndex]
-        cleanedExisting[existingIndex] = {
+      const existingIndex = existingByUrl.get(item.url)
+      if(Number.isInteger(existingIndex) && merged[existingIndex]){
+        const currentItem = merged[existingIndex]
+        merged[existingIndex] = {
+          ...currentItem,
           ...item,
-          id: oldItem && oldItem.id ? oldItem.id : item.id,
-          created: oldItem && oldItem.created ? oldItem.created : item.created
+          id: currentItem.id || item.id,
+          created: currentItem.created || item.created,
+          title: item.title || currentItem.title,
+          url: currentItem.url || item.url
         }
         return
       }
 
-      if(seenNewUrls.has(item.url)) return
-      seenNewUrls.add(item.url)
-      newItems.push(item)
+      merged.push({ ...item })
     })
 
-    return newItems.concat(cleanedExisting)
+    return merged
   }
 
   function syncAppStateFromExtension(res){
