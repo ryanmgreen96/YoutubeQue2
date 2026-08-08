@@ -459,6 +459,24 @@ function pullInitialDataObject(html){
   return null
 }
 
+function pullInitialPlayerResponseObject(html){
+  const markers = [
+    'var ytInitialPlayerResponse = ',
+    'window["ytInitialPlayerResponse"] = ',
+    'ytInitialPlayerResponse = '
+  ]
+
+  for(const marker of markers){
+    const index = html.indexOf(marker)
+    if(index < 0) continue
+    const start = html.indexOf('{', index)
+    const parsed = parseBalancedJsonFrom(html, start)
+    if(parsed) return parsed
+  }
+
+  return null
+}
+
 function collectPlaylistRenderers(node, output){
   if(!node || typeof node !== 'object') return
   if(Array.isArray(node)){
@@ -830,6 +848,22 @@ async function fetchPagePublishedAt(url){
           if(!Number.isNaN(parsed)) return new Date(parsed).toISOString()
         }
       }catch(e){ }
+    }
+
+    const playerResponse = pullInitialPlayerResponseObject(txt)
+    if(playerResponse){
+      const micro = playerResponse.microformat && playerResponse.microformat.playerMicroformatRenderer
+      const playerCandidates = [
+        micro && micro.publishDate,
+        micro && micro.uploadDate,
+        playerResponse.videoDetails && playerResponse.videoDetails.publishDate,
+        playerResponse.videoDetails && playerResponse.videoDetails.uploadDate
+      ].filter(Boolean)
+
+      for(const candidate of playerCandidates){
+        const parsed = Date.parse(candidate)
+        if(!Number.isNaN(parsed)) return new Date(parsed).toISOString()
+      }
     }
 
     const rawDatePatterns = [
