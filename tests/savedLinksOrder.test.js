@@ -36,7 +36,7 @@ test('keeps existing saved links in their original order when the same link is s
   assert.strictEqual(merged[1].id, 'b-1')
 })
 
-test('adds new links without disturbing the order of previously saved links', () => {
+test('adds new links at the top while keeping earlier saved links in place', () => {
   const existing = [
     { id: 'a-1', url: 'https://example.com/a', title: 'A' },
     { id: 'b-1', url: 'https://example.com/b', title: 'B' }
@@ -51,7 +51,7 @@ test('adds new links without disturbing the order of previously saved links', ()
 
   assert.deepStrictEqual(
     merged.map((item) => item.url),
-    ['https://example.com/a', 'https://example.com/b', 'https://example.com/c']
+    ['https://example.com/c', 'https://example.com/a', 'https://example.com/b']
   )
   assert.strictEqual(merged[2].id, 'b-1')
 })
