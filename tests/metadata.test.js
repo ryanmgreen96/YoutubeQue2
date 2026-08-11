@@ -64,3 +64,16 @@ test('parseYouTubeFeedPublishedAt parses XML published values', () => {
   const xml = '<feed><entry><published>2024-05-01T12:00:00.000Z</published></entry></feed>'
   assert.equal(context.parseYouTubeFeedPublishedAt(xml), '2024-05-01T12:00:00.000Z')
 })
+
+test('extractPublishDateFromYouTubePayload prefers player microformat publish dates', () => {
+  const context = loadDateHelpers()
+  const payload = {
+    microformat: {
+      playerMicroformatRenderer: {
+        publishDate: '2017-01-13T00:33:00-08:00',
+        uploadDate: '2017-01-13T00:33:00-08:00'
+      }
+    }
+  }
+  assert.equal(context.extractPublishDateFromYouTubePayload(payload), '2017-01-13T00:33:00-08:00')
+})

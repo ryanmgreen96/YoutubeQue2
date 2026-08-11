@@ -88,13 +88,19 @@ chrome.contextMenus.onClicked.addListener((info, tab)=>{
   }
 
   ;(async ()=>{
+    let resolvedTitle = ''
+    let publishedAtFromTab = ''
+
     // if we only have the page url (or nothing), try to resolve a hovered link under cursor
     if(!targetUrl || targetUrl === (tab && tab.url)){
       const found = await tryResolveFromHover()
       console.debug('tryResolveFromHover result', found)
       if(found && found.href) targetUrl = found.href
       if(found && found.text) {
-        openQueueTabFor(targetUrl || tab.url, found.text); return
+        resolvedTitle = found.text
+        publishedAtFromTab = await inspectTabPublishedAt(tab)
+        openQueueTabFor(targetUrl || tab.url, resolvedTitle, publishedAtFromTab)
+        return
       }
     }
 
@@ -102,9 +108,14 @@ chrome.contextMenus.onClicked.addListener((info, tab)=>{
     try{
       const results = await chrome.scripting.executeScript({ target: {tabId: tab.id}, func: ()=>document.title })
       const pageTitle = results?.[0]?.result || ''
-      console.debug('using pageTitle fallback', pageTitle)
-      openQueueTabFor(targetUrl || (tab && tab.url) || null, pageTitle)
-    }catch(e){ openQueueTabFor(targetUrl || (tab && tab.url) || null, null) }
+      resolvedTitle = pageTitle
+      publishedAtFromTab = await inspectTabPublishedAt(tab)
+      console.debug('using pageTitle fallback', {pageTitle, publishedAtFromTab})
+      openQueueTabFor(targetUrl || (tab && tab.url) || null, resolvedTitle, publishedAtFromTab)
+    }catch(e){
+      publishedAtFromTab = await inspectTabPublishedAt(tab)
+      openQueueTabFor(targetUrl || (tab && tab.url) || null, null, publishedAtFromTab)
+    }
   })()
 })
 
@@ -381,8 +392,20 @@ function isPlaceholderDate(value){
   if(typeof value !== 'string') return false
   const trimmed = safeText(value)
   if(!trimmed) return false
-  const placeholders = [/^2000-01-01(?:[T\s].*)?$/i, /^january 1, 2000$/i, /^jan 1, 2000$/i, /^1 january 2000$/i, /^01\s+jan\s+2000$/i]
+  const placeholders = [/^2000-01-01(?:[T\s].*)?$/i, /^2001-01-01(?:[T\s].*)?$/i, /^january 1, 2000$/i, /^jan 1, 2000$/i, /^1 january 2000$/i, /^01\s+jan\s+2000$/i, /^january 1, 2001$/i, /^jan 1, 2001$/i, /^1 january 2001$/i, /^01\s+jan\s+2001$/i]
   return placeholders.some((pattern)=>pattern.test(trimmed))
+}
+
+function isReasonablePublishDate(value){
+  if(typeof value !== 'string') return false
+  const trimmed = safeText(value)
+  if(!trimmed || isPlaceholderDate(trimmed)) return false
+  const parsed = Date.parse(trimmed)
+  if(Number.isNaN(parsed)) return false
+  const date = new Date(parsed)
+  const year = date.getUTCFullYear()
+  const nowYear = new Date().getUTCFullYear()
+  return Number.isInteger(year) && year >= 2005 && year <= nowYear + 1
 }
 
 function parseYouTubeAbsoluteDateText(text){
@@ -871,6 +894,27 @@ function normalizeDateCandidate(value){
   return ''
 }
 
+function extractPublishDateFromYouTubePayload(payload){
+  if(!payload || typeof payload !== 'object') return ''
+
+  const directCandidates = [
+    payload && payload.microformat && payload.microformat.playerMicroformatRenderer && payload.microformat.playerMicroformatRenderer.publishDate,
+    payload && payload.microformat && payload.microformat.playerMicroformatRenderer && payload.microformat.playerMicroformatRenderer.uploadDate,
+    payload && payload.microformat && payload.microformat.microformatDataRenderer && payload.microformat.microformatDataRenderer.publishDate,
+    payload && payload.videoDetails && payload.videoDetails.publishDate,
+    payload && payload.videoDetails && payload.videoDetails.uploadDate,
+    payload && payload.microformat && payload.microformat.publishDate,
+    payload && payload.microformat && payload.microformat.uploadDate
+  ].filter(Boolean)
+
+  for(const candidate of directCandidates){
+    const normalized = normalizeDateCandidate(candidate)
+    if(normalized) return normalized
+  }
+
+  return findPublishDateInValue(payload)
+}
+
 function findPublishDateInValue(value, seen = new WeakSet()){
   if(!value || typeof value !== 'object') return normalizeDateCandidate(value)
   if(seen.has(value)) return ''
@@ -975,7 +1019,7 @@ async function fetchPagePublishedAt(url){
     if(videoId){
       try{
         const playerData = await fetchYouTubePlayerData(videoId)
-        const youtubePlayerPublishedAt = findPublishDateInValue(playerData)
+        const youtubePlayerPublishedAt = extractPublishDateFromYouTubePayload(playerData)
         if(youtubePlayerPublishedAt) return youtubePlayerPublishedAt
       }catch(e){ }
 
@@ -1088,12 +1132,14 @@ function openQueueTabFor(href, title, publishedAtFromPage = ''){
   // fetch the page title when possible to ensure queued item title matches the target
   (async ()=>{
     try{
-      const [fetched, publishedAt] = await Promise.all([
+      const [fetched, pagePublishedAt] = await Promise.all([
         fetchPageTitle(href),
-        publishedAtFromPage ? Promise.resolve(publishedAtFromPage) : fetchPagePublishedAt(href)
+        (publishedAtFromPage && isReasonablePublishDate(publishedAtFromPage))
+          ? Promise.resolve(publishedAtFromPage)
+          : fetchPagePublishedAt(href)
       ])
       const finalTitle = fetched || title || ''
-      const resolvedPublishedAt = publishedAt || ''
+      const resolvedPublishedAt = isReasonablePublishDate(pagePublishedAt) ? pagePublishedAt : ''
       console.debug('openQueueTabFor', {href, title, fetched, publishedAt: resolvedPublishedAt, finalTitle})
       const u = new URL(href)
       let vid = u.searchParams.get('v')
@@ -1186,6 +1232,30 @@ function normalizePlaylistIncoming(video, fallbackListId, index){
     favorite: false,
     created: new Date(Date.now() - ((index + 1) * 1000)).toISOString(),
     publishedAt: safeText(video && video.publishedAt)
+  }
+}
+
+async function inspectTabPublishedAt(tab){
+  if(!tab || typeof tab.id !== 'number' || !tab.url) return ''
+  try{
+    const results = await chrome.scripting.executeScript({
+      target: {tabId: tab.id},
+      func: ()=>{
+        const candidates = [
+          window.ytInitialPlayerResponse && window.ytInitialPlayerResponse.microformat && window.ytInitialPlayerResponse.microformat.playerMicroformatRenderer && window.ytInitialPlayerResponse.microformat.playerMicroformatRenderer.publishDate,
+          window.ytInitialPlayerResponse && window.ytInitialPlayerResponse.microformat && window.ytInitialPlayerResponse.microformat.playerMicroformatRenderer && window.ytInitialPlayerResponse.microformat.playerMicroformatRenderer.uploadDate,
+          window.ytInitialPlayerResponse && window.ytInitialPlayerResponse.videoDetails && window.ytInitialPlayerResponse.videoDetails.publishDate,
+          window.ytInitialPlayerResponse && window.ytInitialPlayerResponse.videoDetails && window.ytInitialPlayerResponse.videoDetails.uploadDate,
+          window.ytInitialData && window.ytInitialData.microformat && window.ytInitialData.microformat.playerMicroformatRenderer && window.ytInitialData.microformat.playerMicroformatRenderer.publishDate,
+          window.ytInitialData && window.ytInitialData.microformat && window.ytInitialData.microformat.playerMicroformatRenderer && window.ytInitialData.microformat.playerMicroformatRenderer.uploadDate
+        ].filter(Boolean)
+        return candidates[0] ? String(candidates[0]) : ''
+      }
+    })
+    const publishedAt = results && results[0] && typeof results[0].result === 'string' ? results[0].result : ''
+    return publishedAt || ''
+  }catch(e){
+    return ''
   }
 }
 

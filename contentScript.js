@@ -41,8 +41,19 @@
     if(typeof value !== 'string') return false
     const trimmed = value.trim()
     if(!trimmed) return false
-    const placeholders = [/^2000-01-01(?:[T\s].*)?$/i, /^january 1, 2000$/i, /^jan 1, 2000$/i, /^1 january 2000$/i, /^01\s+jan\s+2000$/i]
+    const placeholders = [/^2000-01-01(?:[T\s].*)?$/i, /^2001-01-01(?:[T\s].*)?$/i, /^january 1, 2000$/i, /^jan 1, 2000$/i, /^1 january 2000$/i, /^01\s+jan\s+2000$/i, /^january 1, 2001$/i, /^jan 1, 2001$/i, /^1 january 2001$/i, /^01\s+jan\s+2001$/i]
     return placeholders.some((pattern)=>pattern.test(trimmed))
+  }
+
+  function isReasonablePublishDate(value){
+    if(typeof value !== 'string') return false
+    const trimmed = value.trim()
+    if(!trimmed || isPlaceholderDate(trimmed)) return false
+    const parsed = Date.parse(trimmed)
+    if(Number.isNaN(parsed)) return false
+    const year = new Date(parsed).getUTCFullYear()
+    const nowYear = new Date().getUTCFullYear()
+    return Number.isInteger(year) && year >= 2005 && year <= nowYear + 1
   }
 
   function normalizeDateCandidate(value){
@@ -50,7 +61,10 @@
     const trimmed = value.trim().replace(/\\u0026/g, '&')
     if(!trimmed || isPlaceholderDate(trimmed)) return ''
     const parsed = Date.parse(trimmed)
-    if(!Number.isNaN(parsed)) return new Date(parsed).toISOString()
+    if(!Number.isNaN(parsed)){
+      const iso = new Date(parsed).toISOString()
+      return isReasonablePublishDate(iso) ? iso : ''
+    }
     return ''
   }
 
@@ -84,6 +98,27 @@
     return ''
   }
 
+  function extractPublishDateFromYouTubePayload(payload){
+    if(!payload || typeof payload !== 'object') return ''
+
+    const directCandidates = [
+      payload && payload.microformat && payload.microformat.playerMicroformatRenderer && payload.microformat.playerMicroformatRenderer.publishDate,
+      payload && payload.microformat && payload.microformat.playerMicroformatRenderer && payload.microformat.playerMicroformatRenderer.uploadDate,
+      payload && payload.microformat && payload.microformat.microformatDataRenderer && payload.microformat.microformatDataRenderer.publishDate,
+      payload && payload.videoDetails && payload.videoDetails.publishDate,
+      payload && payload.videoDetails && payload.videoDetails.uploadDate,
+      payload && payload.microformat && payload.microformat.publishDate,
+      payload && payload.microformat && payload.microformat.uploadDate
+    ].filter(Boolean)
+
+    for(const candidate of directCandidates){
+      const normalized = normalizeDateCandidate(candidate)
+      if(normalized) return normalized
+    }
+
+    return findPublishDateInValue(payload)
+  }
+
   function extractPublishDateFromCurrentPage(){
     const selectors = [
       'meta[itemprop="datePublished"]',
@@ -103,7 +138,7 @@
     }
 
     const initialPayload = window.ytInitialPlayerResponse || window.ytInitialData || null
-    const fromPayload = findPublishDateInValue(initialPayload)
+    const fromPayload = extractPublishDateFromYouTubePayload(initialPayload)
     if(fromPayload) return fromPayload
 
     const html = document.documentElement.innerHTML || ''
