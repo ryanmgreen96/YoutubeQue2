@@ -2976,6 +2976,29 @@ function removeItem(id){
   renderPreservingSectionScroll()
 }
 
+function deleteSelectedItems(){
+  if(!selectedItemIds.size) return false
+  const selectedIds = Array.from(selectedItemIds)
+  items = items.filter((item)=>!selectedIds.includes(item.id))
+  selectedItemIds.clear()
+  save()
+  renderPreservingSectionScroll()
+  return true
+}
+
+function handleDeleteButtonClick(){
+  if(editMode && selectedItemIds.size){
+    deleteSelectedItems()
+    editMode = false
+    deleteMode = false
+    pageDeleteMode = false
+    clearRangeFlags()
+    render()
+    return
+  }
+  toggleDeleteMode()
+}
+
 function toggleFav(id){ const it = items.find(i=>i.id===id); if(!it) return; it.favorite=!it.favorite; save(); render() }
 
 function loadHeaderLinks(){
@@ -3644,8 +3667,10 @@ function renderSection(title, list, showHomeControls = false, hideGrid = false){
       deleteButton.type = 'button'
       deleteButton.className = `edit-mode-btn delete-mode-btn${deleteMode ? ' selected' : ''}`
       deleteButton.textContent = 'X'
-      deleteButton.title = 'Delete mode'
-      deleteButton.addEventListener('click', toggleDeleteMode)
+      deleteButton.title = editMode && selectedItemIds.size
+        ? `Delete ${selectedItemIds.size} selected item${selectedItemIds.size===1 ? '' : 's'}`
+        : 'Delete mode'
+      deleteButton.addEventListener('click', handleDeleteButtonClick)
       header.appendChild(deleteButton)
     }
     s.appendChild(header)
