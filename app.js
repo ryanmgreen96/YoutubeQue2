@@ -1004,6 +1004,22 @@ function chronologySourceForItem(item){
 
   return {source:'none', ms: 0, value: ''}
 }
+function formatChronologyDateLabel(item){
+  const source = chronologySourceForItem(item)
+  if(!source.value) return ''
+  const date = new Date(source.ms || Date.parse(source.value))
+  if(Number.isNaN(date.getTime())) return ''
+  return new Intl.DateTimeFormat(undefined, {year:'numeric', month:'short', day:'numeric'}).format(date)
+}
+function getItemDateLabel(item){
+  const source = chronologySourceForItem(item)
+  const formatted = formatChronologyDateLabel(item)
+  if(!formatted) return ''
+  if(source.source === 'publishedAt') return formatted
+  if(source.source === 'titleDate') return `Title: ${formatted}`
+  if(source.source === 'created') return `Queued: ${formatted}`
+  return formatted
+}
 function chronoDebugRows(pageId, tabId){
   const pid = normalizePageId(pageId)
   const tid = normalizeTabId(tabId)
@@ -1111,6 +1127,23 @@ function exposeChronologyDebug(){
   window.ytChronoDumpCopy = (pageId, tabId)=>chronoDumpCopy(pageId, tabId)
   window.ytChronoDumpDownload = (pageId, tabId)=>chronoDumpDownload(pageId, tabId)
   window.ytChronoDumpOpen = (pageId, tabId)=>chronoDumpOpen(pageId, tabId)
+  window.ytChronoEnableDebug = ()=>{
+    localStorage.setItem('ytDebugChrono', '1')
+    console.info('[chrono] debug enabled. Use ytChronoDumpJson() or ytChronoDumpCopy()')
+    return true
+  }
+  window.ytChronoDisableDebug = ()=>{
+    localStorage.removeItem('ytDebugChrono')
+    console.info('[chrono] debug disabled')
+    return true
+  }
+  window.ytChronoCurrentTab = ()=>chronoDumpPayload(currentPageId, getActiveTabId(currentPageId))
+  window.ytChronoRefreshCurrentTab = ()=>{
+    const pid = normalizePageId(currentPageId)
+    const tid = getActiveTabId(pid)
+    maybeEnrichChronologicalMetadataForTab(pid, tid)
+    return chronoDumpPayload(pid, tid)
+  }
 }
 function loadScrollPositions(){
   try{
@@ -3039,6 +3072,18 @@ function renderLeftNav(){
   })
 }
 
+function forceRefreshChronologyForTab(pageId, tabId){
+  const pid = normalizePageId(pageId)
+  const tid = normalizeTabId(tabId)
+  if(getActiveTabId(pid) !== tid){
+    activeTabs[pid] = tid
+    saveActiveTabs()
+  }
+  maybeEnrichChronologicalMetadataForTab(pid, tid)
+  renderPreservingSectionScroll()
+  logChronoDebugForTab(pid, tid, 'manual-resort')
+}
+
 function renderTabBar(pageId){
   const pid = normalizePageId(pageId)
   const tabs = getPageTabs(pid)
@@ -3062,7 +3107,19 @@ function renderTabBar(pageId){
       setActiveTab(pid, tab.id)
     })
 
+    const sortBtn = document.createElement('button')
+    sortBtn.type = 'button'
+    sortBtn.className = 'main-tab title-filter-toggle'
+    sortBtn.textContent = '↻'
+    sortBtn.title = 'Force chronological sort for this tab'
+    sortBtn.setAttribute('aria-label', 'Force chronological sort for this tab')
+    sortBtn.addEventListener('click', (event)=>{
+      event.stopPropagation()
+      forceRefreshChronologyForTab(pid, tab.id)
+    })
+
     wrap.appendChild(button)
+    wrap.appendChild(sortBtn)
     row.appendChild(wrap)
   })
 
@@ -3231,7 +3288,8 @@ function render(){ sections.innerHTML=''
       sections.appendChild(heading)
     }
     renderRandomPlaylistButton(currentPageId, activeTabId)
-    const sortedList = buildChronologicalListWithDividers(list, 'desc')
+    const sortOrder = getTabChronoSortOrder(currentPageId, activeTabId)
+    const sortedList = buildChronologicalListWithDividers(list, sortOrder)
     maybeEnrichChronologicalMetadataForTab(currentPageId, activeTabId)
     if(sortedList.length){
       renderSection('', sortedList)
@@ -3433,6 +3491,12 @@ function renderSection(title, list, showHomeControls = false, hideGrid = false){
     }
     const rawTitle = it.title || it.url
     ttl.textContent = currentPageId==='home' ? rawTitle : applyPageTitleFilters(rawTitle, currentPageId)
+    const dateEl = node.querySelector('.date')
+    const dateLabel = getItemDateLabel(it)
+    if(dateEl){
+      dateEl.textContent = dateLabel
+      dateEl.style.display = dateLabel ? '' : 'none'
+    }
     el.classList.toggle('is-editing', editMode)
     el.classList.toggle('is-selected', selectedItemIds.has(it.id))
     el.classList.toggle('is-range-flag', rangeFlagStartId===it.id || rangeFlagEndId===it.id)
@@ -3580,6 +3644,7 @@ window.addEventListener('load', ()=>{
   syncSavedPagesButton()
   syncPageDeleteModeButton()
   exposeChronologyDebug()
+  console.info('[chrono] helpers ready: ytChronoEnableDebug(), ytChronoDisableDebug(), ytChronoDumpJson(), ytChronoDumpCopy(), ytChronoRefreshCurrentTab()')
   applyTheme(loadThemeIndex())
   renderHeaderLinks()
   handleParams()
