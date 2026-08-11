@@ -1060,6 +1060,15 @@ function chronologySourceForItem(item){
   return {source:'none', ms: 0, value: ''}
 }
 function formatChronologyDateLabel(item){
+  const publishedAt = (item && item.publishedAt && String(item.publishedAt).trim()) || ''
+  if(publishedAt){
+    const publishedMs = Date.parse(publishedAt)
+    if(!Number.isNaN(publishedMs)){
+      const date = new Date(publishedMs)
+      return new Intl.DateTimeFormat(undefined, {year:'numeric', month:'short', day:'numeric'}).format(date)
+    }
+  }
+
   const source = chronologySourceForItem(item)
   if(!source.value) return ''
   const date = new Date(source.ms || Date.parse(source.value))
@@ -1067,10 +1076,12 @@ function formatChronologyDateLabel(item){
   return new Intl.DateTimeFormat(undefined, {year:'numeric', month:'short', day:'numeric'}).format(date)
 }
 function getItemDateLabel(item){
-  const source = chronologySourceForItem(item)
+  const publishedAt = (item && item.publishedAt && String(item.publishedAt).trim()) || ''
   const formatted = formatChronologyDateLabel(item)
   if(!formatted) return ''
-  if(source.source === 'publishedAt') return `Published: ${formatted}`
+  if(publishedAt){ return `Published: ${formatted}` }
+
+  const source = chronologySourceForItem(item)
   if(source.source === 'titleDate') return `Title: ${formatted}`
   if(source.source === 'created') return `Queued: ${formatted}`
   return formatted
