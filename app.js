@@ -886,10 +886,11 @@ function logChronoDebugForTab(pageId, tabId, reason){
     rows
   }
 
+  const text = JSON.stringify(payload, null, 2)
   console.groupCollapsed(`[chrono] ${payload.reason} page=${pid} tab=${tid} order=${order} rows=${payload.totalRows} missingPublishedAt=${payload.missingPublishedAt}`)
-  console.log(JSON.stringify(payload, null, 2))
+  console.log(text)
   console.groupEnd()
-  return payload
+  return text
 }
 async function fetchVideoPublishedAt(url){
   try{
@@ -1210,6 +1211,21 @@ function exposeChronologyDebug(){
     const tid = getActiveTabId(pid)
     maybeEnrichChronologicalMetadataForTab(pid, tid)
     return chronoDumpPayload(pid, tid)
+  }
+  window.ytChronoSummary = ()=>{
+    const pid = normalizePageId(currentPageId)
+    const tid = getActiveTabId(pid)
+    const rows = chronoDebugRows(pid, tid)
+    const summary = rows.map((row)=>({
+      title: row.title,
+      source: row.source,
+      publishedAt: row.publishedAt || '',
+      created: row.created || '',
+      checkedDate: row.checkedDate || ''
+    }))
+    const text = JSON.stringify(summary, null, 2)
+    console.log(text)
+    return text
   }
 }
 function loadScrollPositions(){
