@@ -1177,40 +1177,116 @@ function chronoDumpOpen(pageId = currentPageId, tabId = getActiveTabId(pageId)){
   return true
 }
 function exposeChronologyDebug(){
+  const ensureDebugOutput = ()=>{
+    let el = document.getElementById('yt-chrono-debug-output')
+    if(!el){
+      el = document.createElement('textarea')
+      el.id = 'yt-chrono-debug-output'
+      el.style.cssText = 'position:fixed;left:12px;bottom:12px;z-index:2147483647;width:min(92vw,720px);height:220px;padding:10px;border-radius:10px;border:1px solid rgba(255,255,255,0.2);background:rgba(5,10,20,0.95);color:#f5f7ff;font:12px/1.4 ui-monospace,Consolas,monospace;resize:both;box-shadow:0 12px 32px rgba(0,0,0,0.35)' 
+      document.body.appendChild(el)
+    }
+    return el
+  }
+
+  const emitChronoText = (text, label)=>{
+    const el = ensureDebugOutput()
+    el.value = text
+    el.title = label
+    console.log(label)
+    console.log(text)
+    return text
+  }
+
+  const downloadChronoText = (text, filename)=>{
+    const blob = new Blob([text], {type: 'text/plain;charset=utf-8'})
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = filename
+    document.body.appendChild(a)
+    a.click()
+    a.remove()
+    setTimeout(()=>URL.revokeObjectURL(url), 1000)
+    return text
+  }
+
+  const openChronoText = (text, filename)=>{
+    const blob = new Blob([text], {type: 'text/plain;charset=utf-8'})
+    const url = URL.createObjectURL(blob)
+    const win = window.open(url, '_blank', 'noopener,noreferrer')
+    if(!win){
+      setTimeout(()=>URL.revokeObjectURL(url), 1000)
+      return false
+    }
+    setTimeout(()=>URL.revokeObjectURL(url), 1000)
+    return win
+  }
+
   window.ytChronoDump = (pageId, tabId)=>dumpChronologyDebug(pageId, tabId)
-  window.ytChronoDumpJson = (pageId, tabId)=>chronoDumpJson(pageId, tabId)
-  window.ytChronoDumpCopy = (pageId, tabId)=>chronoDumpCopy(pageId, tabId)
+  window.ytChronoDumpJson = (pageId, tabId)=>{
+    const text = chronoDumpJson(pageId, tabId)
+    const safePage = String(pageId || currentPageId || 'page').replace(/[^a-z0-9_-]+/gi, '_')
+    const safeTab = String(tabId || getActiveTabId(pageId || currentPageId) || 'tab').replace(/[^a-z0-9_-]+/gi, '_')
+    downloadChronoText(text, `chrono-${safePage}-${safeTab}.json`)
+    return emitChronoText(text, 'ytChronoDumpJson')
+  }
+  window.ytChronoDumpCopy = async (pageId, tabId)=>{
+    const text = chronoDumpJson(pageId, tabId)
+    try{
+      await navigator.clipboard.writeText(text)
+      return emitChronoText(text, 'ytChronoDumpCopy')
+    }catch(e){
+      return emitChronoText(text, 'ytChronoDumpCopy (clipboard unavailable)')
+    }
+  }
   window.ytChronoDumpDownload = (pageId, tabId)=>chronoDumpDownload(pageId, tabId)
   window.ytChronoDumpOpen = (pageId, tabId)=>chronoDumpOpen(pageId, tabId)
   window.ytChronoEnableDebug = ()=>{
     localStorage.setItem('ytDebugChrono', '1')
-    console.info('[chrono] debug enabled. Use ytChronoDumpJson() or ytChronoDumpCopy()')
-    return true
+    return emitChronoText(JSON.stringify({enabled:true}, null, 2), 'ytChronoEnableDebug')
   }
   window.ytChronoDisableDebug = ()=>{
     localStorage.removeItem('ytDebugChrono')
-    console.info('[chrono] debug disabled')
-    return true
+    return emitChronoText(JSON.stringify({enabled:false}, null, 2), 'ytChronoDisableDebug')
   }
   window.ytChronoCurrentTab = ()=>chronoDumpPayload(currentPageId, getActiveTabId(currentPageId))
-  window.ytChronoLogCurrentTab = ()=>logChronoDebugForTab(currentPageId, getActiveTabId(currentPageId), 'console-log')
+  window.ytChronoLogCurrentTab = ()=>{
+    const text = logChronoDebugForTab(currentPageId, getActiveTabId(currentPageId), 'console-log')
+    const filename = `chrono-${normalizePageId(currentPageId)}-${normalizeTabId(getActiveTabId(currentPageId))}.json`
+    downloadChronoText(text || '[]', filename)
+    return emitChronoText(text || '[]', 'ytChronoLogCurrentTab')
+  }
   window.ytChronoCopyCurrentTab = async ()=>{
     const payload = chronoDumpPayload(currentPageId, getActiveTabId(currentPageId))
     const text = JSON.stringify(payload, null, 2)
     try{
       await navigator.clipboard.writeText(text)
-      console.info('[chrono] copied current tab payload to clipboard')
-      return text
+      downloadChronoText(text, `chrono-${normalizePageId(currentPageId)}-${normalizeTabId(getActiveTabId(currentPageId))}.json`)
+      return emitChronoText(text, 'ytChronoCopyCurrentTab')
     }catch(e){
-      console.warn('[chrono] clipboard unavailable, returning text instead')
-      return text
+      downloadChronoText(text, `chrono-${normalizePageId(currentPageId)}-${normalizeTabId(getActiveTabId(currentPageId))}.json`)
+      return emitChronoText(text, 'ytChronoCopyCurrentTab (clipboard unavailable)')
     }
+  }
+  window.ytChronoDownloadCurrentTab = ()=>{
+    const payload = chronoDumpPayload(currentPageId, getActiveTabId(currentPageId))
+    const text = JSON.stringify(payload, null, 2)
+    const filename = `chrono-${normalizePageId(currentPageId)}-${normalizeTabId(getActiveTabId(currentPageId))}.json`
+    return downloadChronoText(text, filename)
+  }
+  window.ytChronoOpenCurrentTab = ()=>{
+    const payload = chronoDumpPayload(currentPageId, getActiveTabId(currentPageId))
+    const text = JSON.stringify(payload, null, 2)
+    const filename = `chrono-${normalizePageId(currentPageId)}-${normalizeTabId(getActiveTabId(currentPageId))}.txt`
+    downloadChronoText(text, filename)
+    return openChronoText(text, filename)
   }
   window.ytChronoRefreshCurrentTab = ()=>{
     const pid = normalizePageId(currentPageId)
     const tid = getActiveTabId(pid)
     maybeEnrichChronologicalMetadataForTab(pid, tid)
-    return chronoDumpPayload(pid, tid)
+    const payload = chronoDumpPayload(pid, tid)
+    return emitChronoText(JSON.stringify(payload, null, 2), 'ytChronoRefreshCurrentTab')
   }
   window.ytChronoSummary = ()=>{
     const pid = normalizePageId(currentPageId)
@@ -1224,8 +1300,8 @@ function exposeChronologyDebug(){
       checkedDate: row.checkedDate || ''
     }))
     const text = JSON.stringify(summary, null, 2)
-    console.log(text)
-    return text
+    downloadChronoText(text, `chrono-summary-${normalizePageId(currentPageId)}-${normalizeTabId(getActiveTabId(pid))}.json`)
+    return emitChronoText(text, 'ytChronoSummary')
   }
 }
 function loadScrollPositions(){
@@ -3733,7 +3809,7 @@ window.addEventListener('load', ()=>{
   syncSavedPagesButton()
   syncPageDeleteModeButton()
   exposeChronologyDebug()
-  console.info('[chrono] helpers ready: ytChronoEnableDebug(), ytChronoDisableDebug(), ytChronoDumpJson(), ytChronoDumpCopy(), ytChronoRefreshCurrentTab(), ytChronoLogCurrentTab(), ytChronoCopyCurrentTab()')
+  console.info('[chrono] helpers ready: ytChronoEnableDebug(), ytChronoDisableDebug(), ytChronoDumpJson(), ytChronoDumpCopy(), ytChronoRefreshCurrentTab(), ytChronoLogCurrentTab(), ytChronoCopyCurrentTab(), ytChronoDownloadCurrentTab(), ytChronoOpenCurrentTab()')
   applyTheme(loadThemeIndex())
   renderHeaderLinks()
   handleParams()
