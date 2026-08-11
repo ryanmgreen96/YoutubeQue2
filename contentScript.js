@@ -37,10 +37,18 @@
     return ''
   }
 
+  function isPlaceholderDate(value){
+    if(typeof value !== 'string') return false
+    const trimmed = value.trim()
+    if(!trimmed) return false
+    const placeholders = [/^2000-01-01(?:[T\s].*)?$/i, /^january 1, 2000$/i, /^jan 1, 2000$/i, /^1 january 2000$/i, /^01\s+jan\s+2000$/i]
+    return placeholders.some((pattern)=>pattern.test(trimmed))
+  }
+
   function normalizeDateCandidate(value){
     if(typeof value !== 'string') return ''
     const trimmed = value.trim().replace(/\\u0026/g, '&')
-    if(!trimmed) return ''
+    if(!trimmed || isPlaceholderDate(trimmed)) return ''
     const parsed = Date.parse(trimmed)
     if(!Number.isNaN(parsed)) return new Date(parsed).toISOString()
     return ''

@@ -366,6 +366,25 @@ function parseYouTubeRelativeDate(text){
   return new Date(Date.now() - (value * offset)).toISOString()
 }
 
+function normalizeCandidateDate(value){
+  if(typeof value !== 'string') return ''
+  const trimmed = safeText(value).replace(/\u2022/g, ' ').replace(/\s+/g, ' ')
+  if(!trimmed) return ''
+  const parsed = Date.parse(trimmed)
+  if(Number.isNaN(parsed)) return ''
+  const date = new Date(parsed)
+  if(Number.isNaN(date.getTime())) return ''
+  return date.toISOString()
+}
+
+function isPlaceholderDate(value){
+  if(typeof value !== 'string') return false
+  const trimmed = safeText(value)
+  if(!trimmed) return false
+  const placeholders = [/^2000-01-01(?:[T\s].*)?$/i, /^january 1, 2000$/i, /^jan 1, 2000$/i, /^1 january 2000$/i, /^01\s+jan\s+2000$/i]
+  return placeholders.some((pattern)=>pattern.test(trimmed))
+}
+
 function parseYouTubeAbsoluteDateText(text){
   const raw = safeText(text).replace(/\u2022/g, ' ')
   if(!raw) return ''
@@ -384,12 +403,12 @@ function parseYouTubeAbsoluteDateText(text){
   for(const pattern of patterns){
     const match = normalized.match(pattern)
     if(!match || !match[0]) continue
-    const parsed = Date.parse(match[0])
-    if(!Number.isNaN(parsed)) return new Date(parsed).toISOString()
+    const candidate = normalizeCandidateDate(match[0])
+    if(candidate && !isPlaceholderDate(candidate) && !isPlaceholderDate(match[0])) return candidate
   }
 
-  const directParsed = Date.parse(normalized)
-  if(!Number.isNaN(directParsed)) return new Date(directParsed).toISOString()
+  const directParsed = normalizeCandidateDate(normalized)
+  if(directParsed && !isPlaceholderDate(directParsed) && !isPlaceholderDate(normalized)) return directParsed
 
   return ''
 }
@@ -830,8 +849,12 @@ function normalizeDateCandidate(value){
   if(typeof value === 'string'){
     const trimmed = safeText(value).replace(/\\u0026/g, '&')
     if(!trimmed) return ''
+    if(isPlaceholderDate(trimmed)) return ''
     const direct = Date.parse(trimmed)
-    if(!Number.isNaN(direct)) return new Date(direct).toISOString()
+    if(!Number.isNaN(direct)){
+      const iso = new Date(direct).toISOString()
+      return isPlaceholderDate(iso) ? '' : iso
+    }
     const absolute = parseYouTubeAbsoluteDateText(trimmed)
     if(absolute) return absolute
     const relative = parseYouTubeRelativeDate(trimmed)
