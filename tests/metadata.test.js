@@ -27,22 +27,48 @@ function buildContext() {
     const d = new Date(Date.now() - (days * 24 * 60 * 60 * 1000))
     return d.toISOString()
   }
+  context.isPlaceholderDate = (value) => {
+    if(typeof value !== 'string') return false
+    const trimmed = context.safeText(value)
+    if(!trimmed) return false
+    const placeholders = [/^2000-01-01(?:[T\s].*)?$/i, /^2001-01-01(?:[T\s].*)?$/i, /^january 1, 2000$/i, /^jan 1, 2000$/i, /^1 january 2000$/i, /^01\s+jan\s+2000$/i, /^january 1, 2001$/i, /^jan 1, 2001$/i, /^1 january 2001$/i, /^01\s+jan\s+2001$/i]
+    return placeholders.some((pattern)=>pattern.test(trimmed))
+  }
+  context.isReasonablePublishDate = (value) => {
+    if(typeof value !== 'string') return false
+    const trimmed = context.safeText(value)
+    if(!trimmed || context.isPlaceholderDate(trimmed)) return false
+    const parsed = Date.parse(trimmed)
+    if(Number.isNaN(parsed)) return false
+    const date = new Date(parsed)
+    const year = date.getUTCFullYear()
+    const nowYear = new Date().getUTCFullYear()
+    return Number.isInteger(year) && year >= 2005 && year <= nowYear + 1
+  }
   vm.createContext(context)
   return context
 }
 
-function loadDateHelpers() {
+function loadDateHelpers(startMarker, endMarker) {
   const context = buildContext()
-  const start = backgroundSource.indexOf('function parseYouTubeFeedPublishedAt')
-  const end = backgroundSource.indexOf('async function fetchPagePublishedAt')
+  const start = backgroundSource.indexOf(startMarker)
+  const end = backgroundSource.indexOf(endMarker)
   assert.notEqual(start, -1)
   assert.notEqual(end, -1)
   vm.runInContext(backgroundSource.slice(start, end), context)
   return context
 }
 
+function loadDateHelpersForFeed() {
+  return loadDateHelpers('function parseYouTubeRelativeDate', 'async function fetchPagePublishedAt')
+}
+
+function loadDateHelpersForHtmlExtraction() {
+  return loadDateHelpers('function parseYouTubeRelativeDate', 'async function fetchPagePublishedAt')
+}
+
 test('findPublishDateInValue extracts nested publish dates', () => {
-  const context = loadDateHelpers()
+  const context = loadDateHelpersForFeed()
   const payload = {
     responseContext: {
       serviceTrackingParams: [],
@@ -60,13 +86,13 @@ test('findPublishDateInValue extracts nested publish dates', () => {
 })
 
 test('parseYouTubeFeedPublishedAt parses XML published values', () => {
-  const context = loadDateHelpers()
+  const context = loadDateHelpersForFeed()
   const xml = '<feed><entry><published>2024-05-01T12:00:00.000Z</published></entry></feed>'
   assert.equal(context.parseYouTubeFeedPublishedAt(xml), '2024-05-01T12:00:00.000Z')
 })
 
 test('extractPublishDateFromYouTubePayload prefers player microformat publish dates', () => {
-  const context = loadDateHelpers()
+  const context = loadDateHelpersForFeed()
   const payload = {
     microformat: {
       playerMicroformatRenderer: {
@@ -76,4 +102,14 @@ test('extractPublishDateFromYouTubePayload prefers player microformat publish da
     }
   }
   assert.equal(context.extractPublishDateFromYouTubePayload(payload), '2017-01-13T00:33:00-08:00')
+})
+test('extractDateFromYoutubeHtml finds publishDate from page HTML', () => {
+  const context = loadDateHelpersForHtmlExtraction()
+  const html = '<html><body><script>var ytInitialPlayerResponse = {"microformat":{"playerMicroformatRenderer":{"publishDate":"2017-01-13T00:33:00-08:00"}}};</script></body></html>'
+  assert.equal(context.extractDateFromYoutubeHtml(html), '2017-01-13T08:33:00.000Z')
+})
+
+test('normalizeDateCandidate rejects absurd years', () => {
+  const context = loadDateHelpersForFeed()
+  assert.equal(context.normalizeDateCandidate('+021540-01-01T08:00:00.000Z'), '')
 })

@@ -56,6 +56,52 @@
     return Number.isInteger(year) && year >= 2005 && year <= nowYear + 1
   }
 
+  function parseYouTubeAbsoluteDateText(text){
+    const raw = (text || '').trim().replace(/\u2022/g, ' ')
+    if(!raw) return ''
+    const normalized = raw
+      .replace(/^(streamed\s+live\s+on|streamed\s+on|premiered|published\s+on|uploaded\s+on)\s+/i, '')
+      .replace(/\s+/g, ' ')
+      .trim()
+    const patterns = [
+      /\b(january|february|march|april|may|june|july|august|september|october|november|december|jan|feb|mar|apr|jun|jul|aug|sep|sept|oct|nov|dec)\.?\s+\d{1,2}(?:st|nd|rd|th)?(?:,\s*|\s+)\d{4}\b/i,
+      /\b\d{1,2}\s+(january|february|march|april|may|june|july|august|september|october|november|december)\s+\d{4}\b/i,
+      /\b\d{4}-\d{2}-\d{2}\b/
+    ]
+    for(const pattern of patterns){
+      const match = normalized.match(pattern)
+      if(!match || !match[0]) continue
+      const parsed = Date.parse(match[0])
+      if(!Number.isNaN(parsed)){
+        const iso = new Date(parsed).toISOString()
+        return isReasonablePublishDate(iso) ? iso : ''
+      }
+    }
+    return ''
+  }
+
+  function parseYouTubeRelativeDate(text){
+    const raw = (text || '').trim().toLowerCase()
+    if(!raw) return ''
+    const match = raw.match(/(\d+)\s+(second|minute|hour|day|week|month|year)s?\s+ago/)
+    if(!match) return ''
+    const value = Number(match[1])
+    if(!Number.isFinite(value) || value <= 0) return ''
+    const multipliers = {
+      second: 1000,
+      minute: 60 * 1000,
+      hour: 60 * 60 * 1000,
+      day: 24 * 60 * 60 * 1000,
+      week: 7 * 24 * 60 * 60 * 1000,
+      month: 30 * 24 * 60 * 60 * 1000,
+      year: 365 * 24 * 60 * 60 * 1000
+    }
+    const offset = multipliers[match[2]]
+    if(!offset) return ''
+    const iso = new Date(Date.now() - (value * offset)).toISOString()
+    return isReasonablePublishDate(iso) ? iso : ''
+  }
+
   function normalizeDateCandidate(value){
     if(typeof value !== 'string') return ''
     const trimmed = value.trim().replace(/\\u0026/g, '&')
@@ -65,6 +111,10 @@
       const iso = new Date(parsed).toISOString()
       return isReasonablePublishDate(iso) ? iso : ''
     }
+    const absolute = parseYouTubeAbsoluteDateText(trimmed)
+    if(absolute) return absolute
+    const relative = parseYouTubeRelativeDate(trimmed)
+    if(relative) return relative
     return ''
   }
 
@@ -132,8 +182,8 @@
       const node = document.querySelector(selector)
       const content = node && node.getAttribute && node.getAttribute('content')
       if(content){
-        const parsed = Date.parse(content)
-        if(!Number.isNaN(parsed)) return new Date(parsed).toISOString()
+        const normalized = normalizeDateCandidate(content)
+        if(normalized) return normalized
       }
     }
 
@@ -151,8 +201,8 @@
     for(const pattern of rawPatterns){
       const match = html.match(pattern)
       if(match && match[1]){
-        const parsed = Date.parse(match[1])
-        if(!Number.isNaN(parsed)) return new Date(parsed).toISOString()
+        const normalized = normalizeDateCandidate(match[1])
+        if(normalized) return normalized
       }
     }
 

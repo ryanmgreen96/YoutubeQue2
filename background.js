@@ -381,11 +381,20 @@ function normalizeCandidateDate(value){
   if(typeof value !== 'string') return ''
   const trimmed = safeText(value).replace(/\u2022/g, ' ').replace(/\s+/g, ' ')
   if(!trimmed) return ''
+  if(isPlaceholderDate(trimmed)) return ''
   const parsed = Date.parse(trimmed)
-  if(Number.isNaN(parsed)) return ''
-  const date = new Date(parsed)
-  if(Number.isNaN(date.getTime())) return ''
-  return date.toISOString()
+  if(!Number.isNaN(parsed)){
+    const date = new Date(parsed)
+    if(!Number.isNaN(date.getTime())){
+      const iso = date.toISOString()
+      return isReasonablePublishDate(iso) ? iso : ''
+    }
+  }
+  const absolute = parseYouTubeAbsoluteDateText(trimmed)
+  if(absolute) return absolute
+  const relative = parseYouTubeRelativeDate(trimmed)
+  if(relative) return relative
+  return ''
 }
 
 function isPlaceholderDate(value){
@@ -992,8 +1001,8 @@ function extractDateFromYoutubeHtml(text){
   for(const pattern of rawDatePatterns){
     const match = raw.match(pattern)
     if(!match || !match[1]) continue
-    const parsed = Date.parse(match[1])
-    if(!Number.isNaN(parsed)) return new Date(parsed).toISOString()
+    const normalized = normalizeDateCandidate(match[1])
+    if(normalized) return normalized
   }
 
   return ''

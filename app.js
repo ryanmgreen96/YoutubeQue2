@@ -892,6 +892,20 @@ function logChronoDebugForTab(pageId, tabId, reason){
   console.groupEnd()
   return text
 }
+function normalizePublishDateValue(value){
+  const raw = (value || '').trim()
+  if(!raw) return ''
+  const placeholders = [/^2000-01-01(?:[T\s].*)?$/i, /^2001-01-01(?:[T\s].*)?$/i, /^january 1, 2000$/i, /^jan 1, 2000$/i, /^1 january 2000$/i, /^01\s+jan\s+2000$/i, /^january 1, 2001$/i, /^jan 1, 2001$/i, /^1 january 2001$/i, /^01\s+jan\s+2001$/i]
+  if(placeholders.some((pattern)=>pattern.test(raw))) return ''
+  const parsed = Date.parse(raw)
+  if(Number.isNaN(parsed)) return ''
+  const date = new Date(parsed)
+  const year = date.getUTCFullYear()
+  const nowYear = new Date().getUTCFullYear()
+  if(!Number.isInteger(year) || year < 2005 || year > nowYear + 1) return ''
+  return date.toISOString()
+}
+
 async function fetchVideoPublishedAt(url){
   try{
     const normalizedUrl = normalizeUrl(url)
@@ -900,8 +914,7 @@ async function fetchVideoPublishedAt(url){
     try{
       const payload = await requestExtensionAction('fetch-video-published-at', {url: normalizedUrl})
       const value = payload && typeof payload.publishedAt === 'string' ? payload.publishedAt : ''
-      const parsed = Date.parse(value)
-      const normalized = Number.isNaN(parsed) ? '' : new Date(parsed).toISOString()
+      const normalized = normalizePublishDateValue(value)
       if(normalized) {
         if(isChronoDebugEnabled()) console.log('[chrono] fetchVideoPublishedAt', {url: normalizedUrl, publishedAt: normalized})
         return normalized
@@ -918,8 +931,7 @@ async function fetchVideoPublishedAt(url){
       const feedText = await feedRes.text()
       const match = feedText.match(/<published>([^<]+)<\/published>/i)
       if(match){
-        const parsed = Date.parse(match[1])
-        const normalized = Number.isNaN(parsed) ? '' : new Date(parsed).toISOString()
+        const normalized = normalizePublishDateValue(match[1])
         if(isChronoDebugEnabled()) console.log('[chrono] fetchVideoPublishedAt fallback', {url: normalizedUrl, publishedAt: normalized || '(empty)'})
         return normalized
       }
@@ -968,8 +980,11 @@ function parseTitleCalendarDate(title){
   return 0
 }
 function itemChronologyMs(item){
-  const published = Date.parse((item && item.publishedAt) || '')
-  if(!Number.isNaN(published)) return published
+  const publishedAt = normalizePublishDateValue(item && item.publishedAt)
+  if(publishedAt){
+    const published = Date.parse(publishedAt)
+    if(!Number.isNaN(published)) return published
+  }
   const titleDate = parseTitleCalendarDate(item && item.title)
   if(titleDate > 0) return titleDate
   const created = Date.parse((item && item.created) || '')
@@ -1046,8 +1061,8 @@ function enqueueItemChronologyHydration(item){
   void hydrateItemChronology(item, {saveAfterChange: true})
 }
 function chronologySourceForItem(item){
-  const publishedAt = (item && item.publishedAt) || ''
-  const publishedMs = Date.parse(publishedAt)
+  const publishedAt = normalizePublishDateValue(item && item.publishedAt)
+  const publishedMs = publishedAt ? Date.parse(publishedAt) : NaN
   if(!Number.isNaN(publishedMs)) return {source:'publishedAt', ms: publishedMs, value: publishedAt}
 
   const titleDateMs = parseTitleCalendarDate(item && item.title)
@@ -1060,7 +1075,7 @@ function chronologySourceForItem(item){
   return {source:'none', ms: 0, value: ''}
 }
 function formatChronologyDateLabel(item){
-  const publishedAt = (item && item.publishedAt && String(item.publishedAt).trim()) || ''
+  const publishedAt = normalizePublishDateValue(item && item.publishedAt)
   if(publishedAt){
     const publishedMs = Date.parse(publishedAt)
     if(!Number.isNaN(publishedMs)){
@@ -1076,7 +1091,7 @@ function formatChronologyDateLabel(item){
   return new Intl.DateTimeFormat(undefined, {year:'numeric', month:'short', day:'numeric'}).format(date)
 }
 function getItemDateLabel(item){
-  const publishedAt = (item && item.publishedAt && String(item.publishedAt).trim()) || ''
+  const publishedAt = normalizePublishDateValue(item && item.publishedAt)
   const formatted = formatChronologyDateLabel(item)
   if(!formatted) return ''
   if(publishedAt){ return `Published: ${formatted}` }
