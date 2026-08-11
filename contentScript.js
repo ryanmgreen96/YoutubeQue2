@@ -37,6 +37,85 @@
     return ''
   }
 
+  function normalizeDateCandidate(value){
+    if(typeof value !== 'string') return ''
+    const trimmed = value.trim().replace(/\\u0026/g, '&')
+    if(!trimmed) return ''
+    const parsed = Date.parse(trimmed)
+    if(!Number.isNaN(parsed)) return new Date(parsed).toISOString()
+    return ''
+  }
+
+  function findPublishDateInValue(value, seen = new WeakSet()){
+    if(!value || typeof value !== 'object') return normalizeDateCandidate(value)
+    if(seen.has(value)) return ''
+    seen.add(value)
+
+    if(Array.isArray(value)){
+      for(const item of value){
+        const found = findPublishDateInValue(item, seen)
+        if(found) return found
+      }
+      return ''
+    }
+
+    const candidateKeys = ['publishDate', 'uploadDate', 'datePublished', 'dateCreated', 'publishedAt', 'publicationDate', 'releaseDate', 'dateText', 'publishedTimeText']
+    for(const [key, childValue] of Object.entries(value)){
+      const lowerKey = String(key).toLowerCase()
+      if(candidateKeys.includes(lowerKey) || lowerKey.includes('publish') || lowerKey.includes('date') || lowerKey.includes('upload')){
+        const direct = normalizeDateCandidate(childValue)
+        if(direct) return direct
+      }
+    }
+
+    for(const [key, childValue] of Object.entries(value)){
+      const nested = findPublishDateInValue(childValue, seen)
+      if(nested) return nested
+    }
+
+    return ''
+  }
+
+  function extractPublishDateFromCurrentPage(){
+    const selectors = [
+      'meta[itemprop="datePublished"]',
+      'meta[property="article:published_time"]',
+      'meta[property="og:video:release_date"]',
+      'meta[name="datePublished"]',
+      'meta[name="publish_date"]'
+    ]
+
+    for(const selector of selectors){
+      const node = document.querySelector(selector)
+      const content = node && node.getAttribute && node.getAttribute('content')
+      if(content){
+        const parsed = Date.parse(content)
+        if(!Number.isNaN(parsed)) return new Date(parsed).toISOString()
+      }
+    }
+
+    const initialPayload = window.ytInitialPlayerResponse || window.ytInitialData || null
+    const fromPayload = findPublishDateInValue(initialPayload)
+    if(fromPayload) return fromPayload
+
+    const html = document.documentElement.innerHTML || ''
+    const rawPatterns = [
+      /"publishDate"\s*:\s*"([^"]+)"/i,
+      /"uploadDate"\s*:\s*"([^"]+)"/i,
+      /"datePublished"\s*:\s*"([^"]+)"/i,
+      /itemprop="datePublished"\s+content="([^"]+)"/i
+    ]
+    for(const pattern of rawPatterns){
+      const match = html.match(pattern)
+      if(match && match[1]){
+        const parsed = Date.parse(match[1])
+        if(!Number.isNaN(parsed)) return new Date(parsed).toISOString()
+      }
+    }
+
+    return ''
+  }
+
   function playlistUrlFromHref(href){
     try{
       const url = new URL(href, location.href)
@@ -464,7 +543,8 @@
         if(ev.stopImmediatePropagation) ev.stopImmediatePropagation()
 
         const title = queueTitleFromElement(target)
-        chrome.runtime.sendMessage({type:'queue-video-url', url: videoUrl, title})
+        const publishedAt = extractPublishDateFromCurrentPage()
+        chrome.runtime.sendMessage({type:'queue-video-url', url: videoUrl, title, publishedAt})
       }
 
       document.addEventListener('contextmenu', (ev)=>{ handleQueueClick(ev) }, true)

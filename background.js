@@ -766,22 +766,26 @@ function queueManyItems(itemsToQueue){
     chrome.storage.local.set({queuedItems: unique.concat(existing)})
   })
 }
+function extractHtmlMetaContent(text, patterns){
+  const raw = safeText(text)
+  if(!raw) return ''
+  for(const pattern of patterns){
+    const match = raw.match(pattern)
+    if(match && match[1]) return safeText(match[1]).trim()
+  }
+  return ''
+}
+
 async function fetchPageTitle(url){
   try{
     const res = await fetch(url)
     const txt = await res.text()
-    // try to parse og:title/twitter:title or fallback to <title>
-    let doc
-    try{ doc = new DOMParser().parseFromString(txt, 'text/html') }catch(e){ doc = null }
-    if(doc){
-      const og = doc.querySelector('meta[property="og:title"]')?.getAttribute('content')
-      const tw = doc.querySelector('meta[name="twitter:title"]')?.getAttribute('content')
-      const t = doc.querySelector('title')?.textContent
-      return (og||tw||t||'').trim()
-    }
-    // fallback: regex for title
-    const m = txt.match(/<title[^>]*>([^<]+)<\/title>/i)
-    return m ? m[1].trim() : ''
+    const metaTitle = extractHtmlMetaContent(txt, [
+      /<meta[^>]+property=["']og:title["'][^>]+content=["']([^"']+)["']/i,
+      /<meta[^>]+name=["']twitter:title["'][^>]+content=["']([^"']+)["']/i
+    ])
+    const titleMatch = txt.match(/<title[^>]*>([^<]+)<\/title>/i)
+    return (metaTitle || (titleMatch && titleMatch[1]) || '').trim()
   }catch(e){ return '' }
 }
 
@@ -792,6 +796,140 @@ function parseYouTubeFeedPublishedAt(text){
   if(!match || !match[1]) return ''
   const parsed = Date.parse(match[1])
   return Number.isNaN(parsed) ? '' : new Date(parsed).toISOString()
+}
+
+async function fetchYouTubePlayerData(videoId){
+  try{
+    const response = await fetch('https://www.youtube.com/youtubei/v1/player?prettyPrint=false&key=AIzaSyAO_FJ2SlqU', {
+      method: 'POST',
+      credentials: 'omit',
+      headers: {
+        'Content-Type': 'application/json',
+        'Accept': 'application/json',
+        'X-YouTube-Client-Name': '1',
+        'X-YouTube-Client-Version': '2.20250330.00.00'
+      },
+      body: JSON.stringify({
+        context: {
+          client: {
+            clientName: 'WEB',
+            clientVersion: '2.20250330.00.00'
+          }
+        },
+        videoId
+      })
+    })
+    if(!response.ok) return null
+    return await response.json()
+  }catch(e){
+    return null
+  }
+}
+
+function normalizeDateCandidate(value){
+  if(typeof value === 'string'){
+    const trimmed = safeText(value).replace(/\\u0026/g, '&')
+    if(!trimmed) return ''
+    const direct = Date.parse(trimmed)
+    if(!Number.isNaN(direct)) return new Date(direct).toISOString()
+    const absolute = parseYouTubeAbsoluteDateText(trimmed)
+    if(absolute) return absolute
+    const relative = parseYouTubeRelativeDate(trimmed)
+    if(relative) return relative
+    return ''
+  }
+  if(value && typeof value === 'object'){
+    if(typeof value.simpleText === 'string') return normalizeDateCandidate(value.simpleText)
+    if(Array.isArray(value.runs)){
+      const joined = value.runs.map((run)=>safeText(run && run.text)).filter(Boolean).join(' ')
+      if(joined) return normalizeDateCandidate(joined)
+    }
+  }
+  return ''
+}
+
+function findPublishDateInValue(value, seen = new WeakSet()){
+  if(!value || typeof value !== 'object') return normalizeDateCandidate(value)
+  if(seen.has(value)) return ''
+  seen.add(value)
+
+  if(Array.isArray(value)){
+    for(const item of value){
+      const found = findPublishDateInValue(item, seen)
+      if(found) return found
+    }
+    return ''
+  }
+
+  const candidateKeys = ['publishDate', 'uploadDate', 'datePublished', 'dateCreated', 'publishedAt', 'publicationDate', 'releaseDate', 'dateText', 'publishedTimeText']
+  for(const [key, childValue] of Object.entries(value)){
+    const lowerKey = safeText(key).toLowerCase()
+    if(candidateKeys.includes(lowerKey) || lowerKey.includes('publish') || lowerKey.includes('date') || lowerKey.includes('upload')){
+      const direct = normalizeDateCandidate(childValue)
+      if(direct) return direct
+    }
+  }
+
+  for(const [key, childValue] of Object.entries(value)){
+    const nested = findPublishDateInValue(childValue, seen)
+    if(nested) return nested
+  }
+
+  return ''
+}
+
+function extractDateFromYoutubeHtml(text){
+  const raw = safeText(text)
+  if(!raw) return ''
+
+  const markers = ['ytInitialPlayerResponse', 'ytInitialData', 'microformat', 'playerMicroformatRenderer']
+  for(const marker of markers){
+    const idx = raw.indexOf(marker)
+    if(idx < 0) continue
+    const braceIndex = raw.indexOf('{', idx)
+    if(braceIndex < 0) continue
+    let depth = 0
+    let inString = false
+    let escaped = false
+    for(let i = braceIndex; i < raw.length; i += 1){
+      const char = raw[i]
+      if(inString){
+        if(escaped){ escaped = false }
+        else if(char === '\\'){ escaped = true }
+        else if(char === '"'){ inString = false }
+        continue
+      }
+      if(char === '"'){ inString = true; continue }
+      if(char === '{'){ depth += 1; continue }
+      if(char === '}'){ depth -= 1; if(depth === 0){
+        const candidate = raw.slice(braceIndex, i + 1)
+        try{
+          const parsed = JSON.parse(candidate)
+          const found = findPublishDateInValue(parsed)
+          if(found) return found
+        }catch(e){ }
+        break
+      } }
+    }
+  }
+
+  const rawDatePatterns = [
+    /"publishDate"\s*:\s*"([^"]+)"/i,
+    /\"publishDate\"\s*:\s*\"([^\"]+)\"/i,
+    /"uploadDate"\s*:\s*"([^"]+)"/i,
+    /\"uploadDate\"\s*:\s*\"([^\"]+)\"/i,
+    /"datePublished"\s*:\s*"([^"]+)"/i,
+    /\"datePublished\"\s*:\s*\"([^\"]+)\"/i,
+    /itemprop="datePublished"\s+content="([^"]+)"/i
+  ]
+  for(const pattern of rawDatePatterns){
+    const match = raw.match(pattern)
+    if(!match || !match[1]) continue
+    const parsed = Date.parse(match[1])
+    if(!Number.isNaN(parsed)) return new Date(parsed).toISOString()
+  }
+
+  return ''
 }
 
 async function fetchPagePublishedAt(url){
@@ -813,6 +951,31 @@ async function fetchPagePublishedAt(url){
 
     if(videoId){
       try{
+        const playerData = await fetchYouTubePlayerData(videoId)
+        const youtubePlayerPublishedAt = findPublishDateInValue(playerData)
+        if(youtubePlayerPublishedAt) return youtubePlayerPublishedAt
+      }catch(e){ }
+
+      const watchCandidates = [
+        `https://www.youtube.com/watch?v=${encodeURIComponent(videoId)}&pbj=1`,
+        `https://www.youtube.com/watch?v=${encodeURIComponent(videoId)}`
+      ]
+      for(const candidateUrl of watchCandidates){
+        try{
+          const watchRes = await fetch(candidateUrl, {credentials: 'omit', headers: {'Accept': 'application/json,text/html,*/*'}})
+          if(!watchRes.ok) continue
+          const watchText = await watchRes.text()
+          try{
+            const parsed = JSON.parse(watchText)
+            const found = findPublishDateInValue(parsed)
+            if(found) return found
+          }catch(e){ }
+          const htmlPublishedAt = extractDateFromYoutubeHtml(watchText)
+          if(htmlPublishedAt) return htmlPublishedAt
+        }catch(e){ }
+      }
+
+      try{
         const feedRes = await fetch(`https://www.youtube.com/feeds/videos.xml?video_id=${encodeURIComponent(videoId)}`, {credentials: 'omit'})
         if(feedRes.ok){
           const feedText = await feedRes.text()
@@ -824,15 +987,23 @@ async function fetchPagePublishedAt(url){
 
     const res = await fetch(requestUrl, {credentials: 'include'})
     const txt = await res.text()
-    let doc
-    try{ doc = new DOMParser().parseFromString(txt, 'text/html') }catch(e){ doc = null }
-    if(!doc) return ''
 
     const metaCandidates = [
-      doc.querySelector('meta[property="article:published_time"]')?.getAttribute('content'),
-      doc.querySelector('meta[property="og:published_time"]')?.getAttribute('content'),
-      doc.querySelector('meta[itemprop="datePublished"]')?.getAttribute('content'),
-      doc.querySelector('meta[property="datePublished"]')?.getAttribute('content')
+      extractHtmlMetaContent(txt, [
+        /<meta[^>]+property=["']article:published_time["'][^>]+content=["']([^"']+)["']/i,
+        /<meta[^>]+name=["']article:published_time["'][^>]+content=["']([^"']+)["']/i
+      ]),
+      extractHtmlMetaContent(txt, [
+        /<meta[^>]+property=["']og:published_time["'][^>]+content=["']([^"']+)["']/i,
+        /<meta[^>]+name=["']og:published_time["'][^>]+content=["']([^"']+)["']/i
+      ]),
+      extractHtmlMetaContent(txt, [
+        /<meta[^>]+itemprop=["']datePublished["'][^>]+content=["']([^"']+)["']/i
+      ]),
+      extractHtmlMetaContent(txt, [
+        /<meta[^>]+property=["']datePublished["'][^>]+content=["']([^"']+)["']/i,
+        /<meta[^>]+name=["']datePublished["'][^>]+content=["']([^"']+)["']/i
+      ])
     ].filter(Boolean)
 
     for(const candidate of metaCandidates){
@@ -840,7 +1011,7 @@ async function fetchPagePublishedAt(url){
       if(!Number.isNaN(parsed)) return new Date(parsed).toISOString()
     }
 
-    const jsonLdBlocks = Array.from(doc.querySelectorAll('script[type="application/ld+json"]')).map(node=>node.textContent || '')
+    const jsonLdBlocks = Array.from(txt.matchAll(/<script[^>]+type=["']application\/ld\+json["'][^>]*>([\s\S]*?)<\/script>/gi)).map((match)=>match[1] || '')
     for(const block of jsonLdBlocks){
       try{
         const data = JSON.parse(block)
@@ -890,27 +1061,28 @@ async function fetchPagePublishedAt(url){
   return ''
 }
 
-function openQueueTabFor(href, title){
+function openQueueTabFor(href, title, publishedAtFromPage = ''){
   // fetch the page title when possible to ensure queued item title matches the target
   (async ()=>{
     try{
       const [fetched, publishedAt] = await Promise.all([
         fetchPageTitle(href),
-        fetchPagePublishedAt(href)
+        publishedAtFromPage ? Promise.resolve(publishedAtFromPage) : fetchPagePublishedAt(href)
       ])
       const finalTitle = fetched || title || ''
-      console.debug('openQueueTabFor', {href, title, fetched, publishedAt, finalTitle})
+      const resolvedPublishedAt = publishedAt || ''
+      console.debug('openQueueTabFor', {href, title, fetched, publishedAt: resolvedPublishedAt, finalTitle})
       const u = new URL(href)
       let vid = u.searchParams.get('v')
       if(!vid){ const parts = u.pathname.split('/').filter(Boolean); vid = parts.pop() }
-      const item = { id: uid(), url: href, title: finalTitle, videoId: vid, favorite:false, created: new Date().toISOString(), publishedAt }
+      const item = { id: uid(), url: href, title: finalTitle, videoId: vid, favorite:false, created: new Date().toISOString(), publishedAt: resolvedPublishedAt }
       chrome.storage.local.get({queuedItems:[]}, (res)=>{
         const arr = res.queuedItems || []
         arr.unshift(item)
         chrome.storage.local.set({queuedItems: arr})
       })
     }catch(e){
-      const item = { id: uid(), url: href||APP_URL, title: title||'', videoId: null, favorite:false, created: new Date().toISOString(), publishedAt: '' }
+      const item = { id: uid(), url: href||APP_URL, title: title||'', videoId: null, favorite:false, created: new Date().toISOString(), publishedAt: publishedAtFromPage || '' }
       console.debug('openQueueTabFor fallback item', item)
       chrome.storage.local.get({queuedItems:[]}, (res)=>{
         const arr = res.queuedItems || []
@@ -1047,7 +1219,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse)=>{
       return true
     }
 
-    openQueueTabFor(message.url, message.title || '')
+    openQueueTabFor(message.url, message.title || '', message.publishedAt || '')
     sendResponse({ok:true})
     return true
   }

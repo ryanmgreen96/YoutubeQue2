@@ -1563,7 +1563,7 @@ function requestExtensionAction(action, payload){
       if(settled) return
       cleanup()
       reject(new Error('Extension bridge timed out'))
-    }, 60000)
+    }, 8000)
 
     window.addEventListener('message', handleMessage)
     window.postMessage({source:'ytqueue-app', requestId, action, payload: payload || {}}, targetOrigin)
