@@ -785,21 +785,42 @@ async function fetchPageTitle(url){
   }catch(e){ return '' }
 }
 
+function parseYouTubeFeedPublishedAt(text){
+  const raw = safeText(text)
+  if(!raw) return ''
+  const match = raw.match(/<published>([^<]+)<\/published>/i)
+  if(!match || !match[1]) return ''
+  const parsed = Date.parse(match[1])
+  return Number.isNaN(parsed) ? '' : new Date(parsed).toISOString()
+}
+
 async function fetchPagePublishedAt(url){
   try{
     let requestUrl = url
+    let videoId = ''
     try{
       const parsed = new URL(url)
       const host = parsed.hostname.replace(/^www\./, '')
       if((host === 'youtube.com' || host.endsWith('.youtube.com')) && parsed.pathname === '/watch'){
-        const vid = safeText(parsed.searchParams.get('v'))
-        if(vid) requestUrl = `https://www.youtube.com/watch?v=${encodeURIComponent(vid)}`
+        videoId = safeText(parsed.searchParams.get('v'))
+        if(videoId) requestUrl = `https://www.youtube.com/watch?v=${encodeURIComponent(videoId)}`
       }
       if(host === 'youtu.be'){
-        const vid = safeText(parsed.pathname.split('/').filter(Boolean)[0])
-        if(vid) requestUrl = `https://www.youtube.com/watch?v=${encodeURIComponent(vid)}`
+        videoId = safeText(parsed.pathname.split('/').filter(Boolean)[0])
+        if(videoId) requestUrl = `https://www.youtube.com/watch?v=${encodeURIComponent(videoId)}`
       }
     }catch(e){ }
+
+    if(videoId){
+      try{
+        const feedRes = await fetch(`https://www.youtube.com/feeds/videos.xml?video_id=${encodeURIComponent(videoId)}`, {credentials: 'omit'})
+        if(feedRes.ok){
+          const feedText = await feedRes.text()
+          const feedPublishedAt = parseYouTubeFeedPublishedAt(feedText)
+          if(feedPublishedAt) return feedPublishedAt
+        }
+      }catch(e){ }
+    }
 
     const res = await fetch(requestUrl, {credentials: 'include'})
     const txt = await res.text()

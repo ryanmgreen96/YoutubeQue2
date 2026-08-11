@@ -861,11 +861,13 @@ function logChronoDebugForTab(pageId, tabId, reason){
     .map((item)=>(
       {
         id: item.id,
-        title: (item.title || '').slice(0, 90),
+        title: (item.title || '').slice(0, 120),
         publishedAt: item.publishedAt || '',
         titleDateMs: parseTitleCalendarDate(item.title || ''),
         created: item.created || '',
         resolvedMs: itemChronologyMs(item),
+        resolvedDate: itemChronologyMs(item) ? new Date(itemChronologyMs(item)).toISOString() : '',
+        source: chronologySourceForItem(item).source,
         url: item.url || ''
       }
     ))
@@ -873,22 +875,56 @@ function logChronoDebugForTab(pageId, tabId, reason){
   rows.sort((a, b)=>order==='asc' ? (a.resolvedMs - b.resolvedMs) : (b.resolvedMs - a.resolvedMs))
 
   const missingPublishedAt = rows.filter((row)=>!row.publishedAt).length
-  console.groupCollapsed(`[chrono] ${reason || 'debug'} page=${pid} tab=${tid} order=${order} rows=${rows.length} missingPublishedAt=${missingPublishedAt}`)
-  console.table(rows)
+  const payload = {
+    reason: reason || 'debug',
+    pageId: pid,
+    tabId: tid,
+    order,
+    totalRows: rows.length,
+    missingPublishedAt,
+    generatedAt: new Date().toISOString(),
+    rows
+  }
+
+  console.groupCollapsed(`[chrono] ${payload.reason} page=${pid} tab=${tid} order=${order} rows=${payload.totalRows} missingPublishedAt=${payload.missingPublishedAt}`)
+  console.log(JSON.stringify(payload, null, 2))
   console.groupEnd()
+  return payload
 }
 async function fetchVideoPublishedAt(url){
   try{
     const normalizedUrl = normalizeUrl(url)
     if(!normalizedUrl) return ''
-    const payload = await requestExtensionAction('fetch-video-published-at', {url: normalizedUrl})
-    const value = payload && typeof payload.publishedAt === 'string' ? payload.publishedAt : ''
-    const parsed = Date.parse(value)
-    const normalized = Number.isNaN(parsed) ? '' : new Date(parsed).toISOString()
-    if(isChronoDebugEnabled()){
-      console.log('[chrono] fetchVideoPublishedAt', {url: normalizedUrl, publishedAt: normalized || '(empty)'})
-    }
-    return normalized
+
+    try{
+      const payload = await requestExtensionAction('fetch-video-published-at', {url: normalizedUrl})
+      const value = payload && typeof payload.publishedAt === 'string' ? payload.publishedAt : ''
+      const parsed = Date.parse(value)
+      const normalized = Number.isNaN(parsed) ? '' : new Date(parsed).toISOString()
+      if(normalized) {
+        if(isChronoDebugEnabled()) console.log('[chrono] fetchVideoPublishedAt', {url: normalizedUrl, publishedAt: normalized})
+        return normalized
+      }
+    }catch(e){ }
+
+    const videoId = extractVideoId(normalizedUrl)
+    if(!videoId) return ''
+
+    try{
+      const feedUrl = `https://www.youtube.com/feeds/videos.xml?video_id=${encodeURIComponent(videoId)}`
+      const feedRes = await fetch(feedUrl, {credentials: 'omit'})
+      if(!feedRes.ok) throw new Error('feed request failed')
+      const feedText = await feedRes.text()
+      const match = feedText.match(/<published>([^<]+)<\/published>/i)
+      if(match){
+        const parsed = Date.parse(match[1])
+        const normalized = Number.isNaN(parsed) ? '' : new Date(parsed).toISOString()
+        if(isChronoDebugEnabled()) console.log('[chrono] fetchVideoPublishedAt fallback', {url: normalizedUrl, publishedAt: normalized || '(empty)'})
+        return normalized
+      }
+    }catch(e){ }
+
+    return ''
   }catch(e){ return '' }
 }
 function parseTitleCalendarDate(title){
@@ -990,6 +1026,24 @@ function maybeEnrichChronologicalMetadataForTab(pageId, tabId){
     .catch(()=>{})
     .finally(()=>{ chronoEnrichmentInFlight.delete(key) })
 }
+async function hydrateItemChronology(item, {saveAfterChange = true} = {}){
+  if(!item || !isYouTubeUrl(item.url)) return false
+  if((item.publishedAt || '').trim()) return false
+
+  try{
+    const publishedAt = await fetchVideoPublishedAt(item.url)
+    if(!publishedAt) return false
+    item.publishedAt = publishedAt
+    if(saveAfterChange) save()
+    return true
+  }catch(e){
+    return false
+  }
+}
+function enqueueItemChronologyHydration(item){
+  if(!item || !isYouTubeUrl(item.url) || (item.publishedAt || '').trim()) return
+  void hydrateItemChronology(item, {saveAfterChange: true})
+}
 function chronologySourceForItem(item){
   const publishedAt = (item && item.publishedAt) || ''
   const publishedMs = Date.parse(publishedAt)
@@ -1015,7 +1069,7 @@ function getItemDateLabel(item){
   const source = chronologySourceForItem(item)
   const formatted = formatChronologyDateLabel(item)
   if(!formatted) return ''
-  if(source.source === 'publishedAt') return formatted
+  if(source.source === 'publishedAt') return `Published: ${formatted}`
   if(source.source === 'titleDate') return `Title: ${formatted}`
   if(source.source === 'created') return `Queued: ${formatted}`
   return formatted
@@ -1138,6 +1192,19 @@ function exposeChronologyDebug(){
     return true
   }
   window.ytChronoCurrentTab = ()=>chronoDumpPayload(currentPageId, getActiveTabId(currentPageId))
+  window.ytChronoLogCurrentTab = ()=>logChronoDebugForTab(currentPageId, getActiveTabId(currentPageId), 'console-log')
+  window.ytChronoCopyCurrentTab = async ()=>{
+    const payload = chronoDumpPayload(currentPageId, getActiveTabId(currentPageId))
+    const text = JSON.stringify(payload, null, 2)
+    try{
+      await navigator.clipboard.writeText(text)
+      console.info('[chrono] copied current tab payload to clipboard')
+      return text
+    }catch(e){
+      console.warn('[chrono] clipboard unavailable, returning text instead')
+      return text
+    }
+  }
   window.ytChronoRefreshCurrentTab = ()=>{
     const pid = normalizePageId(currentPageId)
     const tid = getActiveTabId(pid)
@@ -2486,11 +2553,13 @@ function moveSelectedItemsToPage(pageId){
     targetTabId = tabs[selectedIndex].id
   }
   if(!selectedItemIds.size) return
-  items = items.map(item=>selectedItemIds.has(item.id) ? {...item, pageId: targetPageId, tabId: targetTabId} : item)
+  const movedIds = new Set(selectedItemIds)
+  items = items.map(item=>movedIds.has(item.id) ? {...item, pageId: targetPageId, tabId: targetTabId} : item)
   selectedItemIds.clear()
   clearRangeFlags()
   editMode = false
   currentPageId = targetPageId
+  items.filter(item=>movedIds.has(item.id)).forEach((item)=>enqueueItemChronologyHydration(item))
   save()
   renderLeftNav()
   render()
@@ -2510,13 +2579,16 @@ function moveSingleItemToPage(itemId, pageId){
   }
 
   let moved = false
+  let movedItem = null
   items = items.map((item)=>{
     if(item.id !== itemId) return item
     moved = true
-    return {...item, pageId: targetPageId, tabId: targetTabId}
+    movedItem = {...item, pageId: targetPageId, tabId: targetTabId}
+    return movedItem
   })
   if(!moved) return false
 
+  if(movedItem) enqueueItemChronologyHydration(movedItem)
   save()
   render()
   return true
@@ -2762,6 +2834,7 @@ function addItem({url,title,videoId,favorite=false,pageId='home',tabId='default'
   const item = {id, url, title, videoId, favorite, pageId: normalizePageId(pageId), tabId: normalizeTabId(tabId), created, publishedAt: ''}
   items.unshift(item)
   save()
+  enqueueItemChronologyHydration(item)
   render()
 }
 
@@ -3644,7 +3717,7 @@ window.addEventListener('load', ()=>{
   syncSavedPagesButton()
   syncPageDeleteModeButton()
   exposeChronologyDebug()
-  console.info('[chrono] helpers ready: ytChronoEnableDebug(), ytChronoDisableDebug(), ytChronoDumpJson(), ytChronoDumpCopy(), ytChronoRefreshCurrentTab()')
+  console.info('[chrono] helpers ready: ytChronoEnableDebug(), ytChronoDisableDebug(), ytChronoDumpJson(), ytChronoDumpCopy(), ytChronoRefreshCurrentTab(), ytChronoLogCurrentTab(), ytChronoCopyCurrentTab()')
   applyTheme(loadThemeIndex())
   renderHeaderLinks()
   handleParams()
