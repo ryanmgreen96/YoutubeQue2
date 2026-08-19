@@ -18,6 +18,7 @@ const SAVED_SHELVES_KEY = 'ytSavedShelves_v1'
 const HOME_OLD_HIDDEN_KEY = 'ytHomeOldHidden_v1'
 const SAVED_PAGES_KEY = 'ytSavedPages_v1'
 const TAB_CHRONO_SORT_KEY = 'ytTabChronoSort_v1'
+const TAB_THUMBNAILS_HIDDEN_KEY = 'ytTabThumbnailsHidden_v1'
 const LIBRARY_PAGE_ID = 'library'
 const LIBRARY_PAGE_TITLE = 'Library'
 const GYM_PAGE_ID = 'gym'
@@ -91,6 +92,7 @@ let scrollPositions = loadScrollPositions()
 let lastViewedItemId = loadLastViewedItemId()
 let randomPlaylistSlots = loadRandomPlaylistSlots()
 let tabChronoSort = loadTabChronoSort()
+let tabThumbnailsHidden = loadTabThumbnailsHidden()
 const chronoEnrichmentInFlight = new Set()
 
 const THEMES = [
@@ -693,6 +695,14 @@ function loadTabChronoSort(){
   }catch(e){ return {} }
 }
 function saveTabChronoSort(){ localStorage.setItem(TAB_CHRONO_SORT_KEY, JSON.stringify(tabChronoSort)) }
+function loadTabThumbnailsHidden(){
+  try{
+    const parsed = JSON.parse(localStorage.getItem(TAB_THUMBNAILS_HIDDEN_KEY) || '{}')
+    if(!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return {}
+    return Object.fromEntries(Object.entries(parsed).filter(([, hidden])=>hidden === true))
+  }catch(e){ return {} }
+}
+function saveTabThumbnailsHidden(){ localStorage.setItem(TAB_THUMBNAILS_HIDDEN_KEY, JSON.stringify(tabThumbnailsHidden)) }
 function loadHomeOldHidden(){
   const raw = localStorage.getItem(HOME_OLD_HIDDEN_KEY)
   return raw === '1' || raw === 'true'
@@ -800,6 +810,16 @@ function getTabChronoSortOrder(pageId, tabId){
   const key = getScrollKey(pageId, tabId)
   return tabChronoSort[key] === 'asc' ? 'asc' : 'desc'
 }
+function areTabThumbnailsHidden(pageId, tabId){
+  return tabThumbnailsHidden[getScrollKey(pageId, tabId)] === true
+}
+function toggleTabThumbnailsHidden(pageId, tabId){
+  const key = getScrollKey(pageId, tabId)
+  if(tabThumbnailsHidden[key]) delete tabThumbnailsHidden[key]
+  else tabThumbnailsHidden[key] = true
+  saveTabThumbnailsHidden()
+  render()
+}
 function setTabChronoSortOrder(pageId, tabId, order){
   const key = getScrollKey(pageId, tabId)
   tabChronoSort[key] = order === 'asc' ? 'asc' : 'desc'
@@ -812,6 +832,12 @@ function removeTabChronoSortForTab(pageId, tabId){
   delete tabChronoSort[key]
   saveTabChronoSort()
 }
+function removeTabThumbnailsHiddenForTab(pageId, tabId){
+  const key = getScrollKey(pageId, tabId)
+  if(!tabThumbnailsHidden[key]) return
+  delete tabThumbnailsHidden[key]
+  saveTabThumbnailsHidden()
+}
 function removeTabChronoSortForPage(pageId){
   const prefix = `${normalizePageId(pageId)}::`
   let changed = false
@@ -821,6 +847,16 @@ function removeTabChronoSortForPage(pageId){
     changed = true
   })
   if(changed) saveTabChronoSort()
+}
+function removeTabThumbnailsHiddenForPage(pageId){
+  const prefix = `${normalizePageId(pageId)}::`
+  let changed = false
+  Object.keys(tabThumbnailsHidden).forEach((key)=>{
+    if(!key.startsWith(prefix)) return
+    delete tabThumbnailsHidden[key]
+    changed = true
+  })
+  if(changed) saveTabThumbnailsHidden()
 }
 function promptTabChronoSort(pageId, tabId){
   const current = getTabChronoSortOrder(pageId, tabId)
@@ -2444,6 +2480,7 @@ function deleteTabFromPage(pageId, tabId){
   }
 
   removeTabChronoSortForTab(pid, tid)
+  removeTabThumbnailsHiddenForTab(pid, tid)
 
   pageTabs[pid] = nextTabs
   if(normalizeTabId(activeTabs[pid])===tid) activeTabs[pid] = fallbackTabId
@@ -2481,6 +2518,7 @@ function deletePage(pageId){
   savedPageIds = savedPageIds.filter((id)=>id!==pid)
   saveSavedPageIds()
   removeTabChronoSortForPage(pid)
+  removeTabThumbnailsHiddenForPage(pid)
 
   savePages()
   savePageTabs()
@@ -3286,18 +3324,6 @@ function renderLeftNav(){
   })
 }
 
-function forceRefreshChronologyForTab(pageId, tabId){
-  const pid = normalizePageId(pageId)
-  const tid = normalizeTabId(tabId)
-  if(getActiveTabId(pid) !== tid){
-    activeTabs[pid] = tid
-    saveActiveTabs()
-  }
-  maybeEnrichChronologicalMetadataForTab(pid, tid)
-  renderPreservingSectionScroll()
-  logChronoDebugForTab(pid, tid, 'manual-resort')
-}
-
 function renderTabBar(pageId){
   const pid = normalizePageId(pageId)
   const tabs = getPageTabs(pid)
@@ -3321,19 +3347,19 @@ function renderTabBar(pageId){
       setActiveTab(pid, tab.id)
     })
 
-    const sortBtn = document.createElement('button')
-    sortBtn.type = 'button'
-    sortBtn.className = 'main-tab title-filter-toggle'
-    sortBtn.textContent = '↻'
-    sortBtn.title = 'Force chronological sort for this tab'
-    sortBtn.setAttribute('aria-label', 'Force chronological sort for this tab')
-    sortBtn.addEventListener('click', (event)=>{
+    const thumbnailBtn = document.createElement('button')
+    thumbnailBtn.type = 'button'
+    thumbnailBtn.className = `main-tab title-filter-toggle${areTabThumbnailsHidden(pid, tab.id) ? ' selected' : ''}`
+    thumbnailBtn.textContent = '🖼'
+    thumbnailBtn.title = areTabThumbnailsHidden(pid, tab.id) ? 'Show thumbnails for this tab' : 'Hide thumbnails for this tab'
+    thumbnailBtn.setAttribute('aria-label', thumbnailBtn.title)
+    thumbnailBtn.addEventListener('click', (event)=>{
       event.stopPropagation()
-      forceRefreshChronologyForTab(pid, tab.id)
+      toggleTabThumbnailsHidden(pid, tab.id)
     })
 
     wrap.appendChild(button)
-    wrap.appendChild(sortBtn)
+    wrap.appendChild(thumbnailBtn)
     row.appendChild(wrap)
   })
 
@@ -3679,7 +3705,7 @@ function renderSection(title, list, showHomeControls = false, hideGrid = false){
     sections.appendChild(s)
     return
   }
-  const g = document.createElement('div'); g.className='grid'
+  const g = document.createElement('div'); g.className=`grid${currentPageId!=='home' && areTabThumbnailsHidden(currentPageId, getActiveTabId(currentPageId)) ? ' thumbnails-hidden' : ''}`
   list.forEach(it=>{
     if(isDividerItem(it)){
       const dividerItem = document.createElement('div')
