@@ -2986,8 +2986,18 @@ function buildChronologicalListWithDividers(list, chronologicalOrder = 'desc'){
 }
 
 function addItem({url,title,videoId,favorite=false,pageId='home',tabId='default',created=new Date().toISOString()}){
+  const normalizedVideoId = videoId || extractVideoId(url)
+  const duplicate = items.some((item)=>{
+    if(isDividerItem(item)) return false
+    const itemVideoId = item.videoId || extractVideoId(item.url)
+    return normalizedVideoId && itemVideoId
+      ? normalizedVideoId === itemVideoId
+      : normalizeUrl(item.url) === normalizeUrl(url)
+  })
+  if(duplicate) return false
+
   const id = uid()
-  const item = {id, url, title, videoId, favorite, pageId: normalizePageId(pageId), tabId: normalizeTabId(tabId), created, publishedAt: ''}
+  const item = {id, url, title, videoId: normalizedVideoId, favorite, pageId: normalizePageId(pageId), tabId: normalizeTabId(tabId), created, publishedAt: ''}
   items.unshift(item)
   save()
   enqueueItemChronologyHydration(item)
