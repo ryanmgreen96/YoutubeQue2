@@ -55,12 +55,6 @@ const holdPageRangeEndInputEl = document.getElementById('hold-page-range-end-inp
 const holdPageReverseCheckboxEl = document.getElementById('hold-page-reverse-checkbox')
 const holdRandomRowEl = document.getElementById('hold-random-row')
 const holdRandomCheckboxEl = document.getElementById('hold-random-checkbox')
-const holdPageRandomTrueEditorEl = document.getElementById('hold-page-random-true-editor')
-const holdPageRandomTrueUrlInputEl = document.getElementById('hold-page-random-true-url-input')
-const holdPageRangeTrueStartInputEl = document.getElementById('hold-page-range-true-start-input')
-const holdPageRangeTrueEndInputEl = document.getElementById('hold-page-range-true-end-input')
-const holdRandomTrueRowEl = document.getElementById('hold-random-true-row')
-const holdRandomTrueCheckboxEl = document.getElementById('hold-random-true-checkbox')
 const holdEditBtn = document.getElementById('hold-edit-btn')
 const holdMoveUpBtn = document.getElementById('hold-move-up-btn')
 const holdMoveDownBtn = document.getElementById('hold-move-down-btn')
@@ -588,9 +582,6 @@ function loadPages(){
           : 0
         const parsedRangeStart = Number(page.randomRangeStart)
         const parsedRangeEnd = Number(page.randomRangeEnd)
-        const randomTruePlaylistUrl = normalizePlaylistUrl(page.randomTruePlaylistUrl || '')
-        const parsedRangeTrueStart = Number(page.randomTrueRangeStart)
-        const parsedRangeTrueEnd = Number(page.randomTrueRangeEnd)
         return {
           ...page,
           randomPlaylistUrl: playlistUrl,
@@ -600,11 +591,7 @@ function loadPages(){
           randomNeedsShuffle: !!page.isRandom && !!playlistUrl ? (!!page.randomNeedsShuffle || !randomShuffledItems.length) : true,
           randomRangeStart: Number.isInteger(parsedRangeStart) && parsedRangeStart > 0 ? parsedRangeStart : 1,
           randomRangeEnd: Number.isInteger(parsedRangeEnd) && parsedRangeEnd > 0 ? parsedRangeEnd : 0,
-          randomReverse: !!page.randomReverse,
-          randomTruePlaylistUrl: randomTruePlaylistUrl,
-          isRandomTrue: !!page.isRandomTrue && !!randomTruePlaylistUrl,
-          randomTrueRangeStart: Number.isInteger(parsedRangeTrueStart) && parsedRangeTrueStart > 0 ? parsedRangeTrueStart : 1,
-          randomTrueRangeEnd: Number.isInteger(parsedRangeTrueEnd) && parsedRangeTrueEnd > 0 ? parsedRangeTrueEnd : 0
+          randomReverse: !!page.randomReverse
         }
       })
   }catch(e){return[]}
@@ -1734,7 +1721,6 @@ function setPageRandomMode(pageId, enabled){
     }
     const samePlaylist = page.randomPlaylistUrl === playlistUrl
     page.isRandom = true
-    page.isRandomTrue = false
     page.randomPlaylistUrl = playlistUrl
     page.randomShuffledItems = samePlaylist ? (Array.isArray(page.randomShuffledItems) ? page.randomShuffledItems : []) : []
     page.randomCurrentIndex = samePlaylist ? Number(page.randomCurrentIndex) || 0 : 0
@@ -1845,93 +1831,6 @@ function updateRandomPageSettings(pageId, nextUrlInput, nextRangeStartInput, nex
   savePages()
   renderLeftNav()
   return true
-}
-function setPageRandomTrueMode(pageId, enabled){
-  const pid = normalizePageId(pageId)
-  const page = pages.find((item)=>item.id===pid)
-  if(!page) return false
-
-  if(enabled){
-    const urlInput = prompt('Paste YouTube playlist URL', page.randomTruePlaylistUrl || '')
-    if(urlInput === null) return false
-    const playlistUrl = normalizePlaylistUrl(urlInput)
-    if(!playlistUrl){
-      alert('Random playlist mode requires a valid YouTube playlist URL.')
-      return false
-    }
-    page.isRandomTrue = true
-    page.isRandom = false
-    page.randomTruePlaylistUrl = playlistUrl
-    page.randomTrueRangeStart = Number.isInteger(page.randomTrueRangeStart) && page.randomTrueRangeStart > 0 ? page.randomTrueRangeStart : 1
-    page.randomTrueRangeEnd = Number.isInteger(page.randomTrueRangeEnd) && page.randomTrueRangeEnd > 0 ? page.randomTrueRangeEnd : 0
-  }else{
-    page.isRandomTrue = false
-    page.randomTruePlaylistUrl = ''
-    page.randomTrueRangeStart = 1
-    page.randomTrueRangeEnd = 0
-  }
-
-  savePages()
-  renderLeftNav()
-  return true
-}
-function updateRandomTruePageSettings(pageId, nextUrlInput, nextRangeStartInput, nextRangeEndInput){
-  const pid = normalizePageId(pageId)
-  const page = pages.find((item)=>item.id===pid)
-  if(!page || !page.isRandomTrue) return false
-
-  const playlistUrl = normalizePlaylistUrl(nextUrlInput)
-  if(!playlistUrl){
-    alert('Please enter a valid YouTube playlist URL.')
-    return false
-  }
-
-  const parsedStart = Number((nextRangeStartInput || '').trim())
-  const parsedEnd = Number((nextRangeEndInput || '').trim())
-  const rangeStart = Number.isInteger(parsedStart) && parsedStart > 0 ? parsedStart : 1
-  const rangeEnd = Number.isInteger(parsedEnd) && parsedEnd > 0 ? parsedEnd : 0
-
-  if(rangeEnd > 0 && rangeEnd < rangeStart){
-    alert('The end of the range must be greater than or equal to the start.')
-    return false
-  }
-
-  page.randomTruePlaylistUrl = playlistUrl
-  page.randomTrueRangeStart = rangeStart
-  page.randomTrueRangeEnd = rangeEnd
-
-  savePages()
-  renderLeftNav()
-  return true
-}
-async function triggerRandomTruePage(pageId){
-  const pid = normalizePageId(pageId)
-  const page = pages.find((item)=>item.id===pid)
-  if(!page || !page.isRandomTrue || !page.randomTruePlaylistUrl) return
-
-  try{
-    const videos = await fetchPlaylistVideos(page.randomTruePlaylistUrl)
-    const rangedVideos = applyPlaylistRange(videos, page.randomTrueRangeStart, page.randomTrueRangeEnd)
-    if(!rangedVideos.length){
-      alert('No videos were found in that playlist.')
-      return
-    }
-    const randomIndex = Math.floor(Math.random() * rangedVideos.length)
-    const nextVideo = rangedVideos[randomIndex]
-    if(!nextVideo || !nextVideo.url){
-      alert('Could not select a random video from the playlist.')
-      return
-    }
-
-    try{
-      await openExternalUrl(nextVideo.url)
-    }catch(e){
-      window.open(nextVideo.url, '_blank', 'noopener,noreferrer')
-    }
-  }catch(e){
-    alert(e && e.message ? e.message : 'Could not load that playlist from the extension.')
-    return
-  }
 }
 async function triggerHeaderRandomLink(linkId){
   const link = headerLinks.find((item)=>item.id===linkId)
@@ -2406,44 +2305,27 @@ function getHoldDialogModel(){
       linkEditorVisible: false,
       linkTitle: '',
       linkUrl: '',
-      pageRandomEditorVisible: !!page.isRandom && !page.isRandomTrue,
+      pageRandomEditorVisible: !!page.isRandom,
       pageRandomUrl: page.randomPlaylistUrl || '',
       pageRangeStart: String(page.randomRangeStart || 1),
       pageRangeEnd: page.randomRangeEnd ? String(page.randomRangeEnd) : '',
       pageRangeReverse: !!page.randomReverse,
-      pageRandomTrueEditorVisible: !!page.isRandomTrue,
-      pageRandomTrueUrl: page.randomTruePlaylistUrl || '',
-      pageRangeTrueStart: String(page.randomTrueRangeStart || 1),
-      pageRangeTrueEnd: page.randomTrueRangeEnd ? String(page.randomTrueRangeEnd) : '',
-      canEdit: !!page.isRandom || !!page.isRandomTrue,
+      canEdit: !!page.isRandom,
       canMoveUp: index > 0,
       canMoveDown: index < pages.length - 1,
       canDelete: !isSpecial,
       randomVisible: !isSpecial,
-      randomChecked: !isSpecial && !!page.isRandom && !page.isRandomTrue,
-      randomTrueVisible: !isSpecial,
-      randomTrueChecked: !isSpecial && !!page.isRandomTrue,
+      randomChecked: !isSpecial && !!page.isRandom,
       onToggleRandom: (checked)=>setPageRandomMode(page.id, checked),
-      onToggleRandomTrue: (checked)=>setPageRandomTrueMode(page.id, checked),
       onEdit: ()=>{
-        if(page.isRandom && !page.isRandomTrue){
-          const applied = updateRandomPageSettings(
-            page.id,
-            holdPageRandomUrlInputEl ? holdPageRandomUrlInputEl.value : '',
-            holdPageRangeStartInputEl ? holdPageRangeStartInputEl.value : '',
-            holdPageRangeEndInputEl ? holdPageRangeEndInputEl.value : '',
-            !!(holdPageReverseCheckboxEl && holdPageReverseCheckboxEl.checked)
-          )
-          if(!applied) return
-        } else if(page.isRandomTrue){
-          const applied = updateRandomTruePageSettings(
-            page.id,
-            holdPageRandomTrueUrlInputEl ? holdPageRandomTrueUrlInputEl.value : '',
-            holdPageRangeTrueStartInputEl ? holdPageRangeTrueStartInputEl.value : '',
-            holdPageRangeTrueEndInputEl ? holdPageRangeTrueEndInputEl.value : ''
-          )
-          if(!applied) return
-        }
+        const applied = updateRandomPageSettings(
+          page.id,
+          holdPageRandomUrlInputEl ? holdPageRandomUrlInputEl.value : '',
+          holdPageRangeStartInputEl ? holdPageRangeStartInputEl.value : '',
+          holdPageRangeEndInputEl ? holdPageRangeEndInputEl.value : '',
+          !!(holdPageReverseCheckboxEl && holdPageReverseCheckboxEl.checked)
+        )
+        if(!applied) return
         renderHoldDialog()
       },
       onMoveUp: ()=>{ movePage(page.id, -1); renderHoldDialog() },
@@ -2519,7 +2401,7 @@ function getHoldDialogModel(){
   return null
 }
 function renderHoldDialog(){
-  if(!holdDialogEl || !holdDialogTitleEl || !holdLinkEditorEl || !holdLinkTitleInputEl || !holdLinkUrlInputEl || !holdPageRandomEditorEl || !holdPageRandomUrlInputEl || !holdPageRangeStartInputEl || !holdPageRangeEndInputEl || !holdPageReverseCheckboxEl || !holdRandomRowEl || !holdRandomCheckboxEl || !holdPageRandomTrueEditorEl || !holdPageRandomTrueUrlInputEl || !holdPageRangeTrueStartInputEl || !holdPageRangeTrueEndInputEl || !holdRandomTrueRowEl || !holdRandomTrueCheckboxEl || !holdEditBtn || !holdMoveUpBtn || !holdMoveDownBtn || !holdDeleteBtn) return
+  if(!holdDialogEl || !holdDialogTitleEl || !holdLinkEditorEl || !holdLinkTitleInputEl || !holdLinkUrlInputEl || !holdPageRandomEditorEl || !holdPageRandomUrlInputEl || !holdPageRangeStartInputEl || !holdPageRangeEndInputEl || !holdPageReverseCheckboxEl || !holdRandomRowEl || !holdRandomCheckboxEl || !holdEditBtn || !holdMoveUpBtn || !holdMoveDownBtn || !holdDeleteBtn) return
   const model = getHoldDialogModel()
   if(!model){
     closeHoldDialog()
@@ -2535,13 +2417,9 @@ function renderHoldDialog(){
   holdPageRangeStartInputEl.value = model.pageRandomEditorVisible ? (model.pageRangeStart || '1') : ''
   holdPageRangeEndInputEl.value = model.pageRandomEditorVisible ? (model.pageRangeEnd || '') : ''
   holdPageReverseCheckboxEl.checked = model.pageRandomEditorVisible ? !!model.pageRangeReverse : false
-  holdPageRandomTrueEditorEl.classList.toggle('hidden', !model.pageRandomTrueEditorVisible)
-  holdPageRandomTrueUrlInputEl.value = model.pageRandomTrueEditorVisible ? (model.pageRandomTrueUrl || '') : ''
-  holdPageRangeTrueStartInputEl.value = model.pageRandomTrueEditorVisible ? (model.pageRangeTrueStart || '1') : ''
-  holdPageRangeTrueEndInputEl.value = model.pageRandomTrueEditorVisible ? (model.pageRangeTrueEnd || '') : ''
   holdEditBtn.disabled = !model.canEdit
   holdEditBtn.style.display = model.canEdit ? '' : 'none'
-  holdEditBtn.textContent = (model.linkEditorVisible || model.pageRandomEditorVisible || model.pageRandomTrueEditorVisible) ? 'Save changes' : 'Edit'
+  holdEditBtn.textContent = (model.linkEditorVisible || model.pageRandomEditorVisible) ? 'Save changes' : 'Edit'
   holdMoveUpBtn.disabled = !model.canMoveUp
   holdMoveDownBtn.disabled = !model.canMoveDown
   holdDeleteBtn.disabled = !model.canDelete
@@ -2551,15 +2429,6 @@ function renderHoldDialog(){
     ? ()=>{
         const applied = model.onToggleRandom(holdRandomCheckboxEl.checked)
         if(applied === false) holdRandomCheckboxEl.checked = !!model.randomChecked
-        renderHoldDialog()
-      }
-    : null
-  holdRandomTrueRowEl.classList.toggle('hidden', !model.randomTrueVisible)
-  holdRandomTrueCheckboxEl.checked = !!model.randomTrueChecked
-  holdRandomTrueCheckboxEl.onchange = model.randomTrueVisible && model.onToggleRandomTrue
-    ? ()=>{
-        const applied = model.onToggleRandomTrue(holdRandomTrueCheckboxEl.checked)
-        if(applied === false) holdRandomTrueCheckboxEl.checked = !!model.randomTrueChecked
         renderHoldDialog()
       }
     : null
@@ -3482,12 +3351,9 @@ function renderLeftNav(){
 
     const button = document.createElement('button')
     button.type = 'button'
-    button.className = `page-link${currentPageId===page.id ? ' selected' : ''}${page.isRandom ? ' random-page-link' : ''}${page.isRandomTrue ? ' random-page-link' : ''}`
+    button.className = `page-link${currentPageId===page.id ? ' selected' : ''}${page.isRandom ? ' random-page-link' : ''}`
     button.textContent = page.title
-    let titleSuffix = ''
-    if(page.isRandomTrue) titleSuffix = ' - random playlist'
-    else if(page.isRandom) titleSuffix = ' - playlist sequence'
-    button.title = titleSuffix ? `${page.title}${titleSuffix}` : page.title
+    button.title = page.isRandom ? `${page.title} - playlist sequence` : page.title
     const holdPress = isLibraryPage(page.id)
       ? {consume: ()=>false}
       : attachLongPress(button, ()=>openPageHoldDialog(page.id))
@@ -3498,10 +3364,6 @@ function renderLeftNav(){
         savedPagesAssignMode = false
         syncSavedPagesButton()
         renderLeftNav()
-        return
-      }
-      if(page.isRandomTrue){
-        triggerRandomTruePage(page.id)
         return
       }
       if(page.isRandom){
