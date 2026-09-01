@@ -94,6 +94,26 @@
           <input id="hold-random-checkbox" type="checkbox">
           <span>Playlist sequence</span>
         </label>
+        <div id="hold-page-random-true-editor" class="hold-link-editor hidden">
+          <label class="hold-link-field">
+            <span>Playlist Link</span>
+            <input id="hold-page-random-true-url-input" type="url" autocomplete="off">
+          </label>
+          <div class="hold-range-row">
+            <label class="hold-link-field">
+              <span>From</span>
+              <input id="hold-page-range-true-start-input" type="number" min="1" step="1" inputmode="numeric">
+            </label>
+            <label class="hold-link-field">
+              <span>To</span>
+              <input id="hold-page-range-true-end-input" type="number" min="1" step="1" inputmode="numeric">
+            </label>
+          </div>
+        </div>
+        <label id="hold-random-true-row" class="hold-random-row hidden">
+          <input id="hold-random-true-checkbox" type="checkbox">
+          <span>Random playlist</span>
+        </label>
         <button id="hold-edit-btn" type="button">Edit</button>
         <button id="hold-move-up-btn" type="button">Move up</button>
         <button id="hold-move-down-btn" type="button">Move down</button>
