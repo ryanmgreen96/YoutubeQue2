@@ -594,7 +594,7 @@ function loadPages(){
         return {
           ...page,
           randomPlaylistUrl: playlistUrl,
-          isRandom: !!page.isRandom && !!playlistUrl && !page.isRandomTrue,
+          isRandom: !!page.isRandom && !!playlistUrl,
           randomShuffledItems: !!page.isRandom && !!playlistUrl ? randomShuffledItems : [],
           randomCurrentIndex,
           randomNeedsShuffle: !!page.isRandom && !!playlistUrl ? (!!page.randomNeedsShuffle || !randomShuffledItems.length) : true,
