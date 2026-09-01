@@ -474,25 +474,6 @@
     return newItems.concat(cleanedExisting)
   }
 
-  function queueItemKey(item){
-    if(!item || typeof item !== 'object') return ''
-    if(item.videoId) return `video:${String(item.videoId).trim()}`
-    const videoUrl = videoUrlFromHref(item.url || '')
-    return videoUrl ? `url:${videoUrl}` : `url:${String(item.url || '').trim()}`
-  }
-
-  function mergeQueueItems(incoming, existing){
-    const seen = new Set()
-    return (Array.isArray(incoming) ? incoming : [])
-      .concat(Array.isArray(existing) ? existing : [])
-      .filter((item)=>{
-        const key = queueItemKey(item)
-        if(!key || seen.has(key)) return false
-        seen.add(key)
-        return true
-      })
-  }
-
   function syncAppStateFromExtension(res){
     const q = Array.isArray(res && res.queuedItems) ? res.queuedItems : []
     const savedLinks = Array.isArray(res && res[SAVED_LINKS_EXT_KEY]) ? res[SAVED_LINKS_EXT_KEY] : []
@@ -501,7 +482,7 @@
     try{
       if(q.length){
         const existingQueue = JSON.parse(localStorage.getItem(APP_KEY)||'[]')
-        const mergedQueue = mergeQueueItems(q, existingQueue)
+        const mergedQueue = q.concat(existingQueue)
         localStorage.setItem(APP_KEY, JSON.stringify(mergedQueue))
         changed = true
       }

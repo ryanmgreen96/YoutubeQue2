@@ -351,56 +351,6 @@ chrome.commands.onCommand.addListener((command)=>{
 
 function uid(){ return Date.now().toString(36)+Math.random().toString(36).slice(2,8) }
 function safeText(value){ return (typeof value === 'string' ? value : '').trim() }
-let queueWriteChain = Promise.resolve()
-
-function queueItemKey(item){
-  if(!item || typeof item !== 'object') return ''
-  if(item.videoId) return `video:${String(item.videoId).trim()}`
-  return `url:${safeText(item.url)}`
-}
-
-function queueItemsDeduped(itemsToQueue){
-  const seen = new Set()
-  return (Array.isArray(itemsToQueue) ? itemsToQueue : []).filter((item)=>{
-    const key = queueItemKey(item)
-    if(!key || seen.has(key)) return false
-    seen.add(key)
-    return true
-  })
-}
-
-function writeQueueItems(itemsToQueue){
-  const incoming = queueItemsDeduped(itemsToQueue)
-  if(!incoming.length) return queueWriteChain
-
-  queueWriteChain = queueWriteChain.then(()=>new Promise((resolve)=>{
-    chrome.storage.local.get({queuedItems:[]}, (res)=>{
-      const existing = queueItemsDeduped(res.queuedItems)
-      const existingKeys = new Set(existing.map(queueItemKey))
-      const uniqueIncoming = incoming.filter((item)=>!existingKeys.has(queueItemKey(item)))
-      if(!uniqueIncoming.length){ resolve(); return }
-      chrome.storage.local.set({queuedItems: uniqueIncoming.concat(existing)}, resolve)
-    })
-  }))
-  return queueWriteChain
-}
-
-function updateQueuedItem(itemId, updates){
-  queueWriteChain = queueWriteChain.then(()=>new Promise((resolve)=>{
-    chrome.storage.local.get({queuedItems:[]}, (res)=>{
-      const queuedItems = Array.isArray(res.queuedItems) ? res.queuedItems : []
-      let changed = false
-      const updated = queuedItems.map((item)=>{
-        if(!item || item.id !== itemId) return item
-        changed = true
-        return {...item, ...updates}
-      })
-      if(!changed){ resolve(); return }
-      chrome.storage.local.set({queuedItems: queueItemsDeduped(updated)}, resolve)
-    })
-  }))
-  return queueWriteChain
-}
 
 function parseYouTubeRelativeDate(text){
   const raw = safeText(text).toLowerCase()
@@ -851,7 +801,21 @@ async function resolvePlaylistItemsForRandom(playlistUrl){
 }
 
 function queueManyItems(itemsToQueue){
-  return writeQueueItems(itemsToQueue)
+  if(!Array.isArray(itemsToQueue) || !itemsToQueue.length) return
+  chrome.storage.local.get({queuedItems:[]}, (res)=>{
+    const existing = Array.isArray(res.queuedItems) ? res.queuedItems : []
+    const existingUrls = new Set(existing.map(item=>item && item.url).filter(Boolean))
+    const unique = []
+
+    itemsToQueue.forEach((item)=>{
+      if(!item || !item.url || existingUrls.has(item.url)) return
+      existingUrls.add(item.url)
+      unique.push(item)
+    })
+
+    if(!unique.length) return
+    chrome.storage.local.set({queuedItems: unique.concat(existing)})
+  })
 }
 function extractHtmlMetaContent(text, patterns){
   const raw = safeText(text)
@@ -1174,30 +1138,7 @@ async function fetchPagePublishedAt(url){
 }
 
 function openQueueTabFor(href, title, publishedAtFromPage = ''){
-  const itemId = uid()
-  const initialUrl = href || APP_URL
-  let initialVideoId = null
-  try{
-    const initialUrlObject = new URL(initialUrl)
-    initialVideoId = initialUrlObject.searchParams.get('v')
-    if(!initialVideoId){
-      const parts = initialUrlObject.pathname.split('/').filter(Boolean)
-      initialVideoId = parts.pop() || null
-    }
-  }catch(e){ }
-
-  const reservedItem = {
-    id: itemId,
-    url: initialUrl,
-    title: title || '',
-    videoId: initialVideoId,
-    favorite: false,
-    created: new Date().toISOString(),
-    publishedAt: isReasonablePublishDate(publishedAtFromPage) ? publishedAtFromPage : ''
-  }
-
-  writeQueueItems([reservedItem])
-
+  // fetch the page title when possible to ensure queued item title matches the target
   (async ()=>{
     try{
       const [fetched, pagePublishedAt] = await Promise.all([
@@ -1212,9 +1153,20 @@ function openQueueTabFor(href, title, publishedAtFromPage = ''){
       const u = new URL(href)
       let vid = u.searchParams.get('v')
       if(!vid){ const parts = u.pathname.split('/').filter(Boolean); vid = parts.pop() }
-      updateQueuedItem(itemId, {title: finalTitle, videoId: vid, publishedAt: resolvedPublishedAt})
+      const item = { id: uid(), url: href, title: finalTitle, videoId: vid, favorite:false, created: new Date().toISOString(), publishedAt: resolvedPublishedAt }
+      chrome.storage.local.get({queuedItems:[]}, (res)=>{
+        const arr = res.queuedItems || []
+        arr.unshift(item)
+        chrome.storage.local.set({queuedItems: arr})
+      })
     }catch(e){
-      console.debug('openQueueTabFor fallback item', reservedItem)
+      const item = { id: uid(), url: href||APP_URL, title: title||'', videoId: null, favorite:false, created: new Date().toISOString(), publishedAt: publishedAtFromPage || '' }
+      console.debug('openQueueTabFor fallback item', item)
+      chrome.storage.local.get({queuedItems:[]}, (res)=>{
+        const arr = res.queuedItems || []
+        arr.unshift(item)
+        chrome.storage.local.set({queuedItems: arr})
+      })
     }
   })()
 }

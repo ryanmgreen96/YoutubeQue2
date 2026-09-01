@@ -19,14 +19,10 @@ const HOME_OLD_HIDDEN_KEY = 'ytHomeOldHidden_v1'
 const SAVED_PAGES_KEY = 'ytSavedPages_v1'
 const TAB_CHRONO_SORT_KEY = 'ytTabChronoSort_v1'
 const TAB_THUMBNAILS_HIDDEN_KEY = 'ytTabThumbnailsHidden_v1'
-const MOVIE_LISTS_KEY = 'ytMovieLists_v1'
-const SITE_PUSH_MARKER = 'staged-push-20260831'
 const LIBRARY_PAGE_ID = 'library'
 const LIBRARY_PAGE_TITLE = 'Library'
 const GYM_PAGE_ID = 'gym'
 const GYM_PAGE_TITLE = 'Gym'
-const MOVIE_PAGE_ID = 'movies'
-const MOVIE_PAGE_TITLE = 'Movies'
 const sections = document.getElementById('sections')
 const leftNavEl = document.getElementById('left-nav')
 const addPageBtn = document.getElementById('add-page-btn')
@@ -70,7 +66,6 @@ let pageTitleFilters = loadPageTitleFilters()
 let savedLinks = loadSavedLinks()
 let savedShelves = loadSavedShelves()
 let savedPageIds = loadSavedPageIds()
-let movieLists = loadMovieLists()
 let savedPagesPanelOpen = false
 let savedPagesAssignMode = false
 let activeShelfAssignId = ''
@@ -243,12 +238,9 @@ function isLibraryPage(pageId){
 function isGymPage(pageId){
   return normalizePageId(pageId) === GYM_PAGE_ID
 }
-function isMoviePage(pageId){
-  return normalizePageId(pageId) === MOVIE_PAGE_ID
-}
 function isProtectedPage(pageId){
   const pid = normalizePageId(pageId)
-  return pid === LIBRARY_PAGE_ID || pid === GYM_PAGE_ID || pid === MOVIE_PAGE_ID
+  return pid === LIBRARY_PAGE_ID || pid === GYM_PAGE_ID
 }
 function ensureLibraryPageExists(){
   const existing = pages.find((page)=>page && page.id===LIBRARY_PAGE_ID)
@@ -296,32 +288,6 @@ function ensureGymPageExists(){
   pageTabs[GYM_PAGE_ID] = [getDefaultTab()]
   activeTabs[GYM_PAGE_ID] = 'default'
   pageTitleFilters[GYM_PAGE_ID] = []
-
-  savePages()
-  savePageTabs()
-  saveActiveTabs()
-  savePageTitleFilters()
-}
-function ensureMoviePageExists(){
-  const existing = pages.find((page)=>page && page.id===MOVIE_PAGE_ID)
-  if(existing){
-    if(existing.title !== MOVIE_PAGE_TITLE){
-      existing.title = MOVIE_PAGE_TITLE
-      savePages()
-    }
-    return
-  }
-
-  const moviePage = {
-    id: MOVIE_PAGE_ID,
-    title: MOVIE_PAGE_TITLE,
-    created: new Date().toISOString()
-  }
-
-  pages.unshift(moviePage)
-  pageTabs[MOVIE_PAGE_ID] = [getDefaultTab()]
-  activeTabs[MOVIE_PAGE_ID] = 'default'
-  pageTitleFilters[MOVIE_PAGE_ID] = []
 
   savePages()
   savePageTabs()
@@ -527,14 +493,6 @@ function renderThemeSwitcher(){
     setCurrentPage(GYM_PAGE_ID)
   })
   themeSwitcherEl.appendChild(gymBtn)
-
-  const movieBtn = document.createElement('button')
-  movieBtn.type = 'button'
-  movieBtn.className = `theme-cycle-btn movie-btn${isMoviePage(currentPageId) ? ' selected' : ''}`
-  movieBtn.title = `Open ${MOVIE_PAGE_TITLE} page`
-  movieBtn.textContent = '🎬'
-  movieBtn.addEventListener('click', ()=>{ setCurrentPage(MOVIE_PAGE_ID) })
-  themeSwitcherEl.appendChild(movieBtn)
 
   const btn = document.createElement('button')
   btn.type = 'button'
@@ -2635,10 +2593,6 @@ function ensurePageTabIntegrity(){
       page.title = GYM_PAGE_TITLE
       changedFilters = true
     }
-    if(page.id===MOVIE_PAGE_ID && page.title !== MOVIE_PAGE_TITLE){
-      page.title = MOVIE_PAGE_TITLE
-      changedFilters = true
-    }
   })
 
   Object.keys(randomPlaylistSlots).forEach((key)=>{
@@ -3032,18 +2986,8 @@ function buildChronologicalListWithDividers(list, chronologicalOrder = 'desc'){
 }
 
 function addItem({url,title,videoId,favorite=false,pageId='home',tabId='default',created=new Date().toISOString()}){
-  const normalizedVideoId = videoId || extractVideoId(url)
-  const duplicate = items.some((item)=>{
-    if(isDividerItem(item)) return false
-    const itemVideoId = item.videoId || extractVideoId(item.url)
-    return normalizedVideoId && itemVideoId
-      ? normalizedVideoId === itemVideoId
-      : normalizeUrl(item.url) === normalizeUrl(url)
-  })
-  if(duplicate) return false
-
   const id = uid()
-  const item = {id, url, title, videoId: normalizedVideoId, favorite, pageId: normalizePageId(pageId), tabId: normalizeTabId(tabId), created, publishedAt: ''}
+  const item = {id, url, title, videoId, favorite, pageId: normalizePageId(pageId), tabId: normalizeTabId(tabId), created, publishedAt: ''}
   items.unshift(item)
   save()
   enqueueItemChronologyHydration(item)
@@ -3564,120 +3508,8 @@ function renderTabBar(pageId){
   sections.appendChild(overlay)
 }
 
-function renderMoviePage(){
-  const heading = document.createElement('h2')
-  heading.className = 'page-heading'
-  heading.textContent = MOVIE_PAGE_TITLE
-  sections.appendChild(heading)
-
-  const actions = document.createElement('div')
-  actions.className = 'movie-page-actions'
-
-  const addButton = document.createElement('button')
-  addButton.type = 'button'
-  addButton.className = 'movie-page-add-btn'
-  addButton.textContent = '+ New list'
-  addButton.addEventListener('click', ()=>openMovieListEditor())
-  actions.appendChild(addButton)
-  sections.appendChild(actions)
-
-  const wall = document.createElement('div')
-  wall.className = 'movie-list-grid'
-
-  if(!movieLists.length){
-    const empty = document.createElement('p')
-    empty.className = 'movie-empty'
-    empty.textContent = 'No lists yet. Create one to start.'
-    wall.appendChild(empty)
-    sections.appendChild(wall)
-    return
-  }
-
-  movieLists.forEach((list)=>{
-    const card = document.createElement('article')
-    card.className = 'movie-list-card'
-
-    const title = document.createElement('h3')
-    title.className = 'movie-list-title'
-    title.textContent = list.title || 'Movie list'
-    card.appendChild(title)
-
-    const ul = document.createElement('ul')
-    ul.className = 'movie-list-items'
-    const items = Array.isArray(list.items) ? list.items : []
-    items.forEach((item)=>{
-      const li = document.createElement('li')
-      li.textContent = item
-      ul.appendChild(li)
-    })
-    card.appendChild(ul)
-
-    const controls = document.createElement('div')
-    controls.className = 'movie-list-controls'
-
-    const editButton = document.createElement('button')
-    editButton.type = 'button'
-    editButton.textContent = 'Edit'
-    editButton.addEventListener('click', ()=>openMovieListEditor(list.id))
-    controls.appendChild(editButton)
-
-    const deleteButton = document.createElement('button')
-    deleteButton.type = 'button'
-    deleteButton.className = 'danger'
-    deleteButton.textContent = 'Delete'
-    deleteButton.addEventListener('click', ()=>{
-      const next = movieLists.filter((entry)=>entry.id !== list.id)
-      movieLists = next
-      saveMovieLists()
-      render()
-    })
-    controls.appendChild(deleteButton)
-
-    card.appendChild(controls)
-    wall.appendChild(card)
-  })
-
-  sections.appendChild(wall)
-}
-function openMovieListEditor(listId = null){
-  const existing = listId ? movieLists.find((entry)=>entry.id === listId) || null : null
-  const titleValue = window.prompt('List title', existing ? existing.title : '')
-  if(titleValue === null) return
-  const title = titleValue.trim()
-  if(!title){
-    alert('Please give the list a title.')
-    return
-  }
-
-  const itemsText = window.prompt('List items, separated by commas', existing ? existing.items.join(', ') : '')
-  if(itemsText === null) return
-  const items = itemsText
-    .split(',')
-    .map((entry)=>entry.trim())
-    .filter(Boolean)
-
-  if(!items.length){
-    alert('Add at least one item, separated by commas.')
-    return
-  }
-
-  if(existing){
-    existing.title = title
-    existing.items = items
-  } else {
-    movieLists.unshift({id: uid(), title, items})
-  }
-
-  saveMovieLists()
-  render()
-}
 function render(){ sections.innerHTML=''
   if(currentPageId !== 'home' && !isProtectedPage(currentPageId)) renderTabBar(currentPageId)
-  if(isMoviePage(currentPageId)){
-    renderMoviePage()
-    return
-  }
-
   const activeTabId = getActiveTabId(currentPageId)
   const list = items.filter(i=>normalizePageId(i.pageId)===currentPageId && normalizeTabId(i.tabId)===activeTabId)
   const groups = {recent:[], old:[]}
@@ -4031,7 +3863,6 @@ function handleParams(){ const p = new URLSearchParams(location.search); if(p.ha
     const targetPage = normalizePageId((p.get('openPage') || '').trim())
     if(targetPage === LIBRARY_PAGE_ID) setCurrentPage(LIBRARY_PAGE_ID)
     if(targetPage === GYM_PAGE_ID) setCurrentPage(GYM_PAGE_ID)
-    if(targetPage === MOVIE_PAGE_ID) setCurrentPage(MOVIE_PAGE_ID)
   }
   // remove params from url
   if(location.search) history.replaceState({},document.title,location.pathname)
@@ -4049,7 +3880,6 @@ window.addEventListener('load', ()=>{
   }
   ensureLibraryPageExists()
   ensureGymPageExists()
-  ensureMoviePageExists()
   ensurePageTabIntegrity()
   currentPageId = 'home'
   renderLeftNav()
