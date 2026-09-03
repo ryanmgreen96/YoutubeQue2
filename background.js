@@ -827,16 +827,40 @@ function extractHtmlMetaContent(text, patterns){
   return ''
 }
 
+function isGenericYouTubeTitle(value){
+  const title = safeText(value).replace(/\s+/g, ' ').trim()
+  return !title || /^(youtube|youtube music)(?:\s*-\s*youtube)?$/i.test(title)
+}
+
+function extractYouTubeTitleFromHtml(text){
+  const raw = safeText(text)
+  if(!raw) return ''
+
+  const metaTitle = extractHtmlMetaContent(raw, [
+    /<meta[^>]+(?:property|name)=["'](?:og:title|twitter:title)["'][^>]+content=["']([^"']+)["']/i,
+    /<meta[^>]+content=["']([^"']+)["'][^>]+(?:property|name)=["'](?:og:title|twitter:title)["']/i
+  ])
+  if(metaTitle && !isGenericYouTubeTitle(metaTitle)) return metaTitle
+
+  const structuredTitle = raw.match(/"(?:videoDetails|playerMicroformatRenderer)"\s*:\s*\{[\s\S]{0,2500}?"title"\s*:\s*"((?:\\.|[^"\\])*)"/i)
+  if(structuredTitle && structuredTitle[1]){
+    const decoded = structuredTitle[1]
+      .replace(/\\u0026/g, '&')
+      .replace(/\\"/g, '"')
+      .replace(/\\\\/g, '\\')
+    if(!isGenericYouTubeTitle(decoded)) return decoded.trim()
+  }
+
+  const titleMatch = raw.match(/<title[^>]*>([^<]+)<\/title>/i)
+  const pageTitle = titleMatch && titleMatch[1] ? titleMatch[1].trim() : ''
+  return isGenericYouTubeTitle(pageTitle) ? '' : pageTitle
+}
+
 async function fetchPageTitle(url){
   try{
     const res = await fetch(url)
     const txt = await res.text()
-    const metaTitle = extractHtmlMetaContent(txt, [
-      /<meta[^>]+property=["']og:title["'][^>]+content=["']([^"']+)["']/i,
-      /<meta[^>]+name=["']twitter:title["'][^>]+content=["']([^"']+)["']/i
-    ])
-    const titleMatch = txt.match(/<title[^>]*>([^<]+)<\/title>/i)
-    return (metaTitle || (titleMatch && titleMatch[1]) || '').trim()
+    return extractYouTubeTitleFromHtml(txt)
   }catch(e){ return '' }
 }
 
@@ -1147,12 +1171,12 @@ function openQueueTabFor(href, title, publishedAtFromPage = ''){
           ? Promise.resolve(publishedAtFromPage)
           : fetchPagePublishedAt(href)
       ])
-      const finalTitle = fetched || title || ''
-      const resolvedPublishedAt = isReasonablePublishDate(pagePublishedAt) ? pagePublishedAt : ''
-      console.debug('openQueueTabFor', {href, title, fetched, publishedAt: resolvedPublishedAt, finalTitle})
       const u = new URL(href)
       let vid = u.searchParams.get('v')
       if(!vid){ const parts = u.pathname.split('/').filter(Boolean); vid = parts.pop() }
+      const finalTitle = (!isGenericYouTubeTitle(fetched) ? fetched : '') || (!isGenericYouTubeTitle(title) ? title : '') || `YouTube video ${vid || ''}`.trim()
+      const resolvedPublishedAt = isReasonablePublishDate(pagePublishedAt) ? pagePublishedAt : ''
+      console.debug('openQueueTabFor', {href, title, fetched, publishedAt: resolvedPublishedAt, finalTitle})
       const item = { id: uid(), url: href, title: finalTitle, videoId: vid, favorite:false, created: new Date().toISOString(), publishedAt: resolvedPublishedAt }
       chrome.storage.local.get({queuedItems:[]}, (res)=>{
         const arr = res.queuedItems || []
@@ -1311,6 +1335,19 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse)=>{
     fetchPagePublishedAt(targetUrl)
       .then((publishedAt)=>sendResponse({ok:true, publishedAt: publishedAt || ''}))
       .catch(()=>sendResponse({ok:false, publishedAt:'', error:'Could not fetch publish date'}))
+    return true
+  }
+
+  if(message.type === 'fetch-video-title'){
+    const targetUrl = safeText(message.url)
+    if(!targetUrl){
+      sendResponse({ok:false, title:'', error:'Missing URL'})
+      return true
+    }
+
+    fetchPageTitle(targetUrl)
+      .then((title)=>sendResponse({ok:true, title: title || ''}))
+      .catch(()=>sendResponse({ok:false, title:'', error:'Could not fetch video title'}))
     return true
   }
 

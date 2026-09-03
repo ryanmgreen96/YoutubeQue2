@@ -948,6 +948,32 @@ async function fetchVideoPublishedAt(url){
     if(!normalizedUrl) return ''
 
     try{
+
+async function repairGenericYouTubeTitles(){
+  const candidates = items.filter((item)=>
+    !isDividerItem(item) &&
+    isYouTubeUrl(item.url) &&
+    /^(youtube|youtube music)(?:\s*-\s*youtube)?$/i.test((item.title || '').trim())
+  )
+  if(!candidates.length) return
+
+  let changed = false
+  for(const item of candidates.slice(0, 40)){
+    try{
+      const payload = await requestExtensionAction('fetch-video-title', {url: item.url})
+      const title = payload && typeof payload.title === 'string' ? payload.title.trim() : ''
+      if(title && !/^(youtube|youtube music)(?:\s*-\s*youtube)?$/i.test(title)){
+        item.title = title
+        changed = true
+      }
+    }catch(e){ }
+  }
+
+  if(changed){
+    save()
+    renderPreservingSectionScroll()
+  }
+}
       const payload = await requestExtensionAction('fetch-video-published-at', {url: normalizedUrl})
       const value = payload && typeof payload.publishedAt === 'string' ? payload.publishedAt : ''
       const normalized = normalizePublishDateValue(value)
@@ -3893,5 +3919,6 @@ window.addEventListener('load', ()=>{
   savedLinks = loadSavedLinks()
   renderSavedLinks()
   render()
+  void repairGenericYouTubeTitles()
   restoreScrollPositionForCurrentView()
 })

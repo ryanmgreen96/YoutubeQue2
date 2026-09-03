@@ -113,3 +113,15 @@ test('normalizeDateCandidate rejects absurd years', () => {
   const context = loadDateHelpersForFeed()
   assert.equal(context.normalizeDateCandidate('+021540-01-01T08:00:00.000Z'), '')
 })
+
+test('extractYouTubeTitleFromHtml ignores generic shell titles', () => {
+  const context = loadDateHelpersForFeed()
+  const html = '<title>YouTube</title><script>var ytInitialPlayerResponse = {"videoDetails":{"title":"A Real Video Title"}};</script>'
+  assert.equal(context.extractYouTubeTitleFromHtml(html), 'A Real Video Title')
+})
+
+test('extractYouTubeTitleFromHtml accepts normal og titles', () => {
+  const context = loadDateHelpersForFeed()
+  const html = '<meta content="A Real Video Title" property="og:title"><title>YouTube</title>'
+  assert.equal(context.extractYouTubeTitleFromHtml(html), 'A Real Video Title')
+})
