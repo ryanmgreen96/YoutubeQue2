@@ -625,15 +625,7 @@ function getSavedLinkOrderIndex(link){
   return Number.isInteger(fallback) && fallback >= 0 ? fallback : 0
 }
 function sortSavedLinks(links){
-  return links
-    .map((link, index)=>({ link, index }))
-    .sort((a, b)=>{
-      const aOrder = getSavedLinkOrderIndex(a.link)
-      const bOrder = getSavedLinkOrderIndex(b.link)
-      if(aOrder !== bOrder) return aOrder - bOrder
-      return a.index - b.index
-    })
-    .map(({ link })=>link)
+  return Array.isArray(links) ? links.slice() : []
 }
 function loadSavedLinks(){
   try{
