@@ -439,13 +439,43 @@
     return (nested.getAttribute && (nested.getAttribute('href') || nested.getAttribute('data-href'))) || nested.href || ''
   }
 
+  function getSavedLinkIdentity(value){
+    const raw = (value || '').trim()
+    if(!raw) return ''
+
+    try{
+      const parsed = new URL(raw)
+      const host = parsed.hostname.replace(/^www\./, '').toLowerCase()
+      const pathname = parsed.pathname || ''
+      if(host === 'youtu.be'){
+        const shortId = pathname.replace(/^\/+/, '').split('/')[0]
+        if(shortId) return `youtube:${shortId}`
+      }
+      if(host === 'youtube.com' || host.endsWith('.youtube.com')){
+        if(pathname === '/watch' || pathname.startsWith('/watch/')){
+          const videoId = parsed.searchParams.get('v') || ''
+          if(videoId) return `youtube:${videoId}`
+        }
+        if(pathname.startsWith('/shorts/')){
+          const parts = pathname.split('/').filter(Boolean)
+          if(parts[1]) return `youtube:${parts[1]}`
+        }
+      }
+      return parsed.toString().replace(/\/$/, '') || raw.toLowerCase()
+    }catch(e){
+      return raw.toLowerCase()
+    }
+  }
+
   function mergeSavedLinksPreserveExistingPosition(incoming, existing){
     const cleanedExisting = []
     const existingByUrl = new Map()
 
     ;(Array.isArray(existing) ? existing : []).forEach((item)=>{
-      if(!item || !item.url || existingByUrl.has(item.url)) return
-      existingByUrl.set(item.url, cleanedExisting.length)
+      if(!item || !item.url) return
+      const identity = getSavedLinkIdentity(item.url)
+      if(!identity || existingByUrl.has(identity)) return
+      existingByUrl.set(identity, cleanedExisting.length)
       cleanedExisting.push(item)
     })
 
@@ -454,24 +484,31 @@
 
     ;(Array.isArray(incoming) ? incoming : []).forEach((item)=>{
       if(!item || !item.url) return
-      const existingIndex = existingByUrl.get(item.url)
+      const identity = getSavedLinkIdentity(item.url)
+      const existingIndex = existingByUrl.get(identity)
 
       if(Number.isInteger(existingIndex)){
         const oldItem = cleanedExisting[existingIndex]
         cleanedExisting[existingIndex] = {
           ...item,
           id: oldItem && oldItem.id ? oldItem.id : item.id,
-          created: oldItem && oldItem.created ? oldItem.created : item.created
+          created: oldItem && oldItem.created ? oldItem.created : item.created,
+          orderIndex: oldItem && oldItem.orderIndex !== undefined ? oldItem.orderIndex : item.orderIndex,
+          position: oldItem && oldItem.position !== undefined ? oldItem.position : item.position
         }
         return
       }
 
-      if(seenNewUrls.has(item.url)) return
-      seenNewUrls.add(item.url)
+      if(!identity || seenNewUrls.has(identity)) return
+      seenNewUrls.add(identity)
       newItems.push(item)
     })
 
-    return newItems.concat(cleanedExisting)
+    const orderedNewItems = newItems.map((item, index)=>({
+      ...item,
+      orderIndex: index - newItems.length
+    }))
+    return orderedNewItems.concat(cleanedExisting)
   }
 
   function syncAppStateFromExtension(res){
