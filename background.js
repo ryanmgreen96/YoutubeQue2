@@ -335,9 +335,11 @@ chrome.action.onClicked.addListener((tab)=>{
 
     chrome.storage.local.get({[SAVED_LINKS_KEY]:[]}, (res)=>{
       const current = res[SAVED_LINKS_KEY] || []
-      const deduped = current.filter((link)=>link.url !== item.url)
-      deduped.unshift(item)
-      chrome.storage.local.set({[SAVED_LINKS_KEY]: deduped}, ()=>{
+      const existingIndex = current.findIndex((link)=>link && link.url === item.url)
+      const next = Array.isArray(current) ? current.slice() : []
+      if(existingIndex >= 0) next[existingIndex] = {...next[existingIndex], ...item, id: next[existingIndex].id || item.id}
+      else next.unshift(item)
+      chrome.storage.local.set({[SAVED_LINKS_KEY]: next}, ()=>{
         closeTabAfterSave(tab && tab.id)
       })
     })
@@ -856,6 +858,11 @@ function extractYouTubeTitleFromHtml(text){
   return isGenericYouTubeTitle(pageTitle) ? '' : pageTitle
 }
 
+function extractYouTubeTitleFromPlayerData(payload){
+  const title = safeText(payload && payload.videoDetails && payload.videoDetails.title)
+  return isGenericYouTubeTitle(title) ? '' : title
+}
+
 async function fetchPageTitle(url){
   try{
     const res = await fetch(url)
@@ -1174,7 +1181,11 @@ function openQueueTabFor(href, title, publishedAtFromPage = ''){
       const u = new URL(href)
       let vid = u.searchParams.get('v')
       if(!vid){ const parts = u.pathname.split('/').filter(Boolean); vid = parts.pop() }
-      const finalTitle = (!isGenericYouTubeTitle(fetched) ? fetched : '') || (!isGenericYouTubeTitle(title) ? title : '') || `YouTube video ${vid || ''}`.trim()
+      let playerTitle = ''
+      if(isGenericYouTubeTitle(fetched) && vid){
+        playerTitle = extractYouTubeTitleFromPlayerData(await fetchYouTubePlayerData(vid))
+      }
+      const finalTitle = (!isGenericYouTubeTitle(fetched) ? fetched : '') || playerTitle || (!isGenericYouTubeTitle(title) ? title : '') || `YouTube video ${vid || ''}`.trim()
       const resolvedPublishedAt = isReasonablePublishDate(pagePublishedAt) ? pagePublishedAt : ''
       console.debug('openQueueTabFor', {href, title, fetched, publishedAt: resolvedPublishedAt, finalTitle})
       const item = { id: uid(), url: href, title: finalTitle, videoId: vid, favorite:false, created: new Date().toISOString(), publishedAt: resolvedPublishedAt }

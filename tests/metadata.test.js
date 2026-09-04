@@ -125,3 +125,9 @@ test('extractYouTubeTitleFromHtml accepts normal og titles', () => {
   const html = '<meta content="A Real Video Title" property="og:title"><title>YouTube</title>'
   assert.equal(context.extractYouTubeTitleFromHtml(html), 'A Real Video Title')
 })
+
+test('extractYouTubeTitleFromPlayerData ignores the generic YouTube title', () => {
+  const context = loadDateHelpersForFeed()
+  assert.equal(context.extractYouTubeTitleFromPlayerData({videoDetails:{title:'A Real Video Title'}}), 'A Real Video Title')
+  assert.equal(context.extractYouTubeTitleFromPlayerData({videoDetails:{title:'YouTube'}}), '')
+})
