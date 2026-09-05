@@ -50,6 +50,7 @@ const holdPageRandomUrlInputEl = document.getElementById('hold-page-random-url-i
 const holdPageRangeStartInputEl = document.getElementById('hold-page-range-start-input')
 const holdPageRangeEndInputEl = document.getElementById('hold-page-range-end-input')
 const holdPageReverseCheckboxEl = document.getElementById('hold-page-reverse-checkbox')
+const holdPageRandomOrderCheckboxEl = document.getElementById('hold-page-random-order-checkbox')
 const holdRandomRowEl = document.getElementById('hold-random-row')
 const holdRandomCheckboxEl = document.getElementById('hold-random-checkbox')
 const holdEditBtn = document.getElementById('hold-edit-btn')
@@ -550,7 +551,8 @@ function loadPages(){
           randomNeedsShuffle: !!page.isRandom && !!playlistUrl ? (!!page.randomNeedsShuffle || !randomShuffledItems.length) : true,
           randomRangeStart: Number.isInteger(parsedRangeStart) && parsedRangeStart > 0 ? parsedRangeStart : 1,
           randomRangeEnd: Number.isInteger(parsedRangeEnd) && parsedRangeEnd > 0 ? parsedRangeEnd : 0,
-          randomReverse: !!page.randomReverse
+          randomReverse: !!page.randomReverse,
+          randomOrder: !!page.randomOrder
         }
       })
   }catch(e){return[]}
@@ -1586,6 +1588,17 @@ function deleteRandomPlaylistSlotsForPage(pageId){
 function preparePlaylistSequence(list){
   return Array.isArray(list) ? list.slice() : []
 }
+function prepareRandomPlaylistSequence(list){
+  if(!Array.isArray(list)) return []
+  const shuffled = list.slice()
+  for(let index = shuffled.length - 1; index > 0; index -= 1){
+    const swapIndex = Math.floor(Math.random() * (index + 1))
+    const current = shuffled[index]
+    shuffled[index] = shuffled[swapIndex]
+    shuffled[swapIndex] = current
+  }
+  return shuffled
+}
 function initialPlaylistSequenceIndex(list){
   return Array.isArray(list) && list.length ? (list.length - 1) : -1
 }
@@ -1710,6 +1723,7 @@ function setPageRandomMode(pageId, enabled){
     page.randomRangeStart = Number.isInteger(page.randomRangeStart) && page.randomRangeStart > 0 ? page.randomRangeStart : 1
     page.randomRangeEnd = Number.isInteger(page.randomRangeEnd) && page.randomRangeEnd > 0 ? page.randomRangeEnd : 0
     page.randomReverse = !!page.randomReverse
+    page.randomOrder = !!page.randomOrder
   }else{
     page.isRandom = false
     page.randomPlaylistUrl = ''
@@ -1719,6 +1733,7 @@ function setPageRandomMode(pageId, enabled){
     page.randomRangeStart = 1
     page.randomRangeEnd = 0
     page.randomReverse = false
+    page.randomOrder = false
   }
 
   savePages()
@@ -1738,13 +1753,14 @@ async function triggerRandomPage(pageId){
         alert('No videos were found in that playlist.')
         return
       }
-      const prepared = preparePlaylistSequence(rangedVideos)
+      const prepared = page.randomOrder
+        ? prepareRandomPlaylistSequence(rangedVideos)
+        : preparePlaylistSequence(rangedVideos)
       page.randomShuffledItems = page.randomReverse ? prepared.reverse() : prepared
       page.randomCurrentIndex = initialPlaylistSequenceIndex(page.randomShuffledItems)
       page.randomNeedsShuffle = false
       savePages()
       renderLeftNav()
-      return
     }catch(e){
       alert(e && e.message ? e.message : 'Could not load that playlist from the extension.')
       return
@@ -1774,7 +1790,7 @@ async function triggerRandomPage(pageId){
     window.open(nextVideo.url, '_blank', 'noopener,noreferrer')
   }
 }
-function updateRandomPageSettings(pageId, nextUrlInput, nextRangeStartInput, nextRangeEndInput, reverseOrder){
+function updateRandomPageSettings(pageId, nextUrlInput, nextRangeStartInput, nextRangeEndInput, reverseOrder, randomOrder){
   const pid = normalizePageId(pageId)
   const page = pages.find((item)=>item.id===pid)
   if(!page || !page.isRandom) return false
@@ -1798,13 +1814,15 @@ function updateRandomPageSettings(pageId, nextUrlInput, nextRangeStartInput, nex
   const playlistChanged = page.randomPlaylistUrl !== playlistUrl
   const rangeChanged = (page.randomRangeStart || 1) !== rangeStart || (page.randomRangeEnd || 0) !== rangeEnd
   const reverseChanged = !!page.randomReverse !== !!reverseOrder
+  const randomOrderChanged = !!page.randomOrder !== !!randomOrder
 
   page.randomPlaylistUrl = playlistUrl
   page.randomRangeStart = rangeStart
   page.randomRangeEnd = rangeEnd
   page.randomReverse = !!reverseOrder
+  page.randomOrder = !!randomOrder
 
-  if(playlistChanged || rangeChanged || reverseChanged){
+  if(playlistChanged || rangeChanged || reverseChanged || randomOrderChanged){
     page.randomShuffledItems = []
     page.randomCurrentIndex = -1
     page.randomNeedsShuffle = true
@@ -1830,7 +1848,6 @@ async function triggerHeaderRandomLink(linkId){
       link.needsShuffle = false
       saveHeaderLinks()
       renderLeftNav()
-      return
     }catch(e){
       alert(e && e.message ? e.message : 'Could not load that playlist from the extension.')
       return
@@ -1924,7 +1941,6 @@ async function triggerRandomPlaylistSlot(pageId, tabId){
         needsShuffle: false
       }
       setRandomPlaylistSlot(pid, tid, slot)
-      return
     }catch(e){
       alert(e && e.message ? e.message : 'Could not load that playlist from the extension.')
       return
@@ -2292,6 +2308,7 @@ function getHoldDialogModel(){
       pageRangeStart: String(page.randomRangeStart || 1),
       pageRangeEnd: page.randomRangeEnd ? String(page.randomRangeEnd) : '',
       pageRangeReverse: !!page.randomReverse,
+      pageRandomOrder: !!page.randomOrder,
       canEdit: !!page.isRandom,
       canMoveUp: index > 0,
       canMoveDown: index < pages.length - 1,
@@ -2305,7 +2322,8 @@ function getHoldDialogModel(){
           holdPageRandomUrlInputEl ? holdPageRandomUrlInputEl.value : '',
           holdPageRangeStartInputEl ? holdPageRangeStartInputEl.value : '',
           holdPageRangeEndInputEl ? holdPageRangeEndInputEl.value : '',
-          !!(holdPageReverseCheckboxEl && holdPageReverseCheckboxEl.checked)
+          !!(holdPageReverseCheckboxEl && holdPageReverseCheckboxEl.checked),
+          !!(holdPageRandomOrderCheckboxEl && holdPageRandomOrderCheckboxEl.checked)
         )
         if(!applied) return
         renderHoldDialog()
@@ -2383,7 +2401,7 @@ function getHoldDialogModel(){
   return null
 }
 function renderHoldDialog(){
-  if(!holdDialogEl || !holdDialogTitleEl || !holdLinkEditorEl || !holdLinkTitleInputEl || !holdLinkUrlInputEl || !holdPageRandomEditorEl || !holdPageRandomUrlInputEl || !holdPageRangeStartInputEl || !holdPageRangeEndInputEl || !holdPageReverseCheckboxEl || !holdRandomRowEl || !holdRandomCheckboxEl || !holdEditBtn || !holdMoveUpBtn || !holdMoveDownBtn || !holdDeleteBtn) return
+  if(!holdDialogEl || !holdDialogTitleEl || !holdLinkEditorEl || !holdLinkTitleInputEl || !holdLinkUrlInputEl || !holdPageRandomEditorEl || !holdPageRandomUrlInputEl || !holdPageRangeStartInputEl || !holdPageRangeEndInputEl || !holdPageReverseCheckboxEl || !holdPageRandomOrderCheckboxEl || !holdRandomRowEl || !holdRandomCheckboxEl || !holdEditBtn || !holdMoveUpBtn || !holdMoveDownBtn || !holdDeleteBtn) return
   const model = getHoldDialogModel()
   if(!model){
     closeHoldDialog()
@@ -2399,6 +2417,7 @@ function renderHoldDialog(){
   holdPageRangeStartInputEl.value = model.pageRandomEditorVisible ? (model.pageRangeStart || '1') : ''
   holdPageRangeEndInputEl.value = model.pageRandomEditorVisible ? (model.pageRangeEnd || '') : ''
   holdPageReverseCheckboxEl.checked = model.pageRandomEditorVisible ? !!model.pageRangeReverse : false
+  holdPageRandomOrderCheckboxEl.checked = model.pageRandomEditorVisible ? !!model.pageRandomOrder : false
   holdEditBtn.disabled = !model.canEdit
   holdEditBtn.style.display = model.canEdit ? '' : 'none'
   holdEditBtn.textContent = (model.linkEditorVisible || model.pageRandomEditorVisible) ? 'Save changes' : 'Edit'
