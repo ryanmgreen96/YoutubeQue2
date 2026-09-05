@@ -831,7 +831,7 @@ function extractHtmlMetaContent(text, patterns){
 
 function isGenericYouTubeTitle(value){
   const title = safeText(value).replace(/\s+/g, ' ').trim()
-  return !title || /^(youtube|youtube music)(?:\s*-\s*youtube)?$/i.test(title)
+  return !title || /^(youtube|youtube music)(?:\s*-\s*youtube)?$/i.test(title) || /^title(?:\s*\(\d+\))?$/i.test(title)
 }
 
 function extractYouTubeTitleFromHtml(text){

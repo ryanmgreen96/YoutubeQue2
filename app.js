@@ -934,18 +934,16 @@ function normalizePublishDateValue(value){
   return date.toISOString()
 }
 
-async function fetchVideoPublishedAt(url){
-  try{
-    const normalizedUrl = normalizeUrl(url)
-    if(!normalizedUrl) return ''
-
-    try{
+function isGenericQueueTitle(value){
+  const title = (typeof value === 'string' ? value : '').replace(/\s+/g, ' ').trim()
+  return !title || /^(youtube|youtube music)(?:\s*-\s*youtube)?$/i.test(title) || /^title(?:\s*\(\d+\))?$/i.test(title)
+}
 
 async function repairGenericYouTubeTitles(){
   const candidates = items.filter((item)=>
     !isDividerItem(item) &&
     isYouTubeUrl(item.url) &&
-    /^(youtube|youtube music)(?:\s*-\s*youtube)?$/i.test((item.title || '').trim())
+    isGenericQueueTitle(item.title)
   )
   if(!candidates.length) return
 
@@ -954,7 +952,7 @@ async function repairGenericYouTubeTitles(){
     try{
       const payload = await requestExtensionAction('fetch-video-title', {url: item.url})
       const title = payload && typeof payload.title === 'string' ? payload.title.trim() : ''
-      if(title && !/^(youtube|youtube music)(?:\s*-\s*youtube)?$/i.test(title)){
+      if(title && !isGenericQueueTitle(title)){
         item.title = title
         changed = true
       }
@@ -966,6 +964,13 @@ async function repairGenericYouTubeTitles(){
     renderPreservingSectionScroll()
   }
 }
+
+async function fetchVideoPublishedAt(url){
+  try{
+    const normalizedUrl = normalizeUrl(url)
+    if(!normalizedUrl) return ''
+
+    try{
       const payload = await requestExtensionAction('fetch-video-published-at', {url: normalizedUrl})
       const value = payload && typeof payload.publishedAt === 'string' ? payload.publishedAt : ''
       const normalized = normalizePublishDateValue(value)

@@ -131,3 +131,10 @@ test('extractYouTubeTitleFromPlayerData ignores the generic YouTube title', () =
   assert.equal(context.extractYouTubeTitleFromPlayerData({videoDetails:{title:'A Real Video Title'}}), 'A Real Video Title')
   assert.equal(context.extractYouTubeTitleFromPlayerData({videoDetails:{title:'YouTube'}}), '')
 })
+
+test('generic YouTube title detection rejects browser placeholder titles', () => {
+  const context = loadDateHelpersForFeed()
+  assert.equal(context.isGenericYouTubeTitle('title'), true)
+  assert.equal(context.isGenericYouTubeTitle('title(1)'), true)
+  assert.equal(context.isGenericYouTubeTitle('A Real Video Title'), false)
+})
