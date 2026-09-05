@@ -10,6 +10,7 @@ const TOPBAR_ACTIVE_ROW_KEY = 'ytTopbarActiveRow_v1'
 const THEME_INDEX_KEY = 'ytThemeIndex_v1'
 const SCROLL_POSITIONS_KEY = 'ytScrollPositions_v1'
 const LAST_VIEWED_KEY = 'ytLastViewedItem_v1'
+const CURRENT_PAGE_KEY = 'ytCurrentPage_v1'
 const RANDOM_PLAYLISTS_KEY = 'ytRandomPlaylists_v1'
 const NOTEBOOK_TEXT_KEY = 'ytNotebookText_v1'
 const NOTEBOOK_SCROLL_KEY = 'ytNotebookScroll_v1'
@@ -74,7 +75,7 @@ let homeOldHidden = loadHomeOldHidden()
 let headerLinks = loadHeaderLinks()
 let topbarRows = loadTopbarRows()
 let activeTopbarRowId = loadTopbarActiveRowId()
-let currentPageId = 'home'
+let currentPageId = loadCurrentPageId()
 let editMode = false
 let deleteMode = false
 let pageDeleteMode = false
@@ -439,6 +440,11 @@ async function startTimerFromPrompt(){
 function getScrollKey(pageId, tabId){
   return `${normalizePageId(pageId)}::${normalizeTabId(tabId)}`
 }
+function loadCurrentPageId(){
+  const stored = localStorage.getItem(CURRENT_PAGE_KEY) || 'home'
+  return stored === 'home' || pages.some(page=>page.id===stored) ? stored : 'home'
+}
+function saveCurrentPageId(){ localStorage.setItem(CURRENT_PAGE_KEY, currentPageId || 'home') }
 function saveScrollPositionForCurrentView(){
   if(!sections) return
   const key = getScrollKey(currentPageId, getActiveTabId(currentPageId))
@@ -938,7 +944,7 @@ function normalizePublishDateValue(value){
 
 function isGenericQueueTitle(value){
   const title = (typeof value === 'string' ? value : '').replace(/\s+/g, ' ').trim()
-  return !title || /^(youtube|youtube music)(?:\s*-\s*youtube)?$/i.test(title) || /^title(?:\s*\(\d+\))?$/i.test(title)
+  return !title || /^(youtube|youtube music)(?:\s*-\s*youtube)?$/i.test(title) || /^title(?:\s*\(\d+\))?$/i.test(title) || /^youtube video\s+\S+$/i.test(title)
 }
 
 async function repairGenericYouTubeTitles(){
@@ -2903,6 +2909,7 @@ function setCurrentPage(pageId){
   saveScrollPositionForCurrentView()
   dividerInsertMode = false
   currentPageId = known ? pid : 'home'
+  saveCurrentPageId()
   savedPagesPanelOpen = false
   getPageTabs(currentPageId)
   getActiveTabId(currentPageId)
@@ -3923,7 +3930,7 @@ window.addEventListener('load', ()=>{
   ensureLibraryPageExists()
   ensureGymPageExists()
   ensurePageTabIntegrity()
-  currentPageId = 'home'
+  currentPageId = loadCurrentPageId()
   renderLeftNav()
   syncSavedPagesButton()
   syncPageDeleteModeButton()

@@ -831,7 +831,7 @@ function extractHtmlMetaContent(text, patterns){
 
 function isGenericYouTubeTitle(value){
   const title = safeText(value).replace(/\s+/g, ' ').trim()
-  return !title || /^(youtube|youtube music)(?:\s*-\s*youtube)?$/i.test(title) || /^title(?:\s*\(\d+\))?$/i.test(title)
+  return !title || /^(youtube|youtube music)(?:\s*-\s*youtube)?$/i.test(title) || /^title(?:\s*\(\d+\))?$/i.test(title) || /^youtube video\s+\S+$/i.test(title)
 }
 
 function extractYouTubeTitleFromHtml(text){
@@ -1195,7 +1195,13 @@ function openQueueTabFor(href, title, publishedAtFromPage = ''){
         chrome.storage.local.set({queuedItems: arr})
       })
     }catch(e){
-      const item = { id: uid(), url: href||APP_URL, title: title||'', videoId: null, favorite:false, created: new Date().toISOString(), publishedAt: publishedAtFromPage || '' }
+      const fallbackUrl = href || APP_URL
+      let fallbackVideoId = null
+      try{ fallbackVideoId = extractVideoIdFromUrl(fallbackUrl) || null }catch(error){ }
+      const fallbackTitle = !isGenericYouTubeTitle(title)
+        ? safeText(title)
+        : `YouTube video ${fallbackVideoId || ''}`.trim()
+      const item = { id: uid(), url: fallbackUrl, title: fallbackTitle, videoId: fallbackVideoId, favorite:false, created: new Date().toISOString(), publishedAt: publishedAtFromPage || '' }
       console.debug('openQueueTabFor fallback item', item)
       chrome.storage.local.get({queuedItems:[]}, (res)=>{
         const arr = res.queuedItems || []
@@ -1211,8 +1217,10 @@ async function queuePlaylistFor(playlistUrl){
     const videos = await extractPlaylistItems(playlistUrl)
     if(!videos.length) return {ok:false, count:0}
 
-    const baseMs = Date.now() - (videos.length * 1000)
-    const payload = videos.map((video, index)=>(
+    const resolvedVideos = await resolvePlaylistIncomingTitles(videos)
+
+    const baseMs = Date.now() - (resolvedVideos.length * 1000)
+    const payload = resolvedVideos.map((video, index)=>(
       {
         id: uid(),
         url: video.url,
@@ -1271,12 +1279,22 @@ function normalizePlaylistIncoming(video, fallbackListId, index){
   return {
     id: uid(),
     url,
-    title: safeText(video && video.title) || `YouTube video ${videoId}`,
+    title: isGenericYouTubeTitle(video && video.title) ? `YouTube video ${videoId}` : safeText(video && video.title),
     videoId,
     favorite: false,
     created: new Date(Date.now() - ((index + 1) * 1000)).toISOString(),
     publishedAt: safeText(video && video.publishedAt)
   }
+}
+
+async function resolvePlaylistIncomingTitles(payload){
+  return Promise.all(payload.map(async (item)=>{
+    if(!item || !isGenericYouTubeTitle(item.title)) return item
+    const title = await fetchPageTitle(item.url)
+    if(title && !isGenericYouTubeTitle(title)) return {...item, title}
+    const videoId = extractVideoIdFromUrl(item.url)
+    return {...item, title: `YouTube video ${videoId || ''}`.trim()}
+  }))
 }
 
 async function inspectTabPublishedAt(tab){
@@ -1396,8 +1414,15 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse)=>{
       return true
     }
 
-    queueManyItems(payload)
-    sendResponse({ok:true, count: payload.length})
+    resolvePlaylistIncomingTitles(payload)
+      .then((resolvedPayload)=>{
+        queueManyItems(resolvedPayload)
+        sendResponse({ok:true, count: resolvedPayload.length})
+      })
+      .catch(()=>{
+        queueManyItems(payload)
+        sendResponse({ok:true, count: payload.length})
+      })
     return true
   }
 })

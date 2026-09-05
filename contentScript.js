@@ -401,10 +401,15 @@
 
   function queueTitleFromElement(el){
     const label = (el && (el.getAttribute && (el.getAttribute('aria-label') || el.getAttribute('title')))) || ''
-    if(label.trim()) return label.trim()
+    if(label.trim() && !isGenericQueueTitle(label)) return label.trim()
     const titleNode = el && el.closest && el.closest('ytd-rich-item-renderer, ytd-video-renderer, ytd-compact-video-renderer, ytd-grid-video-renderer, ytd-reel-item-renderer')?.querySelector('#video-title, a#video-title, [title]')
     const text = (titleNode && (titleNode.getAttribute && (titleNode.getAttribute('aria-label') || titleNode.getAttribute('title')) || titleNode.textContent)) || el?.textContent || ''
-    return text.trim()
+    return isGenericQueueTitle(text) ? '' : text.trim()
+  }
+
+  function isGenericQueueTitle(value){
+    const title = (typeof value === 'string' ? value : '').replace(/\s+/g, ' ').trim()
+    return !title || /^(youtube|youtube music)(?:\s*-\s*youtube)?$/i.test(title) || /^title(?:\s*\(\d+\))?$/i.test(title) || /^youtube video\s+\S+$/i.test(title)
   }
 
   function renderQueueModeBanner(enabled){
