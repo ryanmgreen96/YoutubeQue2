@@ -3364,7 +3364,6 @@ function renderLeftNav(){
       if(holdPress.consume()) return
       if(savedPagesAssignMode){
         toggleSavedPage(page.id)
-        savedPagesAssignMode = false
         syncSavedPagesButton()
         renderLeftNav()
         return
@@ -3940,7 +3939,8 @@ window.addEventListener('load', ()=>{
   ensureLibraryPageExists()
   ensureGymPageExists()
   ensurePageTabIntegrity()
-  currentPageId = loadCurrentPageId()
+  currentPageId = 'home'
+  saveCurrentPageId()
   renderLeftNav()
   syncSavedPagesButton()
   syncPageDeleteModeButton()
