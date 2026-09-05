@@ -91,7 +91,7 @@ let activeTimerEndsAt = 0
 let activeTimerLabel = ''
 let swRegistration = null
 let scrollPositions = loadScrollPositions()
-let lastViewedItemId = loadLastViewedItemId()
+let lastViewedItems = loadLastViewedItems()
 let randomPlaylistSlots = loadRandomPlaylistSlots()
 let tabChronoSort = loadTabChronoSort()
 let tabThumbnailsHidden = loadTabThumbnailsHidden()
@@ -462,8 +462,9 @@ function restoreScrollPositionForCurrentView(){
 }
 function markLastViewedItem(itemId){
   if(!itemId) return
-  lastViewedItemId = itemId
-  saveLastViewedItemId()
+  const key = getScrollKey(currentPageId, getActiveTabId(currentPageId))
+  lastViewedItems[key] = itemId
+  saveLastViewedItems()
   render()
 }
 function renderThemeSwitcher(){
@@ -1404,8 +1405,16 @@ function loadScrollPositions(){
   }catch(e){ return {} }
 }
 function saveScrollPositions(){ localStorage.setItem(SCROLL_POSITIONS_KEY, JSON.stringify(scrollPositions)) }
-function loadLastViewedItemId(){ return localStorage.getItem(LAST_VIEWED_KEY) || '' }
-function saveLastViewedItemId(){ localStorage.setItem(LAST_VIEWED_KEY, lastViewedItemId || '') }
+function loadLastViewedItems(){
+  const raw = localStorage.getItem(LAST_VIEWED_KEY) || ''
+  if(!raw) return {}
+  try{
+    const parsed = JSON.parse(raw)
+    if(parsed && typeof parsed === 'object' && !Array.isArray(parsed)) return parsed
+  }catch(e){ }
+  return {'home::default': raw}
+}
+function saveLastViewedItems(){ localStorage.setItem(LAST_VIEWED_KEY, JSON.stringify(lastViewedItems)) }
 function loadRandomPlaylistSlots(){
   try{
     const parsed = JSON.parse(localStorage.getItem(RANDOM_PLAYLISTS_KEY) || '{}')
@@ -3791,7 +3800,8 @@ function renderSection(title, list, showHomeControls = false, hideGrid = false){
     el.classList.toggle('is-editing', editMode)
     el.classList.toggle('is-selected', selectedItemIds.has(it.id))
     el.classList.toggle('is-range-flag', rangeFlagStartId===it.id || rangeFlagEndId===it.id)
-    el.classList.toggle('is-last-viewed', lastViewedItemId===it.id)
+    const viewedKey = getScrollKey(currentPageId, getActiveTabId(currentPageId))
+    el.classList.toggle('is-last-viewed', lastViewedItems[viewedKey]===it.id)
     if(currentPageId==='home'){
       el.addEventListener('contextmenu', (ev)=>{
         ev.preventDefault()
