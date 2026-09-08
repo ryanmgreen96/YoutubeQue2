@@ -804,7 +804,7 @@ function syncSavedPagesButton(){
   savedPagesBtn.classList.toggle('selected', savedPagesPanelOpen)
   savedPagesBtn.classList.toggle('assigning', savedPagesAssignMode)
   savedPagesBtn.title = savedPagesAssignMode
-    ? 'Saved-page select mode ON (left-click page names to save/unsave)'
+    ? 'Pin-page mode ON (left-click pages to pin)'
     : (savedPagesPanelOpen ? 'Close saved pages list' : 'Open saved pages list')
 }
 function getTabChronoSortOrder(pageId, tabId){
@@ -3348,7 +3348,7 @@ function renderLeftNav(){
 
   pages.forEach(page=>{
     if(isProtectedPage(page.id)) return
-    if(!savedPagesAssignMode && isSavedPage(page.id)) return
+    if(isSavedPage(page.id)) return
     const row = document.createElement('div')
     row.className = 'page-link-row'
 
@@ -3375,7 +3375,6 @@ function renderLeftNav(){
       if(editMode && selectedItemIds.size){ moveSelectedItemsToPage(page.id); return }
       setCurrentPage(page.id)
     })
-    if(savedPagesAssignMode && isSavedPage(page.id)) button.classList.add('saved-page-link')
     row.appendChild(button)
     leftNavEl.appendChild(row)
   })
