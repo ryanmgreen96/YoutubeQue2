@@ -81,6 +81,22 @@ main{display:grid;grid-template-columns:10% 75% 15%;height:100vh;overflow:hidden
 .saved-shelf-list a:hover{text-decoration:underline;color:#fff}
 #sections{padding:12px;display:flex;flex-direction:column;gap:18px;flex:1;overflow:auto;overscroll-behavior:contain;scrollbar-gutter:stable}
 .tab-row{position:sticky;top:0;z-index:10;display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin:-12px 0 2px 4px;padding:12px 0 8px;background:var(--bg);box-shadow:0 1px 0 rgba(255,255,255,0.08)}
+.journal-view{display:flex;flex-direction:column;gap:28px;max-width:680px;width:100%;margin:0 auto;padding:10px 8px 24px}
+.journal-training-view{display:block;max-width:680px}
+.journal-list-section{display:flex;flex-direction:column;gap:10px;min-width:0}
+.journal-list-title{margin:0;text-align:center;font-size:15px;color:var(--text);font-weight:600}
+.journal-items{display:flex;flex-direction:column;gap:7px}
+.journal-item{display:flex;align-items:center;gap:8px;min-height:30px;padding:5px 8px;border-bottom:1px solid rgba(255,255,255,0.1);color:var(--text);cursor:pointer}
+.journal-item-text{flex:1;min-width:0;word-break:break-word}
+.journal-item-date{font-size:10px;color:#bd9d55;white-space:nowrap}
+.journal-checkbox{accent-color:#4caf50;width:15px;height:15px;margin:0}
+.journal-add-form{display:flex;align-items:center;gap:7px;margin-top:2px}
+.journal-cash-add-form{margin-bottom:2px}
+.journal-input,.journal-date-input{min-width:0;padding:7px 8px;border:1px solid rgba(255,255,255,0.16);border-radius:6px;background:rgba(255,255,255,0.04);color:var(--text);font:inherit;font-size:12px}
+.journal-input{flex:1}
+.journal-date-input{width:132px;color:#bd9d55;font-size:11px}
+.journal-submit{padding:6px 10px;color:#ffe3a5;border-color:rgba(255,204,0,0.3);background:rgba(255,204,0,0.08);font-size:12px}
+@media (max-width:700px){.journal-view{gap:24px}.journal-training-view{max-width:none}.journal-cash-add-form{flex-wrap:wrap}.journal-cash-add-form .journal-input{min-width:140px}.journal-date-input{flex:1}}
 .main-tab-wrap{display:flex;align-items:center;gap:4px}
 .main-tab{font-size:12px;line-height:1.2;padding:5px 10px;border-radius:999px;border:1px solid rgba(255,255,255,0.12);background:rgba(255,255,255,0.04);color:var(--text)}
 .main-tab.selected{background:color-mix(in srgb, var(--accent) 18%, transparent);border-color:color-mix(in srgb, var(--accent) 42%, transparent);color:#fff2d8}

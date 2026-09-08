@@ -20,6 +20,7 @@ const HOME_OLD_HIDDEN_KEY = 'ytHomeOldHidden_v1'
 const SAVED_PAGES_KEY = 'ytSavedPages_v1'
 const TAB_CHRONO_SORT_KEY = 'ytTabChronoSort_v1'
 const TAB_THUMBNAILS_HIDDEN_KEY = 'ytTabThumbnailsHidden_v1'
+const JOURNAL_DATA_KEY = 'ytJournalData_v1'
 const LIBRARY_PAGE_ID = 'library'
 const LIBRARY_PAGE_TITLE = 'Library'
 const GYM_PAGE_ID = 'gym'
@@ -337,6 +338,167 @@ function ensureJournalPageExists(){
   savePageTabs()
   saveActiveTabs()
   savePageTitleFilters()
+}
+function createJournalData(){
+  return {
+    food: {essentials: [], buy: []},
+    cash: {amazon: [], store: []},
+    training: []
+  }
+}
+function loadJournalData(){
+  try{
+    const parsed = JSON.parse(localStorage.getItem(JOURNAL_DATA_KEY) || 'null')
+    if(!parsed || typeof parsed !== 'object') return createJournalData()
+    const empty = createJournalData()
+    const cleanList = (list, includePurchaseFields = false)=>Array.isArray(list)
+      ? list.filter((entry)=>entry && typeof entry.text === 'string' && entry.text.trim()).map((entry)=>({
+          id: entry.id || uid(),
+          text: entry.text.trim(),
+          ...(includePurchaseFields ? {date: typeof entry.date === 'string' ? entry.date : '', checked: entry.checked === true} : {})
+        }))
+      : []
+    return {
+      food: {
+        essentials: cleanList(parsed.food && parsed.food.essentials),
+        buy: cleanList(parsed.food && parsed.food.buy)
+      },
+      cash: {
+        amazon: cleanList(parsed.cash && parsed.cash.amazon, true),
+        store: cleanList(parsed.cash && parsed.cash.store, true)
+      },
+      training: cleanList(parsed.training)
+    }
+  }catch(e){ return createJournalData() }
+}
+let journalData = loadJournalData()
+function saveJournalData(){ localStorage.setItem(JOURNAL_DATA_KEY, JSON.stringify(journalData)) }
+function moveJournalItem(list, itemId, direction){
+  const index = list.findIndex((item)=>item.id===itemId)
+  const nextIndex = index + direction
+  if(index < 0 || nextIndex < 0 || nextIndex >= list.length) return
+  const [item] = list.splice(index, 1)
+  list.splice(nextIndex, 0, item)
+  saveJournalData()
+  render()
+}
+function manageJournalItem(list, itemId){
+  const item = list.find((entry)=>entry.id===itemId)
+  if(!item) return
+  const action = prompt('Type move up, move down, rename, or delete', 'move up')
+  if(!action) return
+  const next = action.trim().toLowerCase()
+  if(next==='move up' || next==='up') moveJournalItem(list, itemId, -1)
+  else if(next==='move down' || next==='down') moveJournalItem(list, itemId, 1)
+  else if(next==='rename' || next==='edit'){
+    const text = prompt('Rename item', item.text)
+    if(text && text.trim()){
+      item.text = text.trim()
+      saveJournalData()
+      render()
+    }
+  }else if(next==='delete' && confirm('Delete this item?')){
+    const index = list.indexOf(item)
+    list.splice(index, 1)
+    saveJournalData()
+    render()
+  }
+}
+function addJournalItem(list, input, dateInput = null){
+  const text = input.value.trim()
+  if(!text) return
+  const entry = {id: uid(), text}
+  if(dateInput){
+    entry.date = dateInput.value
+    entry.checked = false
+  }
+  list.push(entry)
+  saveJournalData()
+  render()
+}
+function renderJournalInput(list, includeDate = false){
+  const form = document.createElement('form')
+  form.className = `journal-add-form${includeDate ? ' journal-cash-add-form' : ''}`
+  const input = document.createElement('input')
+  input.type = 'text'
+  input.placeholder = includeDate ? 'What did you buy?' : 'Add an item'
+  input.className = 'journal-input'
+  let dateInput = null
+  if(includeDate){
+    dateInput = document.createElement('input')
+    dateInput.type = 'date'
+    dateInput.className = 'journal-date-input'
+  }
+  const submit = document.createElement('button')
+  submit.type = 'submit'
+  submit.className = 'journal-submit'
+  submit.textContent = '+'
+  submit.title = 'Add item'
+  form.appendChild(input)
+  if(dateInput) form.appendChild(dateInput)
+  form.appendChild(submit)
+  form.addEventListener('submit', (event)=>{
+    event.preventDefault()
+    addJournalItem(list, input, dateInput)
+  })
+  return form
+}
+function renderJournalList(list, title, options = {}){
+  const section = document.createElement('section')
+  section.className = 'journal-list-section'
+  const heading = document.createElement('h2')
+  heading.className = 'journal-list-title'
+  heading.textContent = title
+  section.appendChild(heading)
+  if(options.addFirst) section.appendChild(renderJournalInput(list, options.includeDate))
+  const listEl = document.createElement('div')
+  listEl.className = 'journal-items'
+  list.forEach((item)=>{
+    const row = document.createElement('div')
+    row.className = 'journal-item'
+    if(options.checkable) {
+      const checkbox = document.createElement('input')
+      checkbox.type = 'checkbox'
+      checkbox.checked = item.checked === true
+      checkbox.className = 'journal-checkbox'
+      checkbox.addEventListener('change', ()=>{
+        item.checked = checkbox.checked
+        saveJournalData()
+        render()
+      })
+      row.appendChild(checkbox)
+    }
+    const text = document.createElement('span')
+    text.className = 'journal-item-text'
+    text.textContent = item.text
+    row.appendChild(text)
+    if(options.includeDate && item.date){
+      const date = document.createElement('span')
+      date.className = 'journal-item-date'
+      date.textContent = item.date
+      row.appendChild(date)
+    }
+    const press = attachLongPress(row, ()=>manageJournalItem(list, item.id))
+    row.addEventListener('click', ()=>{ press.consume() })
+    listEl.appendChild(row)
+  })
+  section.appendChild(listEl)
+  if(!options.addFirst) section.appendChild(renderJournalInput(list, options.includeDate))
+  return section
+}
+function renderJournal(tabId){
+  const view = document.createElement('div')
+  view.className = `journal-view journal-${tabId}-view`
+  if(tabId==='food'){
+    view.appendChild(renderJournalList(journalData.food.essentials, 'Essentials'))
+    view.appendChild(renderJournalList(journalData.food.buy, 'Buy'))
+  }else if(tabId==='cash'){
+    view.appendChild(renderJournalList(journalData.cash.amazon, 'Amazon', {addFirst:true, includeDate:true, checkable:true}))
+    view.appendChild(renderJournalList(journalData.cash.store, 'Store', {addFirst:true, includeDate:true}))
+  }else if(tabId==='training'){
+    view.appendChild(renderJournalList(journalData.training, 'Training', {addFirst:true}))
+  }
+  sections.appendChild(view)
 }
 function playAlarmBeep(){
   try{
@@ -3628,6 +3790,10 @@ function renderTabBar(pageId){
 function render(){ sections.innerHTML=''
   if(currentPageId !== 'home' && (!isProtectedPage(currentPageId) || isJournalPage(currentPageId))) renderTabBar(currentPageId)
   const activeTabId = getActiveTabId(currentPageId)
+  if(isJournalPage(currentPageId)){
+    renderJournal(activeTabId)
+    return
+  }
   const list = items.filter(i=>normalizePageId(i.pageId)===currentPageId && normalizeTabId(i.tabId)===activeTabId)
   const groups = {recent:[], old:[]}
   const now = new Date();
