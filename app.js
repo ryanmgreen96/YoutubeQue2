@@ -382,27 +382,43 @@ function moveJournalItem(list, itemId, direction){
   saveJournalData()
   render()
 }
-function manageJournalItem(list, itemId){
-  const item = list.find((entry)=>entry.id===itemId)
-  if(!item) return
-  const action = prompt('Type move up, move down, rename, or delete', 'move up')
-  if(!action) return
-  const next = action.trim().toLowerCase()
-  if(next==='move up' || next==='up') moveJournalItem(list, itemId, -1)
-  else if(next==='move down' || next==='down') moveJournalItem(list, itemId, 1)
-  else if(next==='rename' || next==='edit'){
-    const text = prompt('Rename item', item.text)
-    if(text && text.trim()){
-      item.text = text.trim()
-      saveJournalData()
-      render()
-    }
-  }else if(next==='delete' && confirm('Delete this item?')){
-    const index = list.indexOf(item)
-    list.splice(index, 1)
+function showJournalItemActions(row, list, item){
+  row.parentElement.querySelectorAll('.journal-actions').forEach((actions)=>actions.remove())
+  const actions = document.createElement('div')
+  actions.className = 'journal-actions'
+  const index = list.indexOf(item)
+  const moveUp = document.createElement('button')
+  moveUp.type = 'button'
+  moveUp.textContent = 'Up'
+  moveUp.disabled = index <= 0
+  moveUp.addEventListener('click', (event)=>{
+    event.stopPropagation()
+    moveJournalItem(list, item.id, -1)
+  })
+  const moveDown = document.createElement('button')
+  moveDown.type = 'button'
+  moveDown.textContent = 'Down'
+  moveDown.disabled = index >= list.length - 1
+  moveDown.addEventListener('click', (event)=>{
+    event.stopPropagation()
+    moveJournalItem(list, item.id, 1)
+  })
+  const deleteButton = document.createElement('button')
+  deleteButton.type = 'button'
+  deleteButton.textContent = 'Delete'
+  deleteButton.className = 'journal-delete'
+  deleteButton.addEventListener('click', (event)=>{
+    event.stopPropagation()
+    const itemIndex = list.indexOf(item)
+    if(itemIndex < 0) return
+    list.splice(itemIndex, 1)
     saveJournalData()
     render()
-  }
+  })
+  actions.appendChild(moveUp)
+  actions.appendChild(moveDown)
+  actions.appendChild(deleteButton)
+  row.appendChild(actions)
 }
 function addJournalItem(list, input, dateInput = null){
   const text = input.value.trim()
@@ -478,7 +494,7 @@ function renderJournalList(list, title, options = {}){
       date.textContent = item.date
       row.appendChild(date)
     }
-    const press = attachLongPress(row, ()=>manageJournalItem(list, item.id))
+    const press = attachLongPress(row, ()=>showJournalItemActions(row, list, item))
     row.addEventListener('click', ()=>{ press.consume() })
     listEl.appendChild(row)
   })
