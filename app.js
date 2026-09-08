@@ -432,12 +432,12 @@ function addJournalItem(list, input, dateInput = null){
   saveJournalData()
   render()
 }
-function renderJournalInput(list, includeDate = false){
+function renderJournalInput(list, includeDate = false, placeholder = 'Add an item'){
   const form = document.createElement('form')
   form.className = `journal-add-form${includeDate ? ' journal-cash-add-form' : ''}`
   const input = document.createElement('input')
   input.type = 'text'
-  input.placeholder = includeDate ? 'What did you buy?' : 'Add an item'
+  input.placeholder = placeholder
   input.className = 'journal-input'
   let dateInput = null
   if(includeDate){
@@ -466,7 +466,7 @@ function renderJournalList(list, title, options = {}){
   heading.className = 'journal-list-title'
   heading.textContent = title
   section.appendChild(heading)
-  if(options.addFirst) section.appendChild(renderJournalInput(list, options.includeDate))
+  if(options.addFirst) section.appendChild(renderJournalInput(list, options.includeDate, options.inputPlaceholder))
   const listEl = document.createElement('div')
   listEl.className = 'journal-items'
   list.forEach((item)=>{
@@ -499,7 +499,7 @@ function renderJournalList(list, title, options = {}){
     listEl.appendChild(row)
   })
   section.appendChild(listEl)
-  if(!options.addFirst) section.appendChild(renderJournalInput(list, options.includeDate))
+  if(!options.addFirst) section.appendChild(renderJournalInput(list, options.includeDate, options.inputPlaceholder))
   return section
 }
 function renderJournal(tabId){
@@ -509,10 +509,10 @@ function renderJournal(tabId){
     view.appendChild(renderJournalList(journalData.food.essentials, 'Essentials'))
     view.appendChild(renderJournalList(journalData.food.buy, 'Buy'))
   }else if(tabId==='cash'){
-    view.appendChild(renderJournalList(journalData.cash.amazon, 'Amazon', {addFirst:true, includeDate:true, checkable:true}))
-    view.appendChild(renderJournalList(journalData.cash.store, 'Store', {addFirst:true, includeDate:true}))
+    view.appendChild(renderJournalList(journalData.cash.amazon, 'Amazon', {addFirst:true, includeDate:true, inputPlaceholder:'What did you buy?', checkable:true}))
+    view.appendChild(renderJournalList(journalData.cash.store, 'Store', {addFirst:true, includeDate:true, inputPlaceholder:'What did you buy?'}))
   }else if(tabId==='training'){
-    view.appendChild(renderJournalList(journalData.training, 'Training', {addFirst:true}))
+    view.appendChild(renderJournalList(journalData.training, 'Training', {addFirst:true, includeDate:true, inputPlaceholder:'Add training'}))
   }
   sections.appendChild(view)
 }
