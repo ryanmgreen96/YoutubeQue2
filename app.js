@@ -24,6 +24,13 @@ const LIBRARY_PAGE_ID = 'library'
 const LIBRARY_PAGE_TITLE = 'Library'
 const GYM_PAGE_ID = 'gym'
 const GYM_PAGE_TITLE = 'Gym'
+const JOURNAL_PAGE_ID = 'journal'
+const JOURNAL_PAGE_TITLE = 'Journal'
+const JOURNAL_TABS = [
+  {id:'food', title:'Food'},
+  {id:'cash', title:'Cash'},
+  {id:'training', title:'Training'}
+]
 const sections = document.getElementById('sections')
 const leftNavEl = document.getElementById('left-nav')
 const addPageBtn = document.getElementById('add-page-btn')
@@ -240,9 +247,12 @@ function isLibraryPage(pageId){
 function isGymPage(pageId){
   return normalizePageId(pageId) === GYM_PAGE_ID
 }
+function isJournalPage(pageId){
+  return normalizePageId(pageId) === JOURNAL_PAGE_ID
+}
 function isProtectedPage(pageId){
   const pid = normalizePageId(pageId)
-  return pid === LIBRARY_PAGE_ID || pid === GYM_PAGE_ID
+  return pid === LIBRARY_PAGE_ID || pid === GYM_PAGE_ID || pid === JOURNAL_PAGE_ID
 }
 function ensureLibraryPageExists(){
   const existing = pages.find((page)=>page && page.id===LIBRARY_PAGE_ID)
@@ -290,6 +300,38 @@ function ensureGymPageExists(){
   pageTabs[GYM_PAGE_ID] = [getDefaultTab()]
   activeTabs[GYM_PAGE_ID] = 'default'
   pageTitleFilters[GYM_PAGE_ID] = []
+
+  savePages()
+  savePageTabs()
+  saveActiveTabs()
+  savePageTitleFilters()
+}
+function ensureJournalPageExists(){
+  const existing = pages.find((page)=>page && page.id===JOURNAL_PAGE_ID)
+  if(existing){
+    let changed = false
+    if(existing.title !== JOURNAL_PAGE_TITLE){
+      existing.title = JOURNAL_PAGE_TITLE
+      changed = true
+    }
+    if(!Array.isArray(pageTabs[JOURNAL_PAGE_ID]) || !pageTabs[JOURNAL_PAGE_ID].length){
+      pageTabs[JOURNAL_PAGE_ID] = JOURNAL_TABS.map((tab)=>({...tab}))
+      activeTabs[JOURNAL_PAGE_ID] = JOURNAL_TABS[0].id
+      savePageTabs()
+      saveActiveTabs()
+    }
+    if(changed) savePages()
+    return
+  }
+
+  pages.unshift({
+    id: JOURNAL_PAGE_ID,
+    title: JOURNAL_PAGE_TITLE,
+    created: new Date().toISOString()
+  })
+  pageTabs[JOURNAL_PAGE_ID] = JOURNAL_TABS.map((tab)=>({...tab}))
+  activeTabs[JOURNAL_PAGE_ID] = JOURNAL_TABS[0].id
+  pageTitleFilters[JOURNAL_PAGE_ID] = []
 
   savePages()
   savePageTabs()
@@ -501,6 +543,14 @@ function renderThemeSwitcher(){
     setCurrentPage(GYM_PAGE_ID)
   })
   themeSwitcherEl.appendChild(gymBtn)
+
+  const journalBtn = document.createElement('button')
+  journalBtn.type = 'button'
+  journalBtn.className = `theme-cycle-btn journal-btn${isJournalPage(currentPageId) ? ' selected' : ''}`
+  journalBtn.title = `Open ${JOURNAL_PAGE_TITLE} page`
+  journalBtn.textContent = '📓'
+  journalBtn.addEventListener('click', ()=>{ setCurrentPage(JOURNAL_PAGE_ID) })
+  themeSwitcherEl.appendChild(journalBtn)
 
   const btn = document.createElement('button')
   btn.type = 'button'
@@ -2472,7 +2522,7 @@ function openLinkHoldDialog(linkId){
 
 function normalizePageId(pageId){ return pageId || 'home' }
 function normalizeTabId(tabId){ return tabId || 'default' }
-function getPageTitle(pageId){ if(pageId==='home') return 'Home'; if(pageId===LIBRARY_PAGE_ID) return LIBRARY_PAGE_TITLE; if(pageId===GYM_PAGE_ID) return GYM_PAGE_TITLE; const page = pages.find(item=>item.id===pageId); return page ? page.title : 'Home' }
+function getPageTitle(pageId){ if(pageId==='home') return 'Home'; if(pageId===LIBRARY_PAGE_ID) return LIBRARY_PAGE_TITLE; if(pageId===GYM_PAGE_ID) return GYM_PAGE_TITLE; if(pageId===JOURNAL_PAGE_ID) return JOURNAL_PAGE_TITLE; const page = pages.find(item=>item.id===pageId); return page ? page.title : 'Home' }
 function getDefaultTab(){ return {id:'default', title:'Main'} }
 function getPageTabs(pageId){
   const pid = normalizePageId(pageId)
@@ -2602,7 +2652,7 @@ function ensurePageTabIntegrity(){
   getPageTabs('home')
   getActiveTabId('home')
 
-  const validPageIds = new Set(['home', LIBRARY_PAGE_ID, GYM_PAGE_ID, ...pages.map(page=>page.id)])
+  const validPageIds = new Set(['home', LIBRARY_PAGE_ID, GYM_PAGE_ID, JOURNAL_PAGE_ID, ...pages.map(page=>page.id)])
 
   Object.keys(pageTabs).forEach(pid=>{
     if(!validPageIds.has(pid)){
@@ -2648,6 +2698,10 @@ function ensurePageTabIntegrity(){
     }
     if(page.id===GYM_PAGE_ID && page.title !== GYM_PAGE_TITLE){
       page.title = GYM_PAGE_TITLE
+      changedFilters = true
+    }
+    if(page.id===JOURNAL_PAGE_ID && page.title !== JOURNAL_PAGE_TITLE){
+      page.title = JOURNAL_PAGE_TITLE
       changedFilters = true
     }
   })
@@ -3385,7 +3439,8 @@ function renderTabBar(pageId){
   const tabs = getPageTabs(pid)
   const activeTabId = getActiveTabId(pid)
   const row = document.createElement('div')
-  row.className = 'tab-row'
+  row.className = `tab-row${isJournalPage(pid) ? ' journal-tab-row' : ''}`
+  if(isJournalPage(pid)) row.style.justifyContent = 'center'
 
   tabs.forEach(tab=>{
     const wrap = document.createElement('div')
@@ -3403,21 +3458,27 @@ function renderTabBar(pageId){
       setActiveTab(pid, tab.id)
     })
 
-    const thumbnailBtn = document.createElement('button')
-    thumbnailBtn.type = 'button'
-    thumbnailBtn.className = `main-tab title-filter-toggle${areTabThumbnailsHidden(pid, tab.id) ? ' selected' : ''}`
-    thumbnailBtn.textContent = '🖼'
-    thumbnailBtn.title = areTabThumbnailsHidden(pid, tab.id) ? 'Show thumbnails for this tab' : 'Hide thumbnails for this tab'
-    thumbnailBtn.setAttribute('aria-label', thumbnailBtn.title)
-    thumbnailBtn.addEventListener('click', (event)=>{
-      event.stopPropagation()
-      toggleTabThumbnailsHidden(pid, tab.id)
-    })
-
     wrap.appendChild(button)
-    wrap.appendChild(thumbnailBtn)
+    if(!isJournalPage(pid)){
+      const thumbnailBtn = document.createElement('button')
+      thumbnailBtn.type = 'button'
+      thumbnailBtn.className = `main-tab title-filter-toggle${areTabThumbnailsHidden(pid, tab.id) ? ' selected' : ''}`
+      thumbnailBtn.textContent = '🖼'
+      thumbnailBtn.title = areTabThumbnailsHidden(pid, tab.id) ? 'Show thumbnails for this tab' : 'Hide thumbnails for this tab'
+      thumbnailBtn.setAttribute('aria-label', thumbnailBtn.title)
+      thumbnailBtn.addEventListener('click', (event)=>{
+        event.stopPropagation()
+        toggleTabThumbnailsHidden(pid, tab.id)
+      })
+      wrap.appendChild(thumbnailBtn)
+    }
     row.appendChild(wrap)
   })
+
+  if(isJournalPage(pid)){
+    sections.appendChild(row)
+    return
+  }
 
   const add = document.createElement('button')
   add.type = 'button'
@@ -3565,7 +3626,7 @@ function renderTabBar(pageId){
 }
 
 function render(){ sections.innerHTML=''
-  if(currentPageId !== 'home' && !isProtectedPage(currentPageId)) renderTabBar(currentPageId)
+  if(currentPageId !== 'home' && (!isProtectedPage(currentPageId) || isJournalPage(currentPageId))) renderTabBar(currentPageId)
   const activeTabId = getActiveTabId(currentPageId)
   const list = items.filter(i=>normalizePageId(i.pageId)===currentPageId && normalizeTabId(i.tabId)===activeTabId)
   const groups = {recent:[], old:[]}
@@ -3920,6 +3981,7 @@ function handleParams(){ const p = new URLSearchParams(location.search); if(p.ha
     const targetPage = normalizePageId((p.get('openPage') || '').trim())
     if(targetPage === LIBRARY_PAGE_ID) setCurrentPage(LIBRARY_PAGE_ID)
     if(targetPage === GYM_PAGE_ID) setCurrentPage(GYM_PAGE_ID)
+    if(targetPage === JOURNAL_PAGE_ID) setCurrentPage(JOURNAL_PAGE_ID)
   }
   // remove params from url
   if(location.search) history.replaceState({},document.title,location.pathname)
@@ -3937,6 +3999,7 @@ window.addEventListener('load', ()=>{
   }
   ensureLibraryPageExists()
   ensureGymPageExists()
+  ensureJournalPageExists()
   ensurePageTabIntegrity()
   currentPageId = 'home'
   saveCurrentPageId()
