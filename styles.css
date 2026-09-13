@@ -99,7 +99,9 @@ main{display:grid;grid-template-columns:10% 75% 15%;height:100vh;overflow:hidden
 .journal-cash-add-form{margin-bottom:2px}
 .journal-input,.journal-date-input{min-width:0;padding:6px 7px;border:1px solid rgba(255,255,255,0.16);border-radius:6px;background:rgba(255,255,255,0.04);color:var(--text);font:inherit;font-size:12px}
 .journal-input{flex:0 1 220px;max-width:220px}
-.journal-date-input{width:112px;color:#bd9d55;font-size:11px}
+.journal-date-input{width:132px;color:#bd9d55;font-size:11px}
+.journal-date-input::-webkit-calendar-picker-indicator{filter:invert(0.7) sepia(1) saturate(3) hue-rotate(2deg);cursor:pointer}
+.journal-date-input::-webkit-datetime-edit{cursor:pointer}
 .journal-submit{padding:6px 10px;color:#ffe3a5;border-color:rgba(255,204,0,0.3);background:rgba(255,204,0,0.08);font-size:12px}
 @media (max-width:700px){.journal-view{grid-template-columns:1fr;gap:24px}.journal-training-view{max-width:none}.journal-cash-add-form{flex-wrap:wrap}.journal-cash-add-form .journal-input{min-width:140px}.journal-date-input{flex:1}}
 .main-tab-wrap{display:flex;align-items:center;gap:4px}
