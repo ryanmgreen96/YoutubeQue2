@@ -21,6 +21,7 @@ const SAVED_PAGES_KEY = 'ytSavedPages_v1'
 const TAB_CHRONO_SORT_KEY = 'ytTabChronoSort_v1'
 const TAB_THUMBNAILS_HIDDEN_KEY = 'ytTabThumbnailsHidden_v1'
 const JOURNAL_DATA_KEY = 'ytJournalData_v1'
+const JOURNAL_CASH_REVERSED_KEY = 'ytJournalCashReversed_v1'
 const LIBRARY_PAGE_ID = 'library'
 const LIBRARY_PAGE_TITLE = 'Library'
 const GYM_PAGE_ID = 'gym'
@@ -358,7 +359,7 @@ function loadJournalData(){
           ...(includePurchaseFields ? {date: typeof entry.date === 'string' ? entry.date : '', checked: entry.checked === true} : {})
         }))
       : []
-    return {
+    const loaded = {
       food: {
         essentials: cleanList(parsed.food && parsed.food.essentials),
         buy: cleanList(parsed.food && parsed.food.buy)
@@ -369,6 +370,29 @@ function loadJournalData(){
       },
       training: cleanList(parsed.training)
     }
+
+    const isCashReversed = localStorage.getItem(JOURNAL_CASH_REVERSED_KEY) === 'true'
+    if(!isCashReversed){
+      const reorderCashList = (list) => {
+        if(!list || !list.length) return list
+        const reversed = [...list].reverse()
+        reversed.sort((a, b) => {
+          if(a.date && b.date){
+            return b.date.localeCompare(a.date)
+          }
+          if(a.date && !b.date) return -1
+          if(!a.date && b.date) return 1
+          return 0
+        })
+        return reversed
+      }
+      loaded.cash.amazon = reorderCashList(loaded.cash.amazon)
+      loaded.cash.store = reorderCashList(loaded.cash.store)
+      localStorage.setItem(JOURNAL_CASH_REVERSED_KEY, 'true')
+      localStorage.setItem(JOURNAL_DATA_KEY, JSON.stringify(loaded))
+    }
+
+    return loaded
   }catch(e){ return createJournalData() }
 }
 let journalData = loadJournalData()
@@ -420,7 +444,7 @@ function showJournalItemActions(row, list, item){
   actions.appendChild(deleteButton)
   row.appendChild(actions)
 }
-function addJournalItem(list, input, dateInput = null){
+function addJournalItem(list, input, dateInput = null, prepend = false){
   const text = input.value.trim()
   if(!text) return
   const entry = {id: uid(), text}
@@ -428,11 +452,15 @@ function addJournalItem(list, input, dateInput = null){
     entry.date = dateInput.value
     entry.checked = false
   }
-  list.push(entry)
+  if(prepend){
+    list.unshift(entry)
+  }else{
+    list.push(entry)
+  }
   saveJournalData()
   render()
 }
-function renderJournalInput(list, includeDate = false, placeholder = 'Add an item'){
+function renderJournalInput(list, includeDate = false, placeholder = 'Add an item', prepend = false){
   const form = document.createElement('form')
   form.className = `journal-add-form${includeDate ? ' journal-cash-add-form' : ''}`
   const input = document.createElement('input')
@@ -455,7 +483,7 @@ function renderJournalInput(list, includeDate = false, placeholder = 'Add an ite
   form.appendChild(submit)
   form.addEventListener('submit', (event)=>{
     event.preventDefault()
-    addJournalItem(list, input, dateInput)
+    addJournalItem(list, input, dateInput, prepend)
   })
   return form
 }
@@ -466,7 +494,7 @@ function renderJournalList(list, title, options = {}){
   heading.className = 'journal-list-title'
   heading.textContent = title
   section.appendChild(heading)
-  if(options.addFirst) section.appendChild(renderJournalInput(list, options.includeDate, options.inputPlaceholder))
+  if(options.addFirst) section.appendChild(renderJournalInput(list, options.includeDate, options.inputPlaceholder, options.prepend))
   const listEl = document.createElement('div')
   listEl.className = 'journal-items'
   list.forEach((item)=>{
@@ -499,7 +527,7 @@ function renderJournalList(list, title, options = {}){
     listEl.appendChild(row)
   })
   section.appendChild(listEl)
-  if(!options.addFirst) section.appendChild(renderJournalInput(list, options.includeDate, options.inputPlaceholder))
+  if(!options.addFirst) section.appendChild(renderJournalInput(list, options.includeDate, options.inputPlaceholder, options.prepend))
   return section
 }
 function renderJournal(tabId){
@@ -509,8 +537,8 @@ function renderJournal(tabId){
     view.appendChild(renderJournalList(journalData.food.essentials, 'Essentials'))
     view.appendChild(renderJournalList(journalData.food.buy, 'Buy'))
   }else if(tabId==='cash'){
-    view.appendChild(renderJournalList(journalData.cash.amazon, 'Amazon', {addFirst:true, includeDate:true, inputPlaceholder:'What did you buy?', checkable:true}))
-    view.appendChild(renderJournalList(journalData.cash.store, 'Store', {addFirst:true, includeDate:true, inputPlaceholder:'What did you buy?'}))
+    view.appendChild(renderJournalList(journalData.cash.amazon, 'Amazon', {addFirst:true, includeDate:true, inputPlaceholder:'What did you buy?', checkable:true, prepend:true}))
+    view.appendChild(renderJournalList(journalData.cash.store, 'Store', {addFirst:true, includeDate:true, inputPlaceholder:'What did you buy?', prepend:true}))
   }else if(tabId==='training'){
     view.appendChild(renderJournalList(journalData.training, 'Training', {addFirst:true, includeDate:true, inputPlaceholder:'Add training'}))
   }
