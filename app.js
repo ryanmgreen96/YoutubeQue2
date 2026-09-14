@@ -39,6 +39,13 @@ const JOURNAL_TABS = [
 const CARBS_POINT_PX = 34
 const CARBS_BASE_PX = 62
 const CARBS_DEFAULT_TARGET = 18
+const CARBS_SCHEDULE_START_HOUR = 10
+const CARBS_SCHEDULE_END_HOUR = 22
+function formatCarbsHour(hour){
+  if(hour === 12) return '12p'
+  if(hour > 12) return `${hour - 12}p`
+  return `${hour}a`
+}
 const CARBS_COLORS = [
   {id:'red', label:'Red', group:'produce', hex:'#d9534f'},
   {id:'yellow', label:'Yellow', group:'produce', hex:'#e0c341'},
@@ -456,12 +463,15 @@ function loadCarbsData(){
     if(!Array.isArray(parsed.entries)) parsed.entries = empty.entries
     if(!Array.isArray(parsed.templates)) parsed.templates = empty.templates
     if(!Number.isFinite(parsed.target) || parsed.target <= 0) parsed.target = empty.target
+    parsed.entries.forEach((entry)=>{ if(!Array.isArray(entry.schedule)) entry.schedule = [] })
     return parsed
   }catch(e){ return createCarbsData() }
 }
 let carbsData = loadCarbsData()
 function saveCarbsData(){ localStorage.setItem(CARBS_DATA_KEY, JSON.stringify(carbsData)) }
 let carbsPickingEntryId = null
+let carbsSchedulingEntryId = null
+let carbsSchedulingSelectedItemId = null
 function carbsItemById(itemId){ return carbsData.items.find((item)=>item.id===itemId) || null }
 function carbsSumForList(list){
   return list.reduce((total, itemId)=>{
@@ -493,7 +503,7 @@ function deleteCarbsItem(itemId){
   render()
 }
 function addCarbsEntry(){
-  const entry = {id: uid(), produce: [], starch: []}
+  const entry = {id: uid(), produce: [], starch: [], schedule: []}
   carbsData.entries.push(entry)
   carbsPickingEntryId = entry.id
   saveCarbsData()
@@ -502,6 +512,7 @@ function addCarbsEntry(){
 function deleteCarbsEntry(entryId){
   carbsData.entries = carbsData.entries.filter((entry)=>entry.id!==entryId)
   if(carbsPickingEntryId === entryId) carbsPickingEntryId = null
+  if(carbsSchedulingEntryId === entryId){ carbsSchedulingEntryId = null; carbsSchedulingSelectedItemId = null }
   saveCarbsData()
   render()
 }
@@ -525,13 +536,37 @@ function saveCarbsEntryAsTemplate(entry){
   render()
 }
 function useCarbsTemplate(template){
-  const entry = {id: uid(), produce: [...template.produce], starch: [...template.starch]}
+  const entry = {id: uid(), produce: [...template.produce], starch: [...template.starch], schedule: []}
   carbsData.entries.push(entry)
   saveCarbsData()
   render()
 }
 function deleteCarbsTemplate(templateId){
   carbsData.templates = carbsData.templates.filter((tpl)=>tpl.id!==templateId)
+  saveCarbsData()
+  render()
+}
+function toggleCarbsScheduling(entry){
+  const isActive = carbsSchedulingEntryId === entry.id
+  carbsSchedulingEntryId = isActive ? null : entry.id
+  carbsSchedulingSelectedItemId = null
+  if(!isActive) carbsPickingEntryId = null
+  render()
+}
+function selectCarbsScheduleItem(itemId){
+  carbsSchedulingSelectedItemId = carbsSchedulingSelectedItemId === itemId ? null : itemId
+  render()
+}
+function assignCarbsScheduleHour(entry, hour){
+  if(!carbsSchedulingSelectedItemId) return
+  if(!Array.isArray(entry.schedule)) entry.schedule = []
+  entry.schedule.push({id: uid(), itemId: carbsSchedulingSelectedItemId, hour})
+  carbsSchedulingSelectedItemId = null
+  saveCarbsData()
+  render()
+}
+function removeCarbsScheduleItem(entry, scheduleId){
+  entry.schedule = (entry.schedule || []).filter((slot)=>slot.id!==scheduleId)
   saveCarbsData()
   render()
 }
@@ -685,13 +720,13 @@ function renderJournal(tabId){
 
 function makeCarbsItemBar(item, options = {}){
   const bar = document.createElement('div')
-  bar.className = 'carb-item-bar'
-  bar.style.width = `${CARBS_BASE_PX + (item.value - 1) * CARBS_POINT_PX}px`
+  bar.className = `carb-item-bar${item.value === 1 ? ' carb-item-bar-tiny' : ''}`
+  bar.style.minWidth = `${CARBS_BASE_PX + (item.value - 1) * CARBS_POINT_PX}px`
   bar.style.background = carbsColorInfo(item.color).hex
   bar.title = `${item.name} (${item.value})`
   const label = document.createElement('span')
   label.className = 'carb-item-bar-label'
-  label.textContent = options.showValue ? `${item.name} ${item.value}` : item.name
+  label.textContent = `${item.name} (${item.value})`
   bar.appendChild(label)
   return bar
 }
@@ -712,7 +747,7 @@ function renderCarbsTopList(){
     const col = item.group === 'produce' ? produceCol : starchCol
     const row = document.createElement('div')
     row.className = 'carb-item-row'
-    row.appendChild(makeCarbsItemBar(item, {showValue:true}))
+    row.appendChild(makeCarbsItemBar(item))
     if(picking){
       row.classList.add('carb-item-row-pickable')
       row.addEventListener('click', ()=>{ addItemToCarbsEntry(picking, item) })
@@ -740,17 +775,24 @@ function renderCarbsTopList(){
   return wrap
 }
 
-function renderCarbsEntryLine(entry, group){
+function renderCarbsEntryLine(entry, group, schedulable = false){
   const line = document.createElement('div')
   line.className = `carb-entry-line carb-entry-line-${group}`
   const list = group === 'produce' ? entry.produce : entry.starch
+  const isSchedulingThisEntry = schedulable && carbsSchedulingEntryId === entry.id
   list.forEach((itemId, index)=>{
     const item = carbsItemById(itemId)
     if(!item) return
     const bar = makeCarbsItemBar(item)
     bar.classList.add('carb-entry-chip')
-    bar.title = `${item.name} (${item.value}) — click to remove`
-    bar.addEventListener('click', ()=>{ removeItemFromCarbsEntryAt(entry, group, index) })
+    if(isSchedulingThisEntry){
+      if(carbsSchedulingSelectedItemId === itemId) bar.classList.add('selected')
+      bar.title = `${item.name} (${item.value}) — click to select for scheduling`
+      bar.addEventListener('click', ()=>{ selectCarbsScheduleItem(itemId) })
+    }else{
+      bar.title = `${item.name} (${item.value}) — click to remove`
+      bar.addEventListener('click', ()=>{ removeItemFromCarbsEntryAt(entry, group, index) })
+    }
     line.appendChild(bar)
   })
   const sum = document.createElement('span')
@@ -758,6 +800,45 @@ function renderCarbsEntryLine(entry, group){
   sum.textContent = String(carbsSumForList(list))
   line.appendChild(sum)
   return line
+}
+
+function renderCarbsTimescale(entry){
+  if(!Array.isArray(entry.schedule)) entry.schedule = []
+  const wrap = document.createElement('div')
+  wrap.className = 'carb-timescale'
+  for(let hour = CARBS_SCHEDULE_START_HOUR; hour <= CARBS_SCHEDULE_END_HOUR; hour++){
+    const col = document.createElement('div')
+    col.className = 'carb-timescale-hour'
+
+    const label = document.createElement('span')
+    label.className = 'carb-timescale-hour-label'
+    label.textContent = formatCarbsHour(hour)
+    col.appendChild(label)
+
+    const btn = document.createElement('button')
+    btn.type = 'button'
+    btn.className = `carb-timescale-hour-btn${carbsSchedulingSelectedItemId ? ' can-assign' : ''}`
+    btn.title = 'Assign selected item to this hour'
+    btn.addEventListener('click', ()=>assignCarbsScheduleHour(entry, hour))
+    col.appendChild(btn)
+
+    const chipsWrap = document.createElement('div')
+    chipsWrap.className = 'carb-timescale-chips'
+    entry.schedule.filter((slot)=>slot.hour===hour).forEach((slot)=>{
+      const item = carbsItemById(slot.itemId)
+      if(!item) return
+      const chip = document.createElement('span')
+      chip.className = 'carb-schedule-chip'
+      chip.style.background = carbsColorInfo(item.color).hex
+      chip.textContent = item.name
+      chip.title = `${item.name} — click to remove`
+      chip.addEventListener('click', ()=>removeCarbsScheduleItem(entry, slot.id))
+      chipsWrap.appendChild(chip)
+    })
+    col.appendChild(chipsWrap)
+    wrap.appendChild(col)
+  }
+  return wrap
 }
 
 function renderCarbsEntryCard(entry){
@@ -775,9 +856,19 @@ function renderCarbsEntryCard(entry){
   pickBtn.title = isPicking ? 'Done adding items' : 'Add items to this entry'
   pickBtn.addEventListener('click', ()=>{
     carbsPickingEntryId = isPicking ? null : entry.id
+    if(!isPicking){ carbsSchedulingEntryId = null; carbsSchedulingSelectedItemId = null }
     render()
   })
   controls.appendChild(pickBtn)
+
+  const scheduleBtn = document.createElement('button')
+  scheduleBtn.type = 'button'
+  const isScheduling = carbsSchedulingEntryId === entry.id
+  scheduleBtn.className = `carb-entry-schedule-btn${isScheduling ? ' active' : ''}`
+  scheduleBtn.textContent = '🕐'
+  scheduleBtn.title = isScheduling ? 'Done scheduling' : 'Assign items to time slots'
+  scheduleBtn.addEventListener('click', ()=>toggleCarbsScheduling(entry))
+  controls.appendChild(scheduleBtn)
 
   const templateBtn = document.createElement('button')
   templateBtn.type = 'button'
@@ -797,13 +888,15 @@ function renderCarbsEntryCard(entry){
   controls.appendChild(deleteBtn)
 
   card.appendChild(controls)
-  card.appendChild(renderCarbsEntryLine(entry, 'produce'))
-  card.appendChild(renderCarbsEntryLine(entry, 'starch'))
+  card.appendChild(renderCarbsEntryLine(entry, 'produce', true))
+  card.appendChild(renderCarbsEntryLine(entry, 'starch', true))
 
   const total = document.createElement('div')
   total.className = 'carb-entry-total'
   total.textContent = `Total: ${carbsEntryTotal(entry)} / ${carbsData.target}`
   card.appendChild(total)
+
+  card.appendChild(renderCarbsTimescale(entry))
 
   return card
 }

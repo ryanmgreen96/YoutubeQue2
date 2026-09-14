@@ -111,8 +111,9 @@ main{display:grid;grid-template-columns:10% 75% 15%;height:100vh;overflow:hidden
 .carb-item-row{display:flex;align-items:center}
 .carb-item-row-pickable{cursor:pointer}
 .carb-item-row-pickable:hover .carb-item-bar{outline:2px solid #ffe3a5}
-.carb-item-bar{display:flex;align-items:center;height:32px;padding:0 10px;border-radius:5px;color:#1a1305;font-size:13px;font-weight:600;white-space:nowrap;overflow:hidden;box-shadow:0 1px 2px rgba(0,0,0,0.25)}
-.carb-item-bar-label{overflow:hidden;text-overflow:ellipsis}
+.carb-item-bar{display:inline-flex;align-items:center;height:28px;padding:0 5px;border-radius:5px;color:#1a1305;font-size:13px;font-weight:600;white-space:nowrap;overflow:visible;text-overflow:clip;box-shadow:0 1px 2px rgba(0,0,0,0.25)}
+.carb-item-bar-tiny{padding:0 3px;font-size:10px}
+.carb-item-bar-label{white-space:nowrap;overflow:visible;text-overflow:clip}
 .carb-add-item-wrap{grid-column:1 / -1;display:flex;justify-content:center}
 .carb-add-item-btn,.carb-new-entry-btn{padding:6px 14px;border-radius:8px;font-size:13px;color:#ffe3a5;border:1px solid rgba(255,204,0,0.3);background:rgba(255,204,0,0.08)}
 .carb-new-entry-wrap{display:flex;justify-content:center}
@@ -121,12 +122,22 @@ main{display:grid;grid-template-columns:10% 75% 15%;height:100vh;overflow:hidden
 .carb-entry-controls{display:flex;align-items:center;gap:8px;justify-content:flex-end}
 .carb-entry-pick-btn{width:26px;height:26px;border-radius:999px;font-size:13px;color:#ffe3a5;border:1px solid rgba(255,204,0,0.3);background:rgba(255,204,0,0.08)}
 .carb-entry-pick-btn.active{color:#0d1628;background:#ffe3a5}
+.carb-entry-schedule-btn{width:26px;height:26px;border-radius:999px;font-size:13px;color:#a5d4ff;border:1px solid rgba(120,180,255,0.35);background:rgba(120,180,255,0.08)}
+.carb-entry-schedule-btn.active{color:#0d1628;background:#a5d4ff}
 .carb-entry-template-btn{padding:5px 10px;font-size:11px;color:var(--text-soft);background:rgba(255,255,255,0.05);border-radius:6px}
 .carb-entry-delete-btn{width:24px;height:24px;border-radius:999px;font-size:13px;color:#ffd2c9;border-color:rgba(208,108,91,0.5)}
 .carb-entry-line{display:flex;align-items:center;gap:3px;min-height:26px;flex-wrap:wrap}
 .carb-entry-chip{cursor:pointer}
+.carb-entry-chip.selected{outline:2px solid #a5d4ff}
 .carb-entry-line-sum{margin-left:6px;font-size:11px;color:var(--text-soft)}
 .carb-entry-total{text-align:center;font-size:13px;font-weight:600;color:#ffdf8a;margin-top:2px}
+.carb-timescale{display:flex;gap:3px;overflow-x:auto;margin-top:6px;padding-top:8px;border-top:1px dashed rgba(255,255,255,0.15)}
+.carb-timescale-hour{display:flex;flex-direction:column;align-items:center;gap:4px;min-width:46px}
+.carb-timescale-hour-label{font-size:10px;color:var(--text-soft)}
+.carb-timescale-hour-btn{width:100%;height:18px;border-radius:4px;background:rgba(255,255,255,0.05);border:1px dashed rgba(255,255,255,0.2);cursor:pointer}
+.carb-timescale-hour-btn.can-assign{border-color:#a5d4ff;background:rgba(120,180,255,0.12)}
+.carb-timescale-chips{display:flex;flex-direction:column;align-items:center;gap:3px;min-height:4px}
+.carb-schedule-chip{font-size:10px;padding:2px 6px;border-radius:4px;color:#1a1305;cursor:pointer;white-space:nowrap}
 .carb-template-name{text-align:center;font-size:14px;font-weight:600;color:var(--text)}
 .carb-templates-heading{text-align:center;margin-top:6px}
 @media (max-width:640px){.carbs-top{grid-template-columns:1fr}}
