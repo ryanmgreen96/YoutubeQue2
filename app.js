@@ -22,17 +22,31 @@ const TAB_CHRONO_SORT_KEY = 'ytTabChronoSort_v1'
 const TAB_THUMBNAILS_HIDDEN_KEY = 'ytTabThumbnailsHidden_v1'
 const JOURNAL_DATA_KEY = 'ytJournalData_v1'
 const JOURNAL_CASH_REVERSED_KEY = 'ytJournalCashReversed_v1'
+const CARBS_DATA_KEY = 'ytCarbsData_v1'
 const LIBRARY_PAGE_ID = 'library'
 const LIBRARY_PAGE_TITLE = 'Library'
 const GYM_PAGE_ID = 'gym'
 const GYM_PAGE_TITLE = 'Gym'
 const JOURNAL_PAGE_ID = 'journal'
 const JOURNAL_PAGE_TITLE = 'Journal'
+const CARBS_PAGE_ID = 'carbs'
+const CARBS_PAGE_TITLE = 'Carbs'
 const JOURNAL_TABS = [
   {id:'food', title:'Food'},
   {id:'cash', title:'Cash'},
   {id:'training', title:'Training'}
 ]
+const CARBS_POINT_PX = 10
+const CARBS_DEFAULT_TARGET = 18
+const CARBS_COLORS = [
+  {id:'red', label:'Red', group:'produce', hex:'#d9534f'},
+  {id:'yellow', label:'Yellow', group:'produce', hex:'#e0c341'},
+  {id:'orange', label:'Orange', group:'produce', hex:'#e08a3c'},
+  {id:'brown', label:'Brown', group:'starch', hex:'#8b5e34'},
+  {id:'green', label:'Green', group:'starch', hex:'#4a7c3f'},
+  {id:'lightgreen', label:'Light Green', group:'starch', hex:'#8bc34a'}
+]
+function carbsColorInfo(colorId){ return CARBS_COLORS.find((c)=>c.id===colorId) || CARBS_COLORS[0] }
 const sections = document.getElementById('sections')
 const leftNavEl = document.getElementById('left-nav')
 const addPageBtn = document.getElementById('add-page-btn')
@@ -68,6 +82,11 @@ const holdMoveUpBtn = document.getElementById('hold-move-up-btn')
 const holdMoveDownBtn = document.getElementById('hold-move-down-btn')
 const holdDeleteBtn = document.getElementById('hold-delete-btn')
 const holdExitBtn = document.getElementById('hold-exit-btn')
+const carbItemDialogEl = document.getElementById('carb-item-dialog')
+const carbColorPickerEl = document.getElementById('carb-color-picker')
+const carbValueRowsEl = document.getElementById('carb-value-rows')
+const carbItemSaveBtn = document.getElementById('carb-item-save-btn')
+const carbItemCancelBtn = document.getElementById('carb-item-cancel-btn')
 
 let items = load()
 let pages = loadPages()
@@ -252,9 +271,12 @@ function isGymPage(pageId){
 function isJournalPage(pageId){
   return normalizePageId(pageId) === JOURNAL_PAGE_ID
 }
+function isCarbsPage(pageId){
+  return normalizePageId(pageId) === CARBS_PAGE_ID
+}
 function isProtectedPage(pageId){
   const pid = normalizePageId(pageId)
-  return pid === LIBRARY_PAGE_ID || pid === GYM_PAGE_ID || pid === JOURNAL_PAGE_ID
+  return pid === LIBRARY_PAGE_ID || pid === GYM_PAGE_ID || pid === JOURNAL_PAGE_ID || pid === CARBS_PAGE_ID
 }
 function ensureLibraryPageExists(){
   const existing = pages.find((page)=>page && page.id===LIBRARY_PAGE_ID)
@@ -340,6 +362,30 @@ function ensureJournalPageExists(){
   saveActiveTabs()
   savePageTitleFilters()
 }
+function ensureCarbsPageExists(){
+  const existing = pages.find((page)=>page && page.id===CARBS_PAGE_ID)
+  if(existing){
+    if(existing.title !== CARBS_PAGE_TITLE){
+      existing.title = CARBS_PAGE_TITLE
+      savePages()
+    }
+    return
+  }
+
+  pages.unshift({
+    id: CARBS_PAGE_ID,
+    title: CARBS_PAGE_TITLE,
+    created: new Date().toISOString()
+  })
+  pageTabs[CARBS_PAGE_ID] = [getDefaultTab()]
+  activeTabs[CARBS_PAGE_ID] = 'default'
+  pageTitleFilters[CARBS_PAGE_ID] = []
+
+  savePages()
+  savePageTabs()
+  saveActiveTabs()
+  savePageTitleFilters()
+}
 function createJournalData(){
   return {
     food: {essentials: [], buy: []},
@@ -397,6 +443,97 @@ function loadJournalData(){
 }
 let journalData = loadJournalData()
 function saveJournalData(){ localStorage.setItem(JOURNAL_DATA_KEY, JSON.stringify(journalData)) }
+function createCarbsData(){
+  return {items: [], entries: [], templates: [], target: CARBS_DEFAULT_TARGET}
+}
+function loadCarbsData(){
+  try{
+    const parsed = JSON.parse(localStorage.getItem(CARBS_DATA_KEY) || 'null')
+    if(!parsed || typeof parsed !== 'object') return createCarbsData()
+    const empty = createCarbsData()
+    if(!Array.isArray(parsed.items)) parsed.items = empty.items
+    if(!Array.isArray(parsed.entries)) parsed.entries = empty.entries
+    if(!Array.isArray(parsed.templates)) parsed.templates = empty.templates
+    if(!Number.isFinite(parsed.target) || parsed.target <= 0) parsed.target = empty.target
+    return parsed
+  }catch(e){ return createCarbsData() }
+}
+let carbsData = loadCarbsData()
+function saveCarbsData(){ localStorage.setItem(CARBS_DATA_KEY, JSON.stringify(carbsData)) }
+let carbsPickingEntryId = null
+function carbsItemById(itemId){ return carbsData.items.find((item)=>item.id===itemId) || null }
+function carbsSumForList(list){
+  return list.reduce((total, itemId)=>{
+    const item = carbsItemById(itemId)
+    return total + (item ? item.value : 0)
+  }, 0)
+}
+function carbsEntryTotal(entry){
+  return carbsSumForList(entry.produce) + carbsSumForList(entry.starch)
+}
+function addCarbsItem(name, colorId, value){
+  const trimmed = (name || '').trim()
+  if(!trimmed) return
+  const color = carbsColorInfo(colorId)
+  carbsData.items.push({id: uid(), name: trimmed, color: color.id, group: color.group, value})
+  saveCarbsData()
+}
+function deleteCarbsItem(itemId){
+  carbsData.items = carbsData.items.filter((item)=>item.id!==itemId)
+  carbsData.entries.forEach((entry)=>{
+    entry.produce = entry.produce.filter((id)=>id!==itemId)
+    entry.starch = entry.starch.filter((id)=>id!==itemId)
+  })
+  carbsData.templates.forEach((tpl)=>{
+    tpl.produce = tpl.produce.filter((id)=>id!==itemId)
+    tpl.starch = tpl.starch.filter((id)=>id!==itemId)
+  })
+  saveCarbsData()
+  render()
+}
+function addCarbsEntry(){
+  const entry = {id: uid(), produce: [], starch: []}
+  carbsData.entries.push(entry)
+  carbsPickingEntryId = entry.id
+  saveCarbsData()
+  render()
+}
+function deleteCarbsEntry(entryId){
+  carbsData.entries = carbsData.entries.filter((entry)=>entry.id!==entryId)
+  if(carbsPickingEntryId === entryId) carbsPickingEntryId = null
+  saveCarbsData()
+  render()
+}
+function addItemToCarbsEntry(entry, item){
+  const list = item.group === 'produce' ? entry.produce : entry.starch
+  list.push(item.id)
+  saveCarbsData()
+  render()
+}
+function removeItemFromCarbsEntryAt(entry, group, index){
+  const list = group === 'produce' ? entry.produce : entry.starch
+  list.splice(index, 1)
+  saveCarbsData()
+  render()
+}
+function saveCarbsEntryAsTemplate(entry){
+  const name = (prompt('Template name?') || '').trim()
+  if(!name) return
+  carbsData.templates.push({id: uid(), name, produce: [...entry.produce], starch: [...entry.starch]})
+  saveCarbsData()
+  render()
+}
+function useCarbsTemplate(template){
+  const entry = {id: uid(), produce: [...template.produce], starch: [...template.starch]}
+  carbsData.entries.push(entry)
+  saveCarbsData()
+  render()
+}
+function deleteCarbsTemplate(templateId){
+  carbsData.templates = carbsData.templates.filter((tpl)=>tpl.id!==templateId)
+  saveCarbsData()
+  render()
+}
 function moveJournalItem(list, itemId, direction){
   const index = list.findIndex((item)=>item.id===itemId)
   const nextIndex = index + direction
@@ -543,6 +680,276 @@ function renderJournal(tabId){
     view.appendChild(renderJournalList(journalData.training, 'Training', {addFirst:true, includeDate:true, inputPlaceholder:'Add training'}))
   }
   sections.appendChild(view)
+}
+
+function makeCarbsItemBar(item, options = {}){
+  const bar = document.createElement('div')
+  bar.className = 'carb-item-bar'
+  bar.style.width = `${item.value * CARBS_POINT_PX}px`
+  bar.style.background = carbsColorInfo(item.color).hex
+  bar.title = `${item.name} (${item.value})`
+  const label = document.createElement('span')
+  label.className = 'carb-item-bar-label'
+  label.textContent = options.showValue ? `${item.name} ${item.value}` : item.name
+  bar.appendChild(label)
+  return bar
+}
+
+function renderCarbsTopList(){
+  const wrap = document.createElement('div')
+  wrap.className = 'carbs-top'
+
+  const produceCol = document.createElement('div')
+  produceCol.className = 'carbs-top-col carbs-top-produce'
+  const starchCol = document.createElement('div')
+  starchCol.className = 'carbs-top-col carbs-top-starch'
+
+  const picking = carbsData.entries.find((entry)=>entry.id===carbsPickingEntryId) || null
+
+  carbsData.items.forEach((item)=>{
+    const col = item.group === 'produce' ? produceCol : starchCol
+    const row = document.createElement('div')
+    row.className = 'carb-item-row'
+    row.appendChild(makeCarbsItemBar(item, {showValue:true}))
+    if(picking){
+      row.classList.add('carb-item-row-pickable')
+      row.addEventListener('click', ()=>{ addItemToCarbsEntry(picking, item) })
+    }
+    const press = attachLongPress(row, ()=>{
+      if(confirm(`Delete "${item.name}"?`)) deleteCarbsItem(item.id)
+    })
+    row.addEventListener('click', ()=>{ press.consume() })
+    col.appendChild(row)
+  })
+
+  const addBtn = document.createElement('button')
+  addBtn.type = 'button'
+  addBtn.className = 'carb-add-item-btn'
+  addBtn.textContent = '+'
+  addBtn.title = 'Add food items'
+  addBtn.addEventListener('click', openCarbItemDialog)
+
+  wrap.appendChild(produceCol)
+  wrap.appendChild(starchCol)
+  const addWrap = document.createElement('div')
+  addWrap.className = 'carb-add-item-wrap'
+  addWrap.appendChild(addBtn)
+  wrap.appendChild(addWrap)
+  return wrap
+}
+
+function renderCarbsEntryLine(entry, group){
+  const line = document.createElement('div')
+  line.className = `carb-entry-line carb-entry-line-${group}`
+  const list = group === 'produce' ? entry.produce : entry.starch
+  list.forEach((itemId, index)=>{
+    const item = carbsItemById(itemId)
+    if(!item) return
+    const bar = makeCarbsItemBar(item)
+    bar.classList.add('carb-entry-chip')
+    bar.title = `${item.name} (${item.value}) — click to remove`
+    bar.addEventListener('click', ()=>{ removeItemFromCarbsEntryAt(entry, group, index) })
+    line.appendChild(bar)
+  })
+  const sum = document.createElement('span')
+  sum.className = 'carb-entry-line-sum'
+  sum.textContent = String(carbsSumForList(list))
+  line.appendChild(sum)
+  return line
+}
+
+function renderCarbsEntryCard(entry){
+  const card = document.createElement('div')
+  card.className = 'carb-entry-card'
+
+  const controls = document.createElement('div')
+  controls.className = 'carb-entry-controls'
+
+  const pickBtn = document.createElement('button')
+  pickBtn.type = 'button'
+  const isPicking = carbsPickingEntryId === entry.id
+  pickBtn.className = `carb-entry-pick-btn${isPicking ? ' active' : ''}`
+  pickBtn.textContent = isPicking ? '✓' : '+'
+  pickBtn.title = isPicking ? 'Done adding items' : 'Add items to this entry'
+  pickBtn.addEventListener('click', ()=>{
+    carbsPickingEntryId = isPicking ? null : entry.id
+    render()
+  })
+  controls.appendChild(pickBtn)
+
+  const templateBtn = document.createElement('button')
+  templateBtn.type = 'button'
+  templateBtn.className = 'carb-entry-template-btn'
+  templateBtn.textContent = 'Save as template'
+  templateBtn.addEventListener('click', ()=>saveCarbsEntryAsTemplate(entry))
+  controls.appendChild(templateBtn)
+
+  const deleteBtn = document.createElement('button')
+  deleteBtn.type = 'button'
+  deleteBtn.className = 'carb-entry-delete-btn danger'
+  deleteBtn.textContent = '×'
+  deleteBtn.title = 'Delete entry'
+  deleteBtn.addEventListener('click', ()=>{
+    if(confirm('Delete this entry?')) deleteCarbsEntry(entry.id)
+  })
+  controls.appendChild(deleteBtn)
+
+  card.appendChild(controls)
+  card.appendChild(renderCarbsEntryLine(entry, 'produce'))
+  card.appendChild(renderCarbsEntryLine(entry, 'starch'))
+
+  const total = document.createElement('div')
+  total.className = 'carb-entry-total'
+  total.textContent = `Total: ${carbsEntryTotal(entry)} / ${carbsData.target}`
+  card.appendChild(total)
+
+  return card
+}
+
+function renderCarbsTemplateCard(template){
+  const card = document.createElement('div')
+  card.className = 'carb-template-card'
+
+  const title = document.createElement('div')
+  title.className = 'carb-template-name'
+  title.textContent = template.name
+  card.appendChild(title)
+
+  card.appendChild(renderCarbsEntryLine(template, 'produce'))
+  card.appendChild(renderCarbsEntryLine(template, 'starch'))
+
+  const total = document.createElement('div')
+  total.className = 'carb-entry-total'
+  total.textContent = `Total: ${carbsEntryTotal(template)}`
+  card.appendChild(total)
+
+  const controls = document.createElement('div')
+  controls.className = 'carb-entry-controls'
+
+  const useBtn = document.createElement('button')
+  useBtn.type = 'button'
+  useBtn.className = 'carb-entry-template-btn'
+  useBtn.textContent = 'Use'
+  useBtn.addEventListener('click', ()=>useCarbsTemplate(template))
+  controls.appendChild(useBtn)
+
+  const deleteBtn = document.createElement('button')
+  deleteBtn.type = 'button'
+  deleteBtn.className = 'carb-entry-delete-btn danger'
+  deleteBtn.textContent = '×'
+  deleteBtn.title = 'Delete template'
+  deleteBtn.addEventListener('click', ()=>{
+    if(confirm(`Delete template "${template.name}"?`)) deleteCarbsTemplate(template.id)
+  })
+  controls.appendChild(deleteBtn)
+
+  card.appendChild(controls)
+  return card
+}
+
+function renderCarbsPage(){
+  const view = document.createElement('div')
+  view.className = 'carbs-view'
+
+  view.appendChild(renderCarbsTopList())
+
+  const newEntryBtn = document.createElement('button')
+  newEntryBtn.type = 'button'
+  newEntryBtn.className = 'carb-new-entry-btn'
+  newEntryBtn.textContent = '+ New Entry'
+  newEntryBtn.addEventListener('click', addCarbsEntry)
+  const newEntryWrap = document.createElement('div')
+  newEntryWrap.className = 'carb-new-entry-wrap'
+  newEntryWrap.appendChild(newEntryBtn)
+  view.appendChild(newEntryWrap)
+
+  const entriesWrap = document.createElement('div')
+  entriesWrap.className = 'carb-entries-wrap'
+  carbsData.entries.forEach((entry)=>{ entriesWrap.appendChild(renderCarbsEntryCard(entry)) })
+  view.appendChild(entriesWrap)
+
+  if(carbsData.templates.length){
+    const templatesHeading = document.createElement('h2')
+    templatesHeading.className = 'page-heading carb-templates-heading'
+    templatesHeading.textContent = 'Templates'
+    view.appendChild(templatesHeading)
+    const templatesWrap = document.createElement('div')
+    templatesWrap.className = 'carb-templates-wrap'
+    carbsData.templates.forEach((tpl)=>{ templatesWrap.appendChild(renderCarbsTemplateCard(tpl)) })
+    view.appendChild(templatesWrap)
+  }
+
+  sections.appendChild(view)
+}
+
+let carbItemDialogSelectedColor = 'red'
+function openCarbItemDialog(){
+  if(!carbItemDialogEl) return
+  carbItemDialogSelectedColor = 'red'
+  renderCarbItemDialogContents()
+  carbItemDialogEl.classList.remove('hidden')
+  carbItemDialogEl.setAttribute('aria-hidden', 'false')
+}
+function closeCarbItemDialog(){
+  if(!carbItemDialogEl) return
+  carbItemDialogEl.classList.add('hidden')
+  carbItemDialogEl.setAttribute('aria-hidden', 'true')
+}
+function renderCarbItemDialogContents(){
+  if(!carbColorPickerEl || !carbValueRowsEl) return
+  carbColorPickerEl.innerHTML = ''
+  CARBS_COLORS.forEach((color)=>{
+    const label = document.createElement('label')
+    label.className = 'carb-color-option'
+    const input = document.createElement('input')
+    input.type = 'radio'
+    input.name = 'carb-color'
+    input.value = color.id
+    input.checked = carbItemDialogSelectedColor === color.id
+    input.addEventListener('change', ()=>{ carbItemDialogSelectedColor = color.id })
+    const swatch = document.createElement('span')
+    swatch.className = 'carb-color-swatch'
+    swatch.style.background = color.hex
+    const text = document.createElement('span')
+    text.textContent = color.label
+    label.appendChild(input)
+    label.appendChild(swatch)
+    label.appendChild(text)
+    carbColorPickerEl.appendChild(label)
+  })
+
+  carbValueRowsEl.innerHTML = ''
+  for(let value = 1; value <= 6; value++){
+    const row = document.createElement('div')
+    row.className = 'carb-value-row'
+    const numberLabel = document.createElement('span')
+    numberLabel.className = 'carb-value-row-number'
+    numberLabel.textContent = String(value)
+    const input = document.createElement('input')
+    input.type = 'text'
+    input.className = 'carb-value-row-input'
+    input.placeholder = 'Item name'
+    input.dataset.value = String(value)
+    row.appendChild(numberLabel)
+    row.appendChild(input)
+    carbValueRowsEl.appendChild(row)
+  }
+}
+if(carbItemSaveBtn){
+  carbItemSaveBtn.addEventListener('click', ()=>{
+    const inputs = carbValueRowsEl ? [...carbValueRowsEl.querySelectorAll('.carb-value-row-input')] : []
+    inputs.forEach((input)=>{
+      const value = Number(input.dataset.value)
+      addCarbsItem(input.value, carbItemDialogSelectedColor, value)
+    })
+    closeCarbItemDialog()
+    render()
+  })
+}
+if(carbItemCancelBtn) carbItemCancelBtn.addEventListener('click', closeCarbItemDialog)
+if(carbItemDialogEl){
+  const backdrop = carbItemDialogEl.querySelector('.hold-dialog-backdrop')
+  if(backdrop) backdrop.addEventListener('click', closeCarbItemDialog)
 }
 function playAlarmBeep(){
   try{
@@ -757,6 +1164,14 @@ function renderThemeSwitcher(){
   journalBtn.textContent = '📓'
   journalBtn.addEventListener('click', ()=>{ setCurrentPage(JOURNAL_PAGE_ID) })
   themeSwitcherEl.appendChild(journalBtn)
+
+  const carbsBtn = document.createElement('button')
+  carbsBtn.type = 'button'
+  carbsBtn.className = `theme-cycle-btn carbs-btn${isCarbsPage(currentPageId) ? ' selected' : ''}`
+  carbsBtn.title = `Open ${CARBS_PAGE_TITLE} page`
+  carbsBtn.textContent = '🍞'
+  carbsBtn.addEventListener('click', ()=>{ setCurrentPage(CARBS_PAGE_ID) })
+  themeSwitcherEl.appendChild(carbsBtn)
 
   const btn = document.createElement('button')
   btn.type = 'button'
@@ -2728,7 +3143,7 @@ function openLinkHoldDialog(linkId){
 
 function normalizePageId(pageId){ return pageId || 'home' }
 function normalizeTabId(tabId){ return tabId || 'default' }
-function getPageTitle(pageId){ if(pageId==='home') return 'Home'; if(pageId===LIBRARY_PAGE_ID) return LIBRARY_PAGE_TITLE; if(pageId===GYM_PAGE_ID) return GYM_PAGE_TITLE; if(pageId===JOURNAL_PAGE_ID) return JOURNAL_PAGE_TITLE; const page = pages.find(item=>item.id===pageId); return page ? page.title : 'Home' }
+function getPageTitle(pageId){ if(pageId==='home') return 'Home'; if(pageId===LIBRARY_PAGE_ID) return LIBRARY_PAGE_TITLE; if(pageId===GYM_PAGE_ID) return GYM_PAGE_TITLE; if(pageId===JOURNAL_PAGE_ID) return JOURNAL_PAGE_TITLE; if(pageId===CARBS_PAGE_ID) return CARBS_PAGE_TITLE; const page = pages.find(item=>item.id===pageId); return page ? page.title : 'Home' }
 function getDefaultTab(){ return {id:'default', title:'Main'} }
 function getPageTabs(pageId){
   const pid = normalizePageId(pageId)
@@ -2858,7 +3273,7 @@ function ensurePageTabIntegrity(){
   getPageTabs('home')
   getActiveTabId('home')
 
-  const validPageIds = new Set(['home', LIBRARY_PAGE_ID, GYM_PAGE_ID, JOURNAL_PAGE_ID, ...pages.map(page=>page.id)])
+  const validPageIds = new Set(['home', LIBRARY_PAGE_ID, GYM_PAGE_ID, JOURNAL_PAGE_ID, CARBS_PAGE_ID, ...pages.map(page=>page.id)])
 
   Object.keys(pageTabs).forEach(pid=>{
     if(!validPageIds.has(pid)){
@@ -2908,6 +3323,10 @@ function ensurePageTabIntegrity(){
     }
     if(page.id===JOURNAL_PAGE_ID && page.title !== JOURNAL_PAGE_TITLE){
       page.title = JOURNAL_PAGE_TITLE
+      changedFilters = true
+    }
+    if(page.id===CARBS_PAGE_ID && page.title !== CARBS_PAGE_TITLE){
+      page.title = CARBS_PAGE_TITLE
       changedFilters = true
     }
   })
@@ -3838,6 +4257,10 @@ function render(){ sections.innerHTML=''
     renderJournal(activeTabId)
     return
   }
+  if(isCarbsPage(currentPageId)){
+    renderCarbsPage()
+    return
+  }
   const list = items.filter(i=>normalizePageId(i.pageId)===currentPageId && normalizeTabId(i.tabId)===activeTabId)
   const groups = {recent:[], old:[]}
   const now = new Date();
@@ -4192,6 +4615,7 @@ function handleParams(){ const p = new URLSearchParams(location.search); if(p.ha
     if(targetPage === LIBRARY_PAGE_ID) setCurrentPage(LIBRARY_PAGE_ID)
     if(targetPage === GYM_PAGE_ID) setCurrentPage(GYM_PAGE_ID)
     if(targetPage === JOURNAL_PAGE_ID) setCurrentPage(JOURNAL_PAGE_ID)
+    if(targetPage === CARBS_PAGE_ID) setCurrentPage(CARBS_PAGE_ID)
   }
   // remove params from url
   if(location.search) history.replaceState({},document.title,location.pathname)
@@ -4210,6 +4634,7 @@ window.addEventListener('load', ()=>{
   ensureLibraryPageExists()
   ensureGymPageExists()
   ensureJournalPageExists()
+  ensureCarbsPageExists()
   ensurePageTabIntegrity()
   currentPageId = 'home'
   saveCurrentPageId()
