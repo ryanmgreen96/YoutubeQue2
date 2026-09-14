@@ -36,7 +36,8 @@ const JOURNAL_TABS = [
   {id:'cash', title:'Cash'},
   {id:'training', title:'Training'}
 ]
-const CARBS_POINT_PX = 30
+const CARBS_POINT_PX = 34
+const CARBS_BASE_PX = 62
 const CARBS_DEFAULT_TARGET = 18
 const CARBS_COLORS = [
   {id:'red', label:'Red', group:'produce', hex:'#d9534f'},
@@ -685,7 +686,7 @@ function renderJournal(tabId){
 function makeCarbsItemBar(item, options = {}){
   const bar = document.createElement('div')
   bar.className = 'carb-item-bar'
-  bar.style.width = `${item.value * CARBS_POINT_PX}px`
+  bar.style.width = `${CARBS_BASE_PX + (item.value - 1) * CARBS_POINT_PX}px`
   bar.style.background = carbsColorInfo(item.color).hex
   bar.title = `${item.name} (${item.value})`
   const label = document.createElement('span')
@@ -706,7 +707,8 @@ function renderCarbsTopList(){
 
   const picking = carbsData.entries.find((entry)=>entry.id===carbsPickingEntryId) || null
 
-  carbsData.items.forEach((item)=>{
+  const sortedItems = [...carbsData.items].sort((a, b)=>a.value - b.value)
+  sortedItems.forEach((item)=>{
     const col = item.group === 'produce' ? produceCol : starchCol
     const row = document.createElement('div')
     row.className = 'carb-item-row'
