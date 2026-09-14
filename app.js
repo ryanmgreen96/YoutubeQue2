@@ -36,7 +36,7 @@ const JOURNAL_TABS = [
   {id:'cash', title:'Cash'},
   {id:'training', title:'Training'}
 ]
-const CARBS_POINT_PX = 10
+const CARBS_POINT_PX = 30
 const CARBS_DEFAULT_TARGET = 18
 const CARBS_COLORS = [
   {id:'red', label:'Red', group:'produce', hex:'#d9534f'},
