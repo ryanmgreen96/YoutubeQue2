@@ -1517,8 +1517,20 @@ function saveGymChannels(){
   gymChannels = Array.from(new Set(gymChannels.map((value)=>String(value).trim().toLowerCase()).filter(Boolean)))
   localStorage.setItem(GYM_CHANNELS_KEY, JSON.stringify(gymChannels))
   try{ chrome.storage.local.set({[GYM_CHANNELS_KEY]: gymChannels}) }catch(e){ }
+  window.dispatchEvent(new CustomEvent('ytqueue-gym-channels-changed', {detail: gymChannels}))
 }
-function normalizeChannelName(value){ return String(value || '').trim().toLowerCase().replace(/^@/, '') }
+function normalizeChannelName(value){
+  const raw = String(value || '').trim().toLowerCase()
+  if(!raw) return ''
+  try{
+    const parsed = new URL(raw.startsWith('http') ? raw : `https://youtube.com/${raw.replace(/^\/+/, '')}`)
+    const pathPart = parsed.pathname.split('/').filter(Boolean)
+    if(pathPart[0] === '@') return pathPart[1] || ''
+    if(pathPart[0] && ['@', 'channel', 'c', 'user'].includes(pathPart[0])) return pathPart[1] || ''
+    if(pathPart[0] && pathPart[0].startsWith('@')) return pathPart[0].slice(1)
+  }catch(e){ }
+  return raw.replace(/^@/, '').replace(/^youtube\.com\//, '').replace(/^\/+/, '').split('/')[0]
+}
 function itemMatchesGymChannel(item){
   const channel = normalizeChannelName(item && (item.channelName || item.channelHandle))
   return !!channel && gymChannels.some((entry)=>{

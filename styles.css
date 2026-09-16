@@ -2,7 +2,7 @@
 *{box-sizing:border-box}
 html,body{height:100%;overflow:hidden}
 body{margin:0;font-family:system-ui,-apple-system,Segoe UI,Roboto,'Helvetica Neue',Arial;background:var(--bg);color:var(--text)}
-header{position:fixed;top:0;left:10%;width:75%;height:92px;display:grid;grid-template-columns:1fr auto;align-items:center;gap:14px;padding:10px 14px;border-bottom:1px solid rgba(255,255,255,0.08);background:var(--bg);z-index:1000}
+header{position:fixed;top:0;left:10%;width:75%;height:122px;display:grid;grid-template-columns:1fr auto;align-items:center;gap:14px;padding:10px 14px;border-bottom:1px solid rgba(255,255,255,0.08);background:var(--bg);z-index:1000}
 .topbar-roles{display:flex;align-items:center;justify-content:flex-start;min-width:0}
 .topbar-role-grid{display:grid;grid-auto-flow:column;grid-auto-columns:18px;grid-template-rows:repeat(3,18px);gap:4px;max-height:62px}
 .topbar-role-btn{width:18px;height:18px;min-width:18px;padding:0;border-radius:6px;font-size:10px;line-height:1;display:flex;align-items:center;justify-content:center;color:var(--text-soft);background:rgba(255,255,255,0.03);border:1px solid rgba(255,255,255,0.12)}
@@ -11,6 +11,7 @@ header{position:fixed;top:0;left:10%;width:75%;height:92px;display:grid;grid-tem
 .topbar-roles{display:none}
 .topbar-links{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3px;min-width:0}
 .topbar-row-wrap{display:flex;align-items:center;justify-content:center;gap:10px;width:100%;min-width:0}
+.topbar-row-wrap.main{flex-direction:column;gap:2px}
 .topbar-link-track{display:flex;align-items:center;justify-content:center;gap:8px;width:100%;overflow-x:auto;padding:1px 0;scrollbar-width:none}
 .topbar-link-track::-webkit-scrollbar{display:none}
 .topbar-link-icon{width:30px;height:30px;min-width:30px;padding:0;border:none;border-radius:5px;display:flex;align-items:center;justify-content:center;background:transparent}
@@ -24,6 +25,7 @@ header{position:fixed;top:0;left:10%;width:75%;height:92px;display:grid;grid-tem
 .topbar-row-wrap.secondary .topbar-link-favicon{width:13px;height:13px;border-radius:3px}
 .topbar-row-wrap.secondary .topbar-link-fallback{width:13px;height:13px;border-radius:3px;font-size:8px}
 .topbar-manage{display:flex;align-items:center;gap:4px;flex:0 1 auto;min-width:0;color:var(--text-soft);font-size:10px;white-space:nowrap}
+.topbar-row-wrap.main .topbar-manage{width:100%;justify-content:center}
 .topbar-manage-label{max-width:100px;overflow:hidden;text-overflow:ellipsis}
 .topbar-manage button{padding:3px 5px;border:none;border-radius:4px;color:var(--text-soft);font-size:10px;background:rgba(255,255,255,0.05)}
 .topbar-manage button:hover{background:rgba(255,255,255,0.12);color:var(--text)}
@@ -78,7 +80,7 @@ main{display:grid;grid-template-columns:10% 75% 15%;height:100vh;overflow:hidden
 .left-link-add{font-size:13px;font-weight:700;color:#ffd986;border-color:rgba(255,204,0,0.26);background:rgba(255,204,0,0.1)}
 .left-delete-add{font-size:11px;font-weight:700;color:#ffd7d7;border-color:rgba(255,150,140,0.45);background:rgba(120,40,35,0.26)}
 .left-delete-add.selected{background:#d58172;color:#1a0f0d;border-color:#d58172}
-.content-area{min-width:0;height:100vh;padding-top:92px;display:flex;flex-direction:column;overflow:hidden}
+.content-area{min-width:0;height:100vh;padding-top:122px;display:flex;flex-direction:column;overflow:hidden}
 .saved-links{padding:12px;display:flex;flex-direction:column;gap:8px}
 .saved-links-title{font-size:11px;letter-spacing:0.03em;text-transform:uppercase;color:var(--text-soft)}
 .saved-links-list{margin:0;padding:0;list-style:none;display:flex;flex-direction:column;gap:6px}

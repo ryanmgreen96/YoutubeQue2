@@ -409,13 +409,31 @@
   }
 
   function normalizeChannelName(value){
-    return String(value || '').trim().toLowerCase().replace(/^@/, '')
+    const raw = String(value || '').trim().toLowerCase()
+    if(!raw) return ''
+    try{
+      const parsed = new URL(raw.startsWith('http') ? raw : `https://youtube.com/${raw.replace(/^\/+/, '')}`)
+      const pathPart = parsed.pathname.split('/').filter(Boolean)
+      if(pathPart[0] && pathPart[0].startsWith('@')) return pathPart[0].slice(1)
+      if(pathPart[0] && ['channel', 'c', 'user'].includes(pathPart[0])) return pathPart[1] || ''
+    }catch(e){ }
+    return raw.replace(/^@/, '').replace(/^youtube\.com\//, '').replace(/^\/+/, '').split('/')[0]
   }
 
   async function getGymChannelNames(){
     try{
       const result = await chrome.storage.local.get({[GYM_CHANNELS_KEY]: []})
-      return Array.isArray(result[GYM_CHANNELS_KEY]) ? result[GYM_CHANNELS_KEY].map(normalizeChannelName).filter(Boolean) : []
+      const stored = Array.isArray(result[GYM_CHANNELS_KEY]) ? result[GYM_CHANNELS_KEY] : []
+      if(stored.length) return stored.map(normalizeChannelName).filter(Boolean)
+      if(isAppHost()){
+        const local = JSON.parse(localStorage.getItem(GYM_CHANNELS_KEY) || '[]')
+        if(Array.isArray(local) && local.length){
+          const normalized = local.map(normalizeChannelName).filter(Boolean)
+          await chrome.storage.local.set({[GYM_CHANNELS_KEY]: normalized})
+          return normalized
+        }
+      }
+      return []
     }catch(e){ return [] }
   }
 
@@ -434,6 +452,8 @@
     for(const selector of selectors){
       const node = (row && row.querySelector(selector)) || document.querySelector(selector)
       const text = (node && (node.textContent || node.getAttribute('aria-label') || node.getAttribute('title')) || '').trim()
+      const href = node && (node.getAttribute('href') || '')
+      if(href && /^\/@|^\/channel\/|^\/c\/|^\/user\//i.test(href)) return href
       if(text && !/^(subscribe|join)$/i.test(text)) return text
     }
     return ''
@@ -646,6 +666,16 @@
 
   try{
     if(isAppHost()){
+    try{
+      const appChannels = JSON.parse(localStorage.getItem(GYM_CHANNELS_KEY) || '[]')
+      if(Array.isArray(appChannels)){
+        chrome.storage.local.set({[GYM_CHANNELS_KEY]: appChannels.map(normalizeChannelName).filter(Boolean)})
+      }
+    }catch(e){ }
+    window.addEventListener('ytqueue-gym-channels-changed', (event)=>{
+      const channels = event && event.detail
+      if(Array.isArray(channels)) chrome.storage.local.set({[GYM_CHANNELS_KEY]: channels.map(normalizeChannelName).filter(Boolean)})
+    })
     window.addEventListener('message', (event)=>{
       if(event.source !== window) return
       const data = event.data
