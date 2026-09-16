@@ -121,6 +121,7 @@ let headerLinks = loadHeaderLinks()
 let topbarRows = loadTopbarRows()
 let activeTopbarRowId = loadTopbarActiveRowId()
 let topbarSelectedLinkId = null
+let topbarManageOpen = false
 let currentPageId = loadCurrentPageId()
 let editMode = false
 let deleteMode = false
@@ -1531,12 +1532,23 @@ function normalizeChannelName(value){
   }catch(e){ }
   return raw.replace(/^@/, '').replace(/^youtube\.com\//, '').replace(/^\/+/, '').split('/')[0]
 }
+function channelAliases(value){
+  const raw = String(value || '').trim().toLowerCase()
+  const aliases = new Set()
+  const normalized = normalizeChannelName(raw)
+  if(normalized) aliases.add(normalized)
+  const handleMatch = raw.match(/(?:^|\/)@([^\s/?#|]+)/)
+  if(handleMatch) aliases.add(handleMatch[1])
+  const pathMatch = raw.match(/\/(?:channel|c|user)\/([^\s/?#|]+)/)
+  if(pathMatch) aliases.add(pathMatch[1])
+  return Array.from(aliases)
+}
 function itemMatchesGymChannel(item){
-  const channel = normalizeChannelName(item && (item.channelName || item.channelHandle))
-  return !!channel && gymChannels.some((entry)=>{
-    const normalized = normalizeChannelName(entry)
-    return channel === normalized || channel.includes(normalized) || normalized.includes(channel)
-  })
+  const channels = channelAliases(item && (item.channelName || item.channelHandle))
+  return channels.some((channel)=>gymChannels.some((entry)=>{
+    const configured = normalizeChannelName(entry)
+    return channel === configured || channel.includes(configured) || configured.includes(channel)
+  }))
 }
 function toggleGymOldHidden(){
   gymOldHidden = !gymOldHidden
@@ -1572,7 +1584,7 @@ function saveGymItemNote(){
   render()
 }
 function configureGymChannels(){
-  const input = prompt('Gym channels, separated by commas. Use channel names or @handles.', gymChannels.join(', '))
+  const input = prompt('Gym channels, separated by commas. Paste a channel URL, @handle, or exact channel name.', gymChannels.join(', '))
   if(input===null) return
   gymChannels = input.split(',').map((value)=>value.trim()).filter(Boolean)
   saveGymChannels()
@@ -3954,9 +3966,29 @@ function buildChronologicalListWithDividers(list, chronologicalOrder = 'desc'){
   return merged
 }
 
-function addItem({url,title,videoId,favorite=false,pageId='home',tabId='default',created=new Date().toISOString()}){
+function addItem({url,title,videoId,favorite=false,pageId='home',tabId='default',created=new Date().toISOString(),publishedAt='',channelName='',channelHandle='',note='',gymOld=false}){
   const id = uid()
-  const item = {id, url, title, videoId, favorite, pageId: normalizePageId(pageId), tabId: normalizeTabId(tabId), created, publishedAt: ''}
+  const normalizedUrl = normalizeUrl(url)
+  if(!normalizedUrl) return
+  const item = {
+    id,
+    url: normalizedUrl,
+    title: title || normalizedUrl,
+    videoId: videoId || extractVideoId(normalizedUrl) || null,
+    favorite,
+    pageId: normalizePageId(pageId),
+    tabId: normalizeTabId(tabId),
+    created,
+    publishedAt: publishedAt || '',
+    channelName: channelName || '',
+    channelHandle: channelHandle || '',
+    note: note || '',
+    gymOld: gymOld === true
+  }
+  if(itemMatchesGymChannel(item) && item.pageId==='home'){
+    item.pageId = GYM_PAGE_ID
+    item.tabId = getActiveTabId(GYM_PAGE_ID)
+  }
   items.unshift(item)
   save()
   enqueueItemChronologyHydration(item)
@@ -4132,11 +4164,19 @@ function renderHeaderLinks(){
       })
       img.addEventListener('load', ()=>{ img.style.display = 'block'; fallback.style.display = 'none' })
       iconBtn.addEventListener('click', ()=>{
+        if(iconHold.consume()) return
         activeTopbarRowId = row.id
         topbarSelectedLinkId = link.id
         saveTopbarActiveRowId()
         renderHeaderLinks()
         window.open(link.url, '_blank', 'noopener,noreferrer')
+      })
+      const iconHold = attachLongPress(iconBtn, ()=>{
+        activeTopbarRowId = row.id
+        topbarSelectedLinkId = link.id
+        topbarManageOpen = true
+        saveTopbarActiveRowId()
+        renderHeaderLinks()
       })
       iconBtn.append(img, fallback)
       linkTrack.appendChild(iconBtn)
@@ -4151,7 +4191,7 @@ function renderHeaderLinks(){
     })
     linkTrack.appendChild(addLinkBtn)
     rowWrap.appendChild(linkTrack)
-    if(rowIndex===0){
+    if(rowIndex===0 && topbarManageOpen){
       const manage = document.createElement('div')
       manage.className = 'topbar-manage'
       const selectedRow = topbarRows.find(item=>item.links.some(link=>link.id===topbarSelectedLinkId))

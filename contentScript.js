@@ -453,15 +453,22 @@
       const node = (row && row.querySelector(selector)) || document.querySelector(selector)
       const text = (node && (node.textContent || node.getAttribute('aria-label') || node.getAttribute('title')) || '').trim()
       const href = node && (node.getAttribute('href') || '')
-      if(href && /^\/@|^\/channel\/|^\/c\/|^\/user\//i.test(href)) return href
+      if(href && /^\/@|^\/channel\/|^\/c\/|^\/user\//i.test(href)) return `${text} ${href}`.trim()
       if(text && !/^(subscribe|join)$/i.test(text)) return text
     }
     return ''
   }
 
   function channelMatchesGymList(channelName, channels){
-    const normalized = normalizeChannelName(channelName)
-    return !!normalized && channels.some((entry)=>normalized === entry || normalized.includes(entry) || entry.includes(normalized))
+    const raw = String(channelName || '').trim().toLowerCase()
+    const aliases = new Set()
+    const normalized = normalizeChannelName(raw)
+    if(normalized) aliases.add(normalized)
+    const handleMatch = raw.match(/(?:^|\/)@([^\s/?#|]+)/)
+    if(handleMatch) aliases.add(handleMatch[1])
+    const pathMatch = raw.match(/\/(?:channel|c|user)\/([^\s/?#|]+)/)
+    if(pathMatch) aliases.add(pathMatch[1])
+    return Array.from(aliases).some((alias)=>channels.some((entry)=>alias === entry || alias.includes(entry) || entry.includes(alias)))
   }
 
   function collectQueueNote(channelName){
