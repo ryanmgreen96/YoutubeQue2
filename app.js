@@ -20,6 +20,8 @@ const HOME_OLD_HIDDEN_KEY = 'ytHomeOldHidden_v1'
 const SAVED_PAGES_KEY = 'ytSavedPages_v1'
 const TAB_CHRONO_SORT_KEY = 'ytTabChronoSort_v1'
 const TAB_THUMBNAILS_HIDDEN_KEY = 'ytTabThumbnailsHidden_v1'
+const GYM_CHANNELS_KEY = 'ytGymChannels_v1'
+const GYM_OLD_HIDDEN_KEY = 'ytGymOldHidden_v1'
 const JOURNAL_DATA_KEY = 'ytJournalData_v1'
 const JOURNAL_CASH_REVERSED_KEY = 'ytJournalCashReversed_v1'
 const CARBS_DATA_KEY = 'ytCarbsData_v1'
@@ -74,6 +76,10 @@ const shelfAddBtn = document.getElementById('shelf-add-btn')
 const notePanelEl = document.getElementById('note-panel')
 const noteCloseBtn = document.getElementById('note-close-btn')
 const noteTextareaEl = document.getElementById('note-textarea')
+const gymNoteDialogEl = document.getElementById('gym-note-dialog')
+const gymNoteTextareaEl = document.getElementById('gym-note-textarea')
+const gymNoteSaveBtn = document.getElementById('gym-note-save-btn')
+const gymNoteCancelBtn = document.getElementById('gym-note-cancel-btn')
 const holdLinkEditorEl = document.getElementById('hold-link-editor')
 const holdLinkTitleInputEl = document.getElementById('hold-link-title-input')
 const holdLinkUrlInputEl = document.getElementById('hold-link-url-input')
@@ -96,6 +102,9 @@ const carbValueRowsEl = document.getElementById('carb-value-rows')
 const carbItemSaveBtn = document.getElementById('carb-item-save-btn')
 const carbItemCancelBtn = document.getElementById('carb-item-cancel-btn')
 
+let gymChannels = loadGymChannels()
+let gymOldHidden = loadGymOldHidden()
+let gymNoteItemId = null
 let items = load()
 let pages = loadPages()
 let pageTabs = loadPageTabs()
@@ -111,6 +120,7 @@ let homeOldHidden = loadHomeOldHidden()
 let headerLinks = loadHeaderLinks()
 let topbarRows = loadTopbarRows()
 let activeTopbarRowId = loadTopbarActiveRowId()
+let topbarSelectedLinkId = null
 let currentPageId = loadCurrentPageId()
 let editMode = false
 let deleteMode = false
@@ -185,7 +195,18 @@ const THEMES = [
 ]
 
 function save(){ localStorage.setItem(APP_KEY, JSON.stringify(items)) }
-function load(){ try{ return JSON.parse(localStorage.getItem(APP_KEY)||'[]') }catch(e){return[]}}
+function load(){
+  try{
+    const parsed = JSON.parse(localStorage.getItem(APP_KEY)||'[]')
+    if(!Array.isArray(parsed)) return []
+    return parsed.map((item)=>{
+      if(itemMatchesGymChannel(item) && normalizePageId(item.pageId || 'home')==='home'){
+        return {...item, pageId: GYM_PAGE_ID, tabId: 'default'}
+      }
+      return item
+    })
+  }catch(e){ return[] }
+}
 function loadThemeIndex(){
   const parsed = Number(localStorage.getItem(THEME_INDEX_KEY) || '0')
   if(!Number.isInteger(parsed) || parsed < 0) return 0
@@ -1046,6 +1067,12 @@ if(carbItemDialogEl){
   const backdrop = carbItemDialogEl.querySelector('.hold-dialog-backdrop')
   if(backdrop) backdrop.addEventListener('click', closeCarbItemDialog)
 }
+if(gymNoteSaveBtn) gymNoteSaveBtn.addEventListener('click', saveGymItemNote)
+if(gymNoteCancelBtn) gymNoteCancelBtn.addEventListener('click', closeGymItemNote)
+if(gymNoteDialogEl){
+  const backdrop = gymNoteDialogEl.querySelector('.hold-dialog-backdrop')
+  if(backdrop) backdrop.addEventListener('click', closeGymItemNote)
+}
 function playAlarmBeep(){
   try{
     const ctx = new (window.AudioContext || window.webkitAudioContext)()
@@ -1472,9 +1499,80 @@ function loadTabThumbnailsHidden(){
 function saveTabThumbnailsHidden(){ localStorage.setItem(TAB_THUMBNAILS_HIDDEN_KEY, JSON.stringify(tabThumbnailsHidden)) }
 function loadHomeOldHidden(){
   const raw = localStorage.getItem(HOME_OLD_HIDDEN_KEY)
-  return raw === '1' || raw === 'true'
+  return raw === null ? true : raw === '1' || raw === 'true'
 }
 function saveHomeOldHidden(){ localStorage.setItem(HOME_OLD_HIDDEN_KEY, homeOldHidden ? '1' : '0') }
+function loadGymOldHidden(){
+  const raw = localStorage.getItem(GYM_OLD_HIDDEN_KEY)
+  return raw === null ? true : raw === '1' || raw === 'true'
+}
+function saveGymOldHidden(){ localStorage.setItem(GYM_OLD_HIDDEN_KEY, gymOldHidden ? '1' : '0') }
+function loadGymChannels(){
+  try{
+    const parsed = JSON.parse(localStorage.getItem(GYM_CHANNELS_KEY) || '[]')
+    return Array.isArray(parsed) ? parsed.map((value)=>String(value).trim().toLowerCase()).filter(Boolean) : []
+  }catch(e){ return [] }
+}
+function saveGymChannels(){
+  gymChannels = Array.from(new Set(gymChannels.map((value)=>String(value).trim().toLowerCase()).filter(Boolean)))
+  localStorage.setItem(GYM_CHANNELS_KEY, JSON.stringify(gymChannels))
+  try{ chrome.storage.local.set({[GYM_CHANNELS_KEY]: gymChannels}) }catch(e){ }
+}
+function normalizeChannelName(value){ return String(value || '').trim().toLowerCase().replace(/^@/, '') }
+function itemMatchesGymChannel(item){
+  const channel = normalizeChannelName(item && (item.channelName || item.channelHandle))
+  return !!channel && gymChannels.some((entry)=>{
+    const normalized = normalizeChannelName(entry)
+    return channel === normalized || channel.includes(normalized) || normalized.includes(channel)
+  })
+}
+function toggleGymOldHidden(){
+  gymOldHidden = !gymOldHidden
+  saveGymOldHidden()
+  render()
+}
+function moveGymItemToOld(item){
+  if(!item) return
+  item.gymOld = true
+  save()
+  render()
+}
+function openGymItemNote(item){
+  if(!gymNoteDialogEl || !gymNoteTextareaEl) return
+  gymNoteItemId = item.id
+  gymNoteTextareaEl.value = item.note || ''
+  gymNoteDialogEl.classList.remove('hidden')
+  gymNoteDialogEl.setAttribute('aria-hidden', 'false')
+  gymNoteTextareaEl.focus()
+}
+function closeGymItemNote(){
+  gymNoteItemId = null
+  if(!gymNoteDialogEl) return
+  gymNoteDialogEl.classList.add('hidden')
+  gymNoteDialogEl.setAttribute('aria-hidden', 'true')
+}
+function saveGymItemNote(){
+  const item = items.find((entry)=>entry.id===gymNoteItemId)
+  if(!item || !gymNoteTextareaEl) return
+  item.note = gymNoteTextareaEl.value
+  save()
+  closeGymItemNote()
+  render()
+}
+function configureGymChannels(){
+  const input = prompt('Gym channels, separated by commas. Use channel names or @handles.', gymChannels.join(', '))
+  if(input===null) return
+  gymChannels = input.split(',').map((value)=>value.trim()).filter(Boolean)
+  saveGymChannels()
+  items.forEach((item)=>{
+    if(itemMatchesGymChannel(item) && normalizePageId(item.pageId)==='home'){
+      item.pageId = GYM_PAGE_ID
+      item.tabId = 'default'
+    }
+  })
+  save()
+  render()
+}
 function ensureSavedShelvesIntegrity(){
   const validIds = new Set(savedLinks.map((link)=>link.id))
   let changed = false
@@ -2778,13 +2876,20 @@ function renderRandomPlaylistButton(pageId, tabId){
 function ensureTopbarState(){
   if(!Array.isArray(topbarRows)) topbarRows = []
   if(!topbarRows.length){
-    topbarRows = [{id: uid(), name: 'Default', symbol: '1', links: []}]
+    topbarRows = [
+      {id: uid(), name: 'Main', symbol: '#', links: []},
+      {id: uid(), name: 'Small row', symbol: '#', links: []}
+    ]
     saveTopbarRows()
   }
   const exists = topbarRows.some(row=>row.id===activeTopbarRowId)
   if(!exists){
     activeTopbarRowId = topbarRows[0].id
     saveTopbarActiveRowId()
+  }
+  if(topbarRows.length===1){
+    topbarRows.push({id: uid(), name: 'Small row', symbol: '#', links: []})
+    saveTopbarRows()
   }
 }
 function getActiveTopbarRow(){
@@ -2820,14 +2925,12 @@ function fallbackGlyph(title, url){
   return first || '?'
 }
 function addTopbarRow(){
-  const symbolInput = prompt('Row icon/symbol (single character)', `${topbarRows.length + 1}`)
-  if(!symbolInput) return
   const nameInput = prompt('Row name', 'New row')
   if(!nameInput) return
   const row = {
     id: uid(),
     name: nameInput.trim() || 'Row',
-    symbol: symbolInput.trim().slice(0, 1) || '#',
+    symbol: '#',
     links: []
   }
   topbarRows.push(row)
@@ -2902,6 +3005,28 @@ function deleteTopbarLink(linkId){
   if(!link) return
   if(!confirm(`Delete link "${link.title}"?`)) return
   row.links = row.links.filter(item=>item.id!==linkId)
+  if(topbarSelectedLinkId===linkId) topbarSelectedLinkId = null
+  saveTopbarRows()
+  renderHeaderLinks()
+}
+function moveTopbarLink(linkId, delta){
+  const row = getActiveTopbarRow()
+  if(!row) return
+  const index = row.links.findIndex(item=>item.id===linkId)
+  const nextIndex = index + delta
+  if(index<0 || nextIndex<0 || nextIndex>=row.links.length) return
+  const [link] = row.links.splice(index, 1)
+  row.links.splice(nextIndex, 0, link)
+  saveTopbarRows()
+  renderHeaderLinks()
+}
+function renameTopbarLink(linkId){
+  const row = getActiveTopbarRow()
+  const link = row && row.links.find(item=>item.id===linkId)
+  if(!link) return
+  const titleInput = prompt('Rename link', link.title)
+  if(titleInput===null) return
+  link.title = titleInput.trim() || link.title
   saveTopbarRows()
   renderHeaderLinks()
 }
@@ -3965,103 +4090,78 @@ function updateHeaderLink(id, nextTitle, nextUrlInput){
 function renderHeaderLinks(){
   if(!topbarRolesEl || !topbarLinksEl) return
   ensureTopbarState()
-  const activeRow = getActiveTopbarRow()
-
   topbarRolesEl.innerHTML = ''
-  const roleGrid = document.createElement('div')
-  roleGrid.className = 'topbar-role-grid'
-
-  topbarRows.forEach(row=>{
-    const btn = document.createElement('button')
-    btn.type = 'button'
-    btn.className = `topbar-role-btn${row.id===activeTopbarRowId ? ' selected' : ''}`
-    btn.textContent = row.symbol || '#'
-    btn.title = row.name
-    btn.addEventListener('click', ()=>{
+  topbarLinksEl.innerHTML = ''
+  topbarRows.forEach((row, rowIndex)=>{
+    const rowWrap = document.createElement('div')
+    rowWrap.className = `topbar-row-wrap${rowIndex===0 ? ' main' : ' secondary'}`
+    rowWrap.title = row.name
+    const linkTrack = document.createElement('div')
+    linkTrack.className = 'topbar-link-track'
+    row.links.forEach(link=>{
+      const iconBtn = document.createElement('button')
+      iconBtn.type = 'button'
+      iconBtn.className = `topbar-link-icon${topbarSelectedLinkId===link.id ? ' selected' : ''}`
+      iconBtn.title = `${link.title} - ${link.url}`
+      iconBtn.setAttribute('aria-label', link.title)
+      const img = document.createElement('img')
+      img.className = 'topbar-link-favicon'
+      const faviconCandidates = makeFaviconCandidates(link.url, link.iconUrl || '')
+      let faviconIndex = 0
+      img.src = faviconCandidates[faviconIndex] || ''
+      img.alt = ''
+      const fallback = document.createElement('span')
+      fallback.className = 'topbar-link-fallback'
+      fallback.textContent = fallbackGlyph(link.title, link.url)
+      img.addEventListener('error', ()=>{
+        faviconIndex += 1
+        if(faviconIndex < faviconCandidates.length){ img.src = faviconCandidates[faviconIndex]; return }
+        img.style.display = 'none'; fallback.style.display = 'inline-flex'
+      })
+      img.addEventListener('load', ()=>{ img.style.display = 'block'; fallback.style.display = 'none' })
+      iconBtn.addEventListener('click', ()=>{
+        activeTopbarRowId = row.id
+        topbarSelectedLinkId = link.id
+        saveTopbarActiveRowId()
+        renderHeaderLinks()
+        window.open(link.url, '_blank', 'noopener,noreferrer')
+      })
+      iconBtn.append(img, fallback)
+      linkTrack.appendChild(iconBtn)
+    })
+    const addLinkBtn = document.createElement('button')
+    addLinkBtn.type = 'button'; addLinkBtn.className = 'topbar-link-icon add'; addLinkBtn.textContent = '+'
+    addLinkBtn.title = `Add website link to ${row.name}`
+    addLinkBtn.addEventListener('click', ()=>{
       activeTopbarRowId = row.id
       saveTopbarActiveRowId()
-      renderHeaderLinks()
+      addTopbarLink()
     })
-    roleGrid.appendChild(btn)
+    linkTrack.appendChild(addLinkBtn)
+    rowWrap.appendChild(linkTrack)
+    if(rowIndex===0){
+      const manage = document.createElement('div')
+      manage.className = 'topbar-manage'
+      const selectedRow = topbarRows.find(item=>item.links.some(link=>link.id===topbarSelectedLinkId))
+      const selected = selectedRow && selectedRow.links.find(link=>link.id===topbarSelectedLinkId)
+      if(selected){
+        const label = document.createElement('span'); label.className = 'topbar-manage-label'; label.textContent = selected.title
+        const moveLeft = document.createElement('button'); moveLeft.type = 'button'; moveLeft.textContent = '<'; moveLeft.title = 'Move left'; moveLeft.addEventListener('click', ()=>moveTopbarLink(selected.id, -1))
+        const moveRight = document.createElement('button'); moveRight.type = 'button'; moveRight.textContent = '>'; moveRight.title = 'Move right'; moveRight.addEventListener('click', ()=>moveTopbarLink(selected.id, 1))
+        const rename = document.createElement('button'); rename.type = 'button'; rename.textContent = 'Rename'; rename.addEventListener('click', ()=>renameTopbarLink(selected.id))
+        const iconInput = document.createElement('input'); iconInput.type = 'url'; iconInput.value = selected.iconUrl || ''; iconInput.placeholder = 'Icon URL or domain'; iconInput.title = 'Custom icon URL or domain'
+        const iconSave = document.createElement('button'); iconSave.type = 'button'; iconSave.textContent = 'Icon'; iconSave.addEventListener('click', ()=>{
+          const iconUrl = normalizeIconChoice(iconInput.value.trim())
+          if(iconInput.value.trim() && !iconUrl){ alert('Please enter a valid image URL or website/domain.'); return }
+          selected.iconUrl = iconUrl; saveTopbarRows(); renderHeaderLinks()
+        })
+        const remove = document.createElement('button'); remove.type = 'button'; remove.className = 'danger'; remove.textContent = 'Delete'; remove.addEventListener('click', ()=>deleteTopbarLink(selected.id))
+        manage.append(label, moveLeft, moveRight, rename, iconInput, iconSave, remove)
+      }else manage.textContent = 'Select an icon to manage it'
+      rowWrap.appendChild(manage)
+    }
+    topbarLinksEl.appendChild(rowWrap)
   })
-
-  const addRoleBtn = document.createElement('button')
-  addRoleBtn.type = 'button'
-  addRoleBtn.className = 'topbar-role-btn add'
-  addRoleBtn.textContent = '+'
-  addRoleBtn.title = 'Add link row'
-  addRoleBtn.addEventListener('click', addTopbarRow)
-  roleGrid.appendChild(addRoleBtn)
-  topbarRolesEl.appendChild(roleGrid)
-
-  topbarLinksEl.innerHTML = ''
-  const linkTrack = document.createElement('div')
-  linkTrack.className = 'topbar-link-track'
-
-  activeRow.links.forEach(link=>{
-    const iconBtn = document.createElement('button')
-    iconBtn.type = 'button'
-    iconBtn.className = 'topbar-link-icon'
-    iconBtn.title = `${link.title} - ${link.url}`
-    iconBtn.setAttribute('aria-label', link.title)
-
-    const img = document.createElement('img')
-    img.className = 'topbar-link-favicon'
-    const faviconCandidates = makeFaviconCandidates(link.url, link.iconUrl || '')
-    let faviconIndex = 0
-    img.src = faviconCandidates[faviconIndex] || ''
-    img.alt = ''
-
-    const fallback = document.createElement('span')
-    fallback.className = 'topbar-link-fallback'
-    fallback.textContent = fallbackGlyph(link.title, link.url)
-
-    img.addEventListener('error', ()=>{
-      faviconIndex += 1
-      if(faviconIndex < faviconCandidates.length){
-        img.src = faviconCandidates[faviconIndex]
-        return
-      }
-      img.style.display = 'none'
-      fallback.style.display = 'inline-flex'
-    })
-    img.addEventListener('load', ()=>{
-      img.style.display = 'block'
-      fallback.style.display = 'none'
-    })
-
-    iconBtn.addEventListener('click', ()=>{
-      if(holdPress.consume()) return
-      window.open(link.url, '_blank', 'noopener,noreferrer')
-    })
-    const holdPress = attachLongPress(iconBtn, ()=>{
-      const action = prompt(`Manage link "${link.title}"\nType: edit, icon, clearicon, or delete`, 'edit')
-      if(!action) return
-      const next = action.trim().toLowerCase()
-      if(next==='delete') deleteTopbarLink(link.id)
-      else if(next==='icon') setTopbarLinkIcon(link.id)
-      else if(next==='clearicon'){
-        link.iconUrl = ''
-        saveTopbarRows()
-        renderHeaderLinks()
-      }
-      else editTopbarLink(link.id)
-    })
-
-    iconBtn.appendChild(img)
-    iconBtn.appendChild(fallback)
-    linkTrack.appendChild(iconBtn)
-  })
-
-  const addLinkBtn = document.createElement('button')
-  addLinkBtn.type = 'button'
-  addLinkBtn.className = 'topbar-link-icon add'
-  addLinkBtn.textContent = '+'
-  addLinkBtn.title = 'Add website link'
-  addLinkBtn.addEventListener('click', addTopbarLink)
-  linkTrack.appendChild(addLinkBtn)
-
-  topbarLinksEl.appendChild(linkTrack)
 }
 
 function editItem(id){ const it = items.find(i=>i.id===id); if(!it) return; const newUrl = prompt('Edit URL', it.url); if(!newUrl) return; const newTitle = prompt('Edit title', it.title)||it.title; const vid = extractVideoId(newUrl)||it.videoId; it.url=newUrl; it.title=newTitle; it.videoId=vid; save(); render() }
@@ -4371,12 +4471,33 @@ function render(){ sections.innerHTML=''
       heading.className = 'page-heading'
       heading.textContent = GYM_PAGE_TITLE
       sections.appendChild(heading)
+      const channelButton = document.createElement('button')
+      channelButton.type = 'button'
+      channelButton.className = 'gym-channel-config-btn'
+      channelButton.textContent = 'Channels'
+      channelButton.title = 'Configure channels that route videos to Gym'
+      channelButton.addEventListener('click', configureGymChannels)
+      sections.appendChild(channelButton)
     }
     renderRandomPlaylistButton(currentPageId, activeTabId)
     const sortOrder = getTabChronoSortOrder(currentPageId, activeTabId)
-    const sortedList = buildChronologicalListWithDividers(list, sortOrder)
     maybeEnrichChronologicalMetadataForTab(currentPageId, activeTabId)
-    if(sortedList.length){
+    if(isGymPage(currentPageId)){
+      const mainList = list.filter((item)=>!item.gymOld)
+      const oldList = list.filter((item)=>item.gymOld)
+      const sortedMainList = buildChronologicalListWithDividers(mainList, sortOrder)
+      const sortedOldList = buildChronologicalListWithDividers(oldList, sortOrder)
+      if(sortedMainList.length) renderSection('', sortedMainList)
+      if(sortedOldList.length) renderSection('Old', sortedOldList, false, gymOldHidden)
+      if(!sortedMainList.length && !sortedOldList.length){
+        const empty = document.createElement('p')
+        empty.style.padding = '12px'
+        empty.style.color = '#9fb0d6'
+        empty.textContent = 'No items'
+        sections.appendChild(empty)
+      }
+    }else if(list.length){
+      const sortedList = buildChronologicalListWithDividers(list, sortOrder)
       renderSection('', sortedList)
     }else{
       const empty = document.createElement('p')
@@ -4516,11 +4637,12 @@ function renderSection(title, list, showHomeControls = false, hideGrid = false){
     header.className = 'section-header'
     if(title){
       const h = document.createElement('h2')
-      if(title==='Old' && currentPageId==='home'){
-        h.textContent = `${homeOldHidden ? '▸' : '▾'} Old`
-        h.title = homeOldHidden ? 'Show old videos' : 'Hide old videos'
+      if(title==='Old' && (currentPageId==='home' || isGymPage(currentPageId))){
+        const isHidden = currentPageId==='home' ? homeOldHidden : gymOldHidden
+        h.textContent = `${isHidden ? '▸' : '▾'} Old`
+        h.title = isHidden ? 'Show old videos' : 'Hide old videos'
         h.style.cursor = 'pointer'
-        h.addEventListener('click', toggleHomeOldHidden)
+        h.addEventListener('click', currentPageId==='home' ? toggleHomeOldHidden : toggleGymOldHidden)
       }else{
         h.textContent = title
       }
@@ -4584,6 +4706,19 @@ function renderSection(title, list, showHomeControls = false, hideGrid = false){
       dateEl.textContent = dateLabel
       dateEl.style.display = dateLabel ? '' : 'none'
     }
+    if(isGymPage(currentPageId)){
+      const meta = node.querySelector('.meta')
+      const noteButton = document.createElement('button')
+      noteButton.type = 'button'
+      noteButton.className = `gym-note-btn${it.note ? ' has-note' : ''}`
+      noteButton.textContent = it.note ? '✎' : '＋'
+      noteButton.title = it.note ? 'Open note' : 'Add note'
+      noteButton.addEventListener('click', (event)=>{
+        event.stopPropagation()
+        openGymItemNote(it)
+      })
+      if(meta) meta.appendChild(noteButton)
+    }
     el.classList.toggle('is-editing', editMode)
     el.classList.toggle('is-selected', selectedItemIds.has(it.id))
     el.classList.toggle('is-range-flag', rangeFlagStartId===it.id || rangeFlagEndId===it.id)
@@ -4593,6 +4728,11 @@ function renderSection(title, list, showHomeControls = false, hideGrid = false){
       el.addEventListener('contextmenu', (ev)=>{
         ev.preventDefault()
         removeItem(it.id)
+      })
+    }else if(isGymPage(currentPageId)){
+      el.addEventListener('contextmenu', (ev)=>{
+        ev.preventDefault()
+        moveGymItemToOld(it)
       })
     }
     el.addEventListener('click', ()=>{
@@ -4696,6 +4836,7 @@ window.addEventListener('keydown', (ev)=>{
   if(ev.key!=='Escape') return
   closeHoldDialog()
   closeTitleFilterOverlay()
+  closeGymItemNote()
   if(notePanelEl && !notePanelEl.classList.contains('hidden')) closeNotebook()
 })
 
@@ -4730,6 +4871,7 @@ window.addEventListener('load', ()=>{
   ensureGymPageExists()
   ensureJournalPageExists()
   ensureCarbsPageExists()
+  if(gymChannels.length) saveGymChannels()
   ensurePageTabIntegrity()
   currentPageId = 'home'
   saveCurrentPageId()

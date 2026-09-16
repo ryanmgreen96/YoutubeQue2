@@ -43,6 +43,41 @@ function extractUrlFromInfo(info, tab){
   return info.linkUrl || info.srcUrl || info.pageUrl || (tab && tab.url) || null
 }
 
+async function inspectTabChannelName(tab){
+  if(!tab || typeof tab.id !== 'number') return ''
+  try{
+    const results = await chrome.scripting.executeScript({
+      target: {tabId: tab.id},
+      func: ()=>{
+        const selectors = [
+          '#owner #channel-name a',
+          'ytd-watch-metadata #owner a',
+          '#channel-name a',
+          'ytd-channel-name a',
+          '[href^="/@"]',
+          '[href^="/channel/"]',
+          '[href^="/c/"]',
+          '[href^="/user/"]'
+        ]
+        for(const selector of selectors){
+          const node = document.querySelector(selector)
+          const text = (node && (node.textContent || node.getAttribute('aria-label') || node.getAttribute('title')) || '').trim()
+          if(text && !/^(subscribe|join)$/i.test(text)) return text
+        }
+        return ''
+      }
+    })
+    return typeof results?.[0]?.result === 'string' ? results[0].result : ''
+  }catch(e){ return '' }
+}
+async function requestGymNoteFromTab(tab, channelName){
+  if(!tab || typeof tab.id !== 'number' || !channelName) return ''
+  try{
+    const response = await chrome.tabs.sendMessage(tab.id, {type:'collect-gym-note', channelName})
+    return response && typeof response.note === 'string' ? response.note : ''
+  }catch(e){ return '' }
+}
+
 chrome.contextMenus.onClicked.addListener((info, tab)=>{
   if(info.menuItemId !== 'queue-video') return
   console.debug('contextMenus.onClicked', {info, tab})
@@ -99,7 +134,9 @@ chrome.contextMenus.onClicked.addListener((info, tab)=>{
       if(found && found.text) {
         resolvedTitle = found.text
         publishedAtFromTab = await inspectTabPublishedAt(tab)
-        openQueueTabFor(targetUrl || tab.url, resolvedTitle, publishedAtFromTab)
+        const channelName = await inspectTabChannelName(tab)
+        const note = await requestGymNoteFromTab(tab, channelName)
+        openQueueTabFor(targetUrl || tab.url, resolvedTitle, publishedAtFromTab, channelName, note)
         return
       }
     }
@@ -111,10 +148,14 @@ chrome.contextMenus.onClicked.addListener((info, tab)=>{
       resolvedTitle = pageTitle
       publishedAtFromTab = await inspectTabPublishedAt(tab)
       console.debug('using pageTitle fallback', {pageTitle, publishedAtFromTab})
-      openQueueTabFor(targetUrl || (tab && tab.url) || null, resolvedTitle, publishedAtFromTab)
+      const channelName = await inspectTabChannelName(tab)
+      const note = await requestGymNoteFromTab(tab, channelName)
+      openQueueTabFor(targetUrl || (tab && tab.url) || null, resolvedTitle, publishedAtFromTab, channelName, note)
     }catch(e){
       publishedAtFromTab = await inspectTabPublishedAt(tab)
-      openQueueTabFor(targetUrl || (tab && tab.url) || null, null, publishedAtFromTab)
+      const channelName = await inspectTabChannelName(tab)
+      const note = await requestGymNoteFromTab(tab, channelName)
+      openQueueTabFor(targetUrl || (tab && tab.url) || null, null, publishedAtFromTab, channelName, note)
     }
   })()
 })
@@ -1168,7 +1209,7 @@ async function fetchPagePublishedAt(url){
   return ''
 }
 
-function openQueueTabFor(href, title, publishedAtFromPage = ''){
+function openQueueTabFor(href, title, publishedAtFromPage = '', channelName = '', note = ''){
   // fetch the page title when possible to ensure queued item title matches the target
   (async ()=>{
     try{
@@ -1188,7 +1229,7 @@ function openQueueTabFor(href, title, publishedAtFromPage = ''){
       const finalTitle = (!isGenericYouTubeTitle(fetched) ? fetched : '') || playerTitle || (!isGenericYouTubeTitle(title) ? title : '') || `YouTube video ${vid || ''}`.trim()
       const resolvedPublishedAt = isReasonablePublishDate(pagePublishedAt) ? pagePublishedAt : ''
       console.debug('openQueueTabFor', {href, title, fetched, publishedAt: resolvedPublishedAt, finalTitle})
-      const item = { id: uid(), url: href, title: finalTitle, videoId: vid, favorite:false, created: new Date().toISOString(), publishedAt: resolvedPublishedAt }
+      const item = { id: uid(), url: href, title: finalTitle, videoId: vid, favorite:false, created: new Date().toISOString(), publishedAt: resolvedPublishedAt, channelName: safeText(channelName), note: typeof note === 'string' ? note : '' }
       chrome.storage.local.get({queuedItems:[]}, (res)=>{
         const arr = res.queuedItems || []
         arr.unshift(item)
@@ -1201,7 +1242,7 @@ function openQueueTabFor(href, title, publishedAtFromPage = ''){
       const fallbackTitle = !isGenericYouTubeTitle(title)
         ? safeText(title)
         : `YouTube video ${fallbackVideoId || ''}`.trim()
-      const item = { id: uid(), url: fallbackUrl, title: fallbackTitle, videoId: fallbackVideoId, favorite:false, created: new Date().toISOString(), publishedAt: publishedAtFromPage || '' }
+      const item = { id: uid(), url: fallbackUrl, title: fallbackTitle, videoId: fallbackVideoId, favorite:false, created: new Date().toISOString(), publishedAt: publishedAtFromPage || '', channelName: safeText(channelName), note: typeof note === 'string' ? note : '' }
       console.debug('openQueueTabFor fallback item', item)
       chrome.storage.local.get({queuedItems:[]}, (res)=>{
         const arr = res.queuedItems || []
@@ -1387,7 +1428,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse)=>{
       return true
     }
 
-    openQueueTabFor(message.url, message.title || '', message.publishedAt || '')
+    openQueueTabFor(message.url, message.title || '', message.publishedAt || '', message.channelName || '', message.note || '')
     sendResponse({ok:true})
     return true
   }

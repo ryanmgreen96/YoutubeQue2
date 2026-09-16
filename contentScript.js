@@ -3,6 +3,7 @@
   const SAVED_LINKS_APP_KEY = 'ytSavedVideos_v1'
   const SAVED_LINKS_EXT_KEY = 'savedVideoLinks'
   const QUEUE_MODE_KEY = 'ytQueueClickMode'
+  const GYM_CHANNELS_KEY = 'ytGymChannels_v1'
   const host = location.hostname.replace(/^www\./, '')
 
   function isYouTubeHost(){
@@ -407,6 +408,93 @@
     return isGenericQueueTitle(text) ? '' : text.trim()
   }
 
+  function normalizeChannelName(value){
+    return String(value || '').trim().toLowerCase().replace(/^@/, '')
+  }
+
+  async function getGymChannelNames(){
+    try{
+      const result = await chrome.storage.local.get({[GYM_CHANNELS_KEY]: []})
+      return Array.isArray(result[GYM_CHANNELS_KEY]) ? result[GYM_CHANNELS_KEY].map(normalizeChannelName).filter(Boolean) : []
+    }catch(e){ return [] }
+  }
+
+  function channelNameFromElement(target){
+    const row = target && target.closest && target.closest('ytd-rich-item-renderer, ytd-video-renderer, ytd-compact-video-renderer, ytd-grid-video-renderer, ytd-reel-item-renderer, ytd-playlist-panel-video-renderer, ytd-playlist-video-renderer')
+    const selectors = [
+      '#channel-name a',
+      'ytd-channel-name a',
+      '#metadata ytd-channel-name',
+      'yt-formatted-string.ytd-channel-name',
+      '[href^="/@"]',
+      '[href^="/channel/"]',
+      '[href^="/c/"]',
+      '[href^="/user/"]'
+    ]
+    for(const selector of selectors){
+      const node = (row && row.querySelector(selector)) || document.querySelector(selector)
+      const text = (node && (node.textContent || node.getAttribute('aria-label') || node.getAttribute('title')) || '').trim()
+      if(text && !/^(subscribe|join)$/i.test(text)) return text
+    }
+    return ''
+  }
+
+  function channelMatchesGymList(channelName, channels){
+    const normalized = normalizeChannelName(channelName)
+    return !!normalized && channels.some((entry)=>normalized === entry || normalized.includes(entry) || entry.includes(normalized))
+  }
+
+  function collectQueueNote(channelName){
+    return new Promise((resolve)=>{
+      const existing = document.getElementById('yt-gym-note-overlay')
+      if(existing) existing.remove()
+
+      const overlay = document.createElement('div')
+      overlay.id = 'yt-gym-note-overlay'
+      overlay.style.cssText = 'position:fixed;inset:0;z-index:2147483647;display:flex;align-items:center;justify-content:center;background:rgba(0,0,0,.48);font-family:system-ui,-apple-system,Segoe UI,Roboto,Arial'
+      const panel = document.createElement('div')
+      panel.style.cssText = 'width:min(420px,calc(100vw - 32px));padding:16px;border-radius:10px;background:#172330;color:#e8f0fa;box-shadow:0 18px 50px rgba(0,0,0,.4)'
+      const title = document.createElement('div')
+      title.textContent = `Gym note for ${channelName}`
+      title.style.cssText = 'margin-bottom:10px;font-size:14px;font-weight:600'
+      const textarea = document.createElement('textarea')
+      textarea.placeholder = 'Add a note for this video (optional)'
+      textarea.style.cssText = 'display:block;width:100%;min-height:130px;resize:vertical;padding:9px;border:1px solid rgba(255,255,255,.18);border-radius:7px;background:rgba(255,255,255,.06);color:#fff;font:13px/1.45 system-ui,-apple-system,Segoe UI,Roboto,Arial'
+      const actions = document.createElement('div')
+      actions.style.cssText = 'display:flex;justify-content:flex-end;gap:8px;margin-top:10px'
+      const skip = document.createElement('button')
+      skip.type = 'button'; skip.textContent = 'Skip'; skip.style.cssText = 'padding:7px 11px;border:0;border-radius:6px;background:rgba(255,255,255,.1);color:#e8f0fa;cursor:pointer'
+      const save = document.createElement('button')
+      save.type = 'button'; save.textContent = 'Queue video'; save.style.cssText = 'padding:7px 11px;border:0;border-radius:6px;background:#d7b06e;color:#111a26;font-weight:600;cursor:pointer'
+      const finish = (value)=>{ overlay.remove(); resolve(value) }
+      skip.addEventListener('click', ()=>finish(''))
+      save.addEventListener('click', ()=>finish(textarea.value))
+      overlay.addEventListener('click', (event)=>{ if(event.target===overlay) finish('') })
+      actions.append(skip, save)
+      panel.append(title, textarea, actions)
+      overlay.appendChild(panel)
+      document.documentElement.appendChild(overlay)
+      textarea.focus()
+    })
+  }
+
+  async function queueContextForTarget(target){
+    const channelName = channelNameFromElement(target)
+    const channels = await getGymChannelNames()
+    if(!channelMatchesGymList(channelName, channels)) return {channelName, note: ''}
+    return {channelName, note: await collectQueueNote(channelName)}
+  }
+
+  chrome.runtime.onMessage.addListener((message, sender, sendResponse)=>{
+    if(!message || message.type !== 'collect-gym-note') return
+    getGymChannelNames().then(async (channels)=>{
+      const channelName = typeof message.channelName === 'string' ? message.channelName : ''
+      const note = channelMatchesGymList(channelName, channels) ? await collectQueueNote(channelName) : ''
+      sendResponse({note})
+    }).catch(()=>sendResponse({note:''}))
+    return true
+  })
+
   function isGenericQueueTitle(value){
     const title = (typeof value === 'string' ? value : '').replace(/\s+/g, ' ').trim()
     return !title || /^(youtube|youtube music)(?:\s*-\s*youtube)?$/i.test(title) || /^title(?:\s*\(\d+\))?$/i.test(title) || /^youtube video\s+\S+$/i.test(title)
@@ -694,8 +782,9 @@
         if(ev.stopImmediatePropagation) ev.stopImmediatePropagation()
 
         const title = queueTitleFromElement(target)
+        const queueContext = await queueContextForTarget(target)
         const publishedAt = extractPublishDateFromCurrentPage()
-        chrome.runtime.sendMessage({type:'queue-video-url', url: videoUrl, title, publishedAt})
+        chrome.runtime.sendMessage({type:'queue-video-url', url: videoUrl, title, publishedAt, channelName: queueContext.channelName, note: queueContext.note})
       }
 
       document.addEventListener('contextmenu', (ev)=>{ handleQueueClick(ev) }, true)
