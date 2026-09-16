@@ -126,6 +126,7 @@ let currentPageId = loadCurrentPageId()
 let editMode = false
 let deleteMode = false
 let pageDeleteMode = false
+let gymDeleteMode = false
 let selectedItemIds = new Set()
 let rangeFlagStartId = null
 let rangeFlagEndId = null
@@ -3793,6 +3794,16 @@ function togglePageDeleteMode(){
   renderLeftNav()
   render()
 }
+function toggleGymDeleteMode(){
+  if(!isGymPage(currentPageId)) return
+  editMode = false
+  deleteMode = false
+  pageDeleteMode = false
+  gymDeleteMode = !gymDeleteMode
+  selectedItemIds.clear()
+  clearRangeFlags()
+  render()
+}
 function syncPageDeleteModeButton(){
   if(!deletePageItemsBtn) return
   const enabled = currentPageId!=='home'
@@ -3848,6 +3859,7 @@ function setCurrentPage(pageId){
   editMode = false
   deleteMode = false
   pageDeleteMode = false
+  gymDeleteMode = false
   selectedItemIds.clear()
   clearRangeFlags()
   renderLeftNav()
@@ -3933,14 +3945,14 @@ function addDividerBeforeItem(targetItemId){
   return true
 }
 
-function buildChronologicalListWithDividers(list, chronologicalOrder = 'desc'){
+function buildChronologicalListWithDividers(list, chronologicalOrder = 'desc', timeResolver = itemChronologyMs){
   const dividersByAnchor = new Map()
   const orphans = []
   const videos = list.filter(item=>!isDividerItem(item))
 
   const sortedVideos = videos.slice().sort((a, b)=>{
-    const aSafe = itemChronologyMs(a)
-    const bSafe = itemChronologyMs(b)
+    const aSafe = timeResolver(a)
+    const bSafe = timeResolver(b)
     return chronologicalOrder === 'asc' ? (aSafe - bSafe) : (bSafe - aSafe)
   })
 
@@ -4530,6 +4542,14 @@ function render(){ sections.innerHTML=''
       channelButton.title = 'Configure channels that route videos to Gym'
       channelButton.addEventListener('click', configureGymChannels)
       sections.appendChild(channelButton)
+      const deleteButton = document.createElement('button')
+      deleteButton.type = 'button'
+      deleteButton.className = `gym-delete-toggle${gymDeleteMode ? ' selected' : ''}`
+      deleteButton.textContent = '×'
+      deleteButton.title = gymDeleteMode ? 'Delete mode ON: click Gym videos to delete' : 'Toggle Gym delete mode'
+      deleteButton.setAttribute('aria-label', deleteButton.title)
+      deleteButton.addEventListener('click', toggleGymDeleteMode)
+      sections.appendChild(deleteButton)
     }
     renderRandomPlaylistButton(currentPageId, activeTabId)
     const sortOrder = getTabChronoSortOrder(currentPageId, activeTabId)
@@ -4537,8 +4557,12 @@ function render(){ sections.innerHTML=''
     if(isGymPage(currentPageId)){
       const mainList = list.filter((item)=>!item.gymOld)
       const oldList = list.filter((item)=>item.gymOld)
-      const sortedMainList = buildChronologicalListWithDividers(mainList, sortOrder)
-      const sortedOldList = buildChronologicalListWithDividers(oldList, sortOrder)
+      const queueTime = (item)=>{
+        const parsed = Date.parse((item && item.created) || '')
+        return Number.isNaN(parsed) ? 0 : parsed
+      }
+      const sortedMainList = buildChronologicalListWithDividers(mainList, 'desc', queueTime)
+      const sortedOldList = buildChronologicalListWithDividers(oldList, 'desc', queueTime)
       if(sortedMainList.length) renderSection('', sortedMainList)
       if(sortedOldList.length) renderSection('Old', sortedOldList, false, gymOldHidden)
       if(!sortedMainList.length && !sortedOldList.length){
@@ -4799,6 +4823,10 @@ function renderSection(title, list, showHomeControls = false, hideGrid = false){
         return
       }
       if(deleteMode && currentPageId==='home'){
+        removeItem(it.id)
+        return
+      }
+      if(gymDeleteMode && isGymPage(currentPageId)){
         removeItem(it.id)
         return
       }

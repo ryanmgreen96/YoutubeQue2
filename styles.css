@@ -191,6 +191,8 @@ main{display:grid;grid-template-columns:10% 75% 15%;height:100vh;overflow:hidden
 .page-heading{margin:0 0 6px 4px;font-size:16px;line-height:1.2;color:#ffdf8a;font-weight:600}
 .gym-channel-config-btn{align-self:flex-start;margin:0 4px 4px;padding:4px 8px;border:none;border-radius:5px;color:var(--text-soft);font-size:11px;background:rgba(255,255,255,0.06)}
 .gym-channel-config-btn:hover{background:rgba(255,255,255,0.12);color:var(--text)}
+.gym-delete-toggle{align-self:flex-start;width:24px;height:24px;margin:0 4px 6px;padding:0;border:1px solid rgba(255,150,140,0.4);border-radius:999px;color:#ffd7d7;font-size:16px;line-height:1;background:rgba(120,40,35,0.28)}
+.gym-delete-toggle:hover,.gym-delete-toggle.selected{background:#d58172;color:#1a0f0d;border-color:#d58172}
 .movie-page-actions{display:flex;justify-content:flex-start;margin:0 4px 12px}
 .movie-page-add-btn{padding:8px 12px;border-radius:999px;border:1px solid color-mix(in srgb, var(--accent) 42%, rgba(255,255,255,0.12));background:linear-gradient(180deg,color-mix(in srgb, var(--accent) 20%, rgba(255,255,255,0.06)),rgba(255,255,255,0.04));color:#fff2d8;font-size:12px}
 .movie-list-grid{column-count:4;column-gap:18px;column-fill:balance;min-height:200px}
