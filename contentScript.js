@@ -782,9 +782,19 @@
         if(ev.stopImmediatePropagation) ev.stopImmediatePropagation()
 
         const title = queueTitleFromElement(target)
-        const queueContext = await queueContextForTarget(target)
         const publishedAt = extractPublishDateFromCurrentPage()
-        chrome.runtime.sendMessage({type:'queue-video-url', url: videoUrl, title, publishedAt, channelName: queueContext.channelName, note: queueContext.note})
+        let queueContext = {channelName: '', note: ''}
+        try{
+          queueContext = await Promise.race([
+            queueContextForTarget(target),
+            new Promise((resolve)=>setTimeout(()=>resolve(queueContext), 1200))
+          ])
+        }catch(e){ }
+        try{
+          chrome.runtime.sendMessage({type:'queue-video-url', url: videoUrl, title, publishedAt, channelName: queueContext.channelName, note: queueContext.note})
+        }catch(e){
+          chrome.runtime.sendMessage({type:'queue-video-url', url: videoUrl, title, publishedAt})
+        }
       }
 
       document.addEventListener('contextmenu', (ev)=>{ handleQueueClick(ev) }, true)
