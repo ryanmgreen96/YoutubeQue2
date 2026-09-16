@@ -62,6 +62,8 @@ async function inspectTabChannelName(tab){
         for(const selector of selectors){
           const node = document.querySelector(selector)
           const text = (node && (node.textContent || node.getAttribute('aria-label') || node.getAttribute('title')) || '').trim()
+          const href = node && (node.getAttribute('href') || '')
+          if(href && /^\/@|^\/channel\/|^\/c\/|^\/user\//i.test(href)) return `${text} ${href}`.trim()
           if(text && !/^(subscribe|join)$/i.test(text)) return text
         }
         return ''
