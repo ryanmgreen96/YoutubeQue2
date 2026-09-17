@@ -67,8 +67,8 @@ main{display:grid;grid-template-columns:10% 75% 15%;height:100vh;overflow:hidden
 .page-link{font-size:13px;line-height:1.2;text-align:left;padding:6px 4px;border-radius:0;border:none;color:var(--text);background:transparent;white-space:normal}
 .page-link.side-link{color:#f0d4a2}
 .page-link.side-link:hover{color:#ffe3bb}
-.left-nav .page-link.selected{background:transparent;color:#fff;border:none}
-.page-link.selected{color:#fff}
+.left-nav .page-link.selected{background:rgba(0,0,0,0.08);color:var(--text);border:none}
+.page-link.selected{color:var(--text)}
 .page-link.random-page-link{color:#b55245}
 .page-link.random-page-link:hover{color:#d06c5b}
 .left-nav .page-link.random-page-link.selected{color:#d06c5b}
