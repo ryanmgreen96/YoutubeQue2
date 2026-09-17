@@ -9,7 +9,7 @@ header{position:fixed;top:0;left:10%;width:75%;height:94px;display:grid;grid-tem
 .topbar-role-btn.selected{background:color-mix(in srgb, var(--accent) 20%, transparent);border-color:color-mix(in srgb, var(--accent) 45%, transparent);color:#fff2d8}
 .topbar-role-btn.add{color:#fff1d6;border-color:color-mix(in srgb, var(--accent) 34%, transparent)}
 .topbar-roles{display:none}
-.topbar-links{display:flex;flex-direction:column;align-items:center;justify-content:flex-start;gap:4px;min-width:0;padding-top:2px;margin-top:4px}
+.topbar-links{display:flex;flex-direction:column;align-items:center;justify-content:flex-start;gap:4px;min-width:0;padding-top:0;margin-top:0}
 .topbar-row-wrap{display:flex;align-items:center;justify-content:center;gap:8px;width:100%;min-width:0}
 .topbar-row-wrap.main{flex-direction:column;gap:4px}
 .topbar-link-track{display:flex;align-items:center;justify-content:center;gap:8px;width:100%;overflow-x:auto;padding:1px 0;scrollbar-width:none}
@@ -24,8 +24,9 @@ header{position:fixed;top:0;left:10%;width:75%;height:94px;display:grid;grid-tem
 .topbar-link-fallback{display:none;width:24px;height:24px;border-radius:6px;align-items:center;justify-content:center;font-size:12px;font-weight:700;color:#fff1d6;background:color-mix(in srgb, var(--accent) 30%, transparent)}
 .topbar-row-wrap.secondary .topbar-link-favicon{width:18px;height:18px;border-radius:4px}
 .topbar-row-wrap.secondary .topbar-link-fallback{width:18px;height:18px;border-radius:4px;font-size:9px}
-.topbar-manage{display:flex;align-items:center;flex-wrap:wrap;justify-content:center;gap:8px;width:100%;max-width:820px;padding:8px 10px;border:1px solid rgba(255,255,255,0.12);border-radius:10px;background:rgba(255,255,255,0.03);color:var(--text-soft);font-size:12px;white-space:normal}
+.topbar-manage{display:flex;align-items:center;flex-wrap:wrap;justify-content:center;gap:8px;width:100%;max-width:820px;padding:8px 10px;margin-top:6px;border:1px solid rgba(255,255,255,0.12);border-radius:10px;background:rgba(255,255,255,0.03);color:var(--text-soft);font-size:12px;white-space:normal}
 .topbar-manage-label{max-width:180px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.topbar-manage-close{margin-left:auto}
 .topbar-manage button{padding:6px 9px;border:none;border-radius:6px;color:var(--text-soft);font-size:12px;background:rgba(255,255,255,0.05)}
 .topbar-manage button:hover{background:rgba(255,255,255,0.12);color:var(--text)}
 .topbar-manage button.danger{color:#ffd0cc}

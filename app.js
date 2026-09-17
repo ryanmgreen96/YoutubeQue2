@@ -147,52 +147,52 @@ const chronoEnrichmentInFlight = new Set()
 
 const THEMES = [
   {
-    name: 'Blue',
-    bg: '#172330',
-    card: '#111a26',
-    text: '#e8f0fa',
-    textSoft: '#cad8ea',
-    accent: '#d7b06e'
-  },
-  {
-    name: 'Red',
-    bg: '#2b1f1d',
-    card: '#241917',
-    text: '#f3e8e5',
-    textSoft: '#dbc7c0',
-    accent: '#d39a7a'
-  },
-  {
-    name: 'Green',
-    bg: '#202a22',
-    card: '#1a241c',
-    text: '#e9f1e8',
-    textSoft: '#c7d7c6',
-    accent: '#c5b37a'
-  },
-  {
     name: 'Yellow',
-    bg: '#2c291f',
-    card: '#242116',
-    text: '#f4eddc',
-    textSoft: '#ddd2b4',
-    accent: '#d2a967'
+    bg: '#2d2618',
+    card: '#1d1a12',
+    text: '#f8f0df',
+    textSoft: '#e9d7a4',
+    accent: '#e5b95d'
   },
   {
-    name: 'Baby Blue',
-    bg: '#1f2830',
-    card: '#182029',
-    text: '#ecf3f7',
-    textSoft: '#cedbe4',
-    accent: '#c9a77a'
+    name: 'Brick Red',
+    bg: '#2e1d1a',
+    card: '#1f1514',
+    text: '#f9ece7',
+    textSoft: '#e6c3b4',
+    accent: '#d2775d'
   },
   {
-    name: 'Purple',
-    bg: '#292232',
-    card: '#211b2a',
-    text: '#efe9f6',
-    textSoft: '#d3c6e2',
-    accent: '#c8a07a'
+    name: 'Warm Green',
+    bg: '#1f2b22',
+    card: '#182318',
+    text: '#edf6ee',
+    textSoft: '#d1e1ca',
+    accent: '#c5a85f'
+  },
+  {
+    name: 'Warm Blue',
+    bg: '#1c2b34',
+    card: '#16242d',
+    text: '#edf5f8',
+    textSoft: '#c8dfe7',
+    accent: '#d3a35c'
+  },
+  {
+    name: 'Ochre',
+    bg: '#2b241c',
+    card: '#1d1914',
+    text: '#f5efe6',
+    textSoft: '#e6d5b1',
+    accent: '#d8a64f'
+  },
+  {
+    name: 'Rose Gold',
+    bg: '#2b1d23',
+    card: '#1d1518',
+    text: '#f9edf1',
+    textSoft: '#e2c8d2',
+    accent: '#d88d69'
   }
 ]
 
@@ -4223,8 +4223,13 @@ function renderHeaderLinks(){
         selected.iconUrl = iconUrl; saveTopbarRows(); renderHeaderLinks()
       })
       const remove = document.createElement('button'); remove.type = 'button'; remove.className = 'danger'; remove.textContent = 'Delete'; remove.addEventListener('click', ()=>deleteTopbarLink(selected.id))
-      manage.append(label, moveLeft, moveRight, rename, iconInput, iconSave, remove)
-    }else manage.textContent = 'Select an icon to manage it'
+      const close = document.createElement('button'); close.type = 'button'; close.className = 'topbar-manage-close'; close.textContent = 'Close'; close.addEventListener('click', ()=>{ topbarManageOpen = false; renderHeaderLinks() })
+      manage.append(label, moveLeft, moveRight, rename, iconInput, iconSave, remove, close)
+    }else{
+      const close = document.createElement('button'); close.type = 'button'; close.className = 'topbar-manage-close'; close.textContent = 'Close'; close.addEventListener('click', ()=>{ topbarManageOpen = false; renderHeaderLinks() })
+      manage.appendChild(close)
+      manage.append('Select an icon to manage it')
+    }
     topbarLinksEl.appendChild(manage)
   }
 }
