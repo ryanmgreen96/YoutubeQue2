@@ -148,51 +148,51 @@ const chronoEnrichmentInFlight = new Set()
 const THEMES = [
   {
     name: 'Baby Blue',
-    bg: '#eaf3fd',
-    card: '#f7fbff',
-    text: '#1d2f3f',
-    textSoft: '#56718a',
+    bg: '#1a2d3a',
+    card: '#233a4c',
+    text: '#edf7ff',
+    textSoft: '#bfd7ea',
     accent: '#e4b864'
   },
   {
     name: 'Warm Yellow',
-    bg: '#f8f0dd',
-    card: '#fffaf1',
-    text: '#2c2618',
-    textSoft: '#665d46',
-    accent: '#ddac52'
+    bg: '#2c2619',
+    card: '#3a3121',
+    text: '#fff4d8',
+    textSoft: '#d9c59d',
+    accent: '#d7a94d'
   },
   {
     name: 'Peach Red',
-    bg: '#f9eae7',
-    card: '#fff7f4',
-    text: '#2d201d',
-    textSoft: '#715a57',
+    bg: '#352220',
+    card: '#472b28',
+    text: '#fff1ee',
+    textSoft: '#e7c2b9',
     accent: '#d07b67'
   },
   {
     name: 'Warm Green',
-    bg: '#edf5e8',
-    card: '#f8fbf5',
-    text: '#24372d',
-    textSoft: '#567062',
-    accent: '#c5a15b'
+    bg: '#1f2a22',
+    card: '#2a3930',
+    text: '#edf8ee',
+    textSoft: '#cfe0d0',
+    accent: '#cfab68'
   },
   {
     name: 'Soft Blue',
-    bg: '#edf5fb',
-    card: '#f8fcff',
-    text: '#213949',
-    textSoft: '#547187',
+    bg: '#1a2c38',
+    card: '#233d4d',
+    text: '#edf7ff',
+    textSoft: '#c5dbeb',
     accent: '#d19d60'
   },
   {
     name: 'Warm Coral',
-    bg: '#f8eef1',
-    card: '#fffafc',
-    text: '#2f2125',
-    textSoft: '#6d5460',
-    accent: '#d58b6a'
+    bg: '#2d212b',
+    card: '#402b35',
+    text: '#fff1f5',
+    textSoft: '#e9c7d2',
+    accent: '#d48a6d'
   }
 ]
 
