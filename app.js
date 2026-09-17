@@ -4203,29 +4203,30 @@ function renderHeaderLinks(){
     })
     linkTrack.appendChild(addLinkBtn)
     rowWrap.appendChild(linkTrack)
-    if(rowIndex===0 && topbarManageOpen){
-      const manage = document.createElement('div')
-      manage.className = 'topbar-manage'
-      const selectedRow = topbarRows.find(item=>item.links.some(link=>link.id===topbarSelectedLinkId))
-      const selected = selectedRow && selectedRow.links.find(link=>link.id===topbarSelectedLinkId)
-      if(selected){
-        const label = document.createElement('span'); label.className = 'topbar-manage-label'; label.textContent = selected.title
-        const moveLeft = document.createElement('button'); moveLeft.type = 'button'; moveLeft.textContent = '<'; moveLeft.title = 'Move left'; moveLeft.addEventListener('click', ()=>moveTopbarLink(selected.id, -1))
-        const moveRight = document.createElement('button'); moveRight.type = 'button'; moveRight.textContent = '>'; moveRight.title = 'Move right'; moveRight.addEventListener('click', ()=>moveTopbarLink(selected.id, 1))
-        const rename = document.createElement('button'); rename.type = 'button'; rename.textContent = 'Rename'; rename.addEventListener('click', ()=>renameTopbarLink(selected.id))
-        const iconInput = document.createElement('input'); iconInput.type = 'url'; iconInput.value = selected.iconUrl || ''; iconInput.placeholder = 'Icon URL or domain'; iconInput.title = 'Custom icon URL or domain'
-        const iconSave = document.createElement('button'); iconSave.type = 'button'; iconSave.textContent = 'Icon'; iconSave.addEventListener('click', ()=>{
-          const iconUrl = normalizeIconChoice(iconInput.value.trim())
-          if(iconInput.value.trim() && !iconUrl){ alert('Please enter a valid image URL or website/domain.'); return }
-          selected.iconUrl = iconUrl; saveTopbarRows(); renderHeaderLinks()
-        })
-        const remove = document.createElement('button'); remove.type = 'button'; remove.className = 'danger'; remove.textContent = 'Delete'; remove.addEventListener('click', ()=>deleteTopbarLink(selected.id))
-        manage.append(label, moveLeft, moveRight, rename, iconInput, iconSave, remove)
-      }else manage.textContent = 'Select an icon to manage it'
-      rowWrap.appendChild(manage)
-    }
     topbarLinksEl.appendChild(rowWrap)
   })
+
+  if(topbarManageOpen){
+    const manage = document.createElement('div')
+    manage.className = 'topbar-manage'
+    const selectedRow = topbarRows.find(item=>item.links.some(link=>link.id===topbarSelectedLinkId))
+    const selected = selectedRow && selectedRow.links.find(link=>link.id===topbarSelectedLinkId)
+    if(selected){
+      const label = document.createElement('span'); label.className = 'topbar-manage-label'; label.textContent = selected.title
+      const moveLeft = document.createElement('button'); moveLeft.type = 'button'; moveLeft.textContent = '<'; moveLeft.title = 'Move left'; moveLeft.addEventListener('click', ()=>moveTopbarLink(selected.id, -1))
+      const moveRight = document.createElement('button'); moveRight.type = 'button'; moveRight.textContent = '>'; moveRight.title = 'Move right'; moveRight.addEventListener('click', ()=>moveTopbarLink(selected.id, 1))
+      const rename = document.createElement('button'); rename.type = 'button'; rename.textContent = 'Rename'; rename.addEventListener('click', ()=>renameTopbarLink(selected.id))
+      const iconInput = document.createElement('input'); iconInput.type = 'url'; iconInput.value = selected.iconUrl || ''; iconInput.placeholder = 'Icon URL or domain'; iconInput.title = 'Custom icon URL or domain'
+      const iconSave = document.createElement('button'); iconSave.type = 'button'; iconSave.textContent = 'Icon'; iconSave.addEventListener('click', ()=>{
+        const iconUrl = normalizeIconChoice(iconInput.value.trim())
+        if(iconInput.value.trim() && !iconUrl){ alert('Please enter a valid image URL or website/domain.'); return }
+        selected.iconUrl = iconUrl; saveTopbarRows(); renderHeaderLinks()
+      })
+      const remove = document.createElement('button'); remove.type = 'button'; remove.className = 'danger'; remove.textContent = 'Delete'; remove.addEventListener('click', ()=>deleteTopbarLink(selected.id))
+      manage.append(label, moveLeft, moveRight, rename, iconInput, iconSave, remove)
+    }else manage.textContent = 'Select an icon to manage it'
+    topbarLinksEl.appendChild(manage)
+  }
 }
 
 function editItem(id){ const it = items.find(i=>i.id===id); if(!it) return; const newUrl = prompt('Edit URL', it.url); if(!newUrl) return; const newTitle = prompt('Edit title', it.title)||it.title; const vid = extractVideoId(newUrl)||it.videoId; it.url=newUrl; it.title=newTitle; it.videoId=vid; save(); render() }
