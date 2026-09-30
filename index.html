@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width,initial-scale=1" />
   <title>YouTube Queue</title>
   <meta name="build" content="staged-push-20260831" />
-  <link rel="stylesheet" href="styles.css?v=20260916a">
+  <link rel="stylesheet" href="styles.css?v=20260930a">
 </head>
 <body>
   <header>
@@ -152,6 +152,25 @@
     </div>
   </div>
 
-  <script src="app.js?v=20260916a"></script>
+  <div id="music-player-overlay" class="music-player-overlay hidden" aria-hidden="true">
+    <div class="music-player-backdrop"></div>
+    <section class="music-player-panel" role="dialog" aria-modal="true" aria-labelledby="music-player-title">
+      <button id="music-player-close-btn" class="music-player-close" type="button" title="Close video" aria-label="Close video">×</button>
+      <h2 id="music-player-title" class="music-player-title"></h2>
+      <div class="music-player-frame-wrap">
+        <iframe id="music-player-frame" title="Music video player" allow="autoplay; encrypted-media; picture-in-picture" allowfullscreen></iframe>
+      </div>
+      <div class="music-player-controls">
+        <button id="music-player-favorite-btn" class="music-player-favorite" type="button"></button>
+        <label class="music-player-time-field">
+          <span>Start at</span>
+          <input id="music-player-time-input" type="text" inputmode="text" autocomplete="off" placeholder="0:00" aria-label="Start time">
+        </label>
+        <button id="music-player-start-btn" type="button">Start</button>
+      </div>
+    </section>
+  </div>
+
+  <script src="app.js?v=20260930a"></script>
 </body>
 </html>

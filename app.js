@@ -108,11 +108,19 @@ const musicStartTimeInputEl = document.getElementById('music-start-time-input')
 const musicFavoriteCheckboxEl = document.getElementById('music-favorite-checkbox')
 const musicItemSaveBtn = document.getElementById('music-item-save-btn')
 const musicItemCancelBtn = document.getElementById('music-item-cancel-btn')
+const musicPlayerOverlayEl = document.getElementById('music-player-overlay')
+const musicPlayerFrameEl = document.getElementById('music-player-frame')
+const musicPlayerTitleEl = document.getElementById('music-player-title')
+const musicPlayerCloseBtn = document.getElementById('music-player-close-btn')
+const musicPlayerFavoriteBtn = document.getElementById('music-player-favorite-btn')
+const musicPlayerTimeInputEl = document.getElementById('music-player-time-input')
+const musicPlayerStartBtn = document.getElementById('music-player-start-btn')
 
 let gymChannels = loadGymChannels()
 let gymOldHidden = loadGymOldHidden()
 let gymNoteItemId = null
 let musicDialogItemId = null
+let musicPlayerItemId = null
 let items = load()
 let pages = loadPages()
 let pageTabs = loadPageTabs()
@@ -4160,14 +4168,76 @@ function saveMusicItemSettings(){
   render()
 }
 
-function getMusicItemOpenUrl(item){
-  const seconds = Number(item && item.startSeconds)
-  if(!isMusicPage(currentPageId) || !Number.isInteger(seconds) || seconds <= 0) return item.url
-  try{
-    const url = new URL(item.url)
-    url.searchParams.set('t', String(seconds))
-    return url.href
-  }catch(e){ return item.url }
+function getMusicEmbedUrl(item, seconds=0){
+  let videoId = item && (item.videoId || extractVideoId(item.url))
+  if(!videoId && item && item.url){
+    try{
+      const url = new URL(item.url)
+      if(url.hostname === 'youtu.be') videoId = url.pathname.split('/').filter(Boolean)[0]
+    }catch(e){}
+  }
+  if(!videoId) return ''
+  const start = Math.max(0, Math.floor(Number(seconds) || 0))
+  const params = new URLSearchParams({autoplay:'1', start:String(start)})
+  return `https://www.youtube-nocookie.com/embed/${encodeURIComponent(videoId)}?${params.toString()}`
+}
+
+function openMusicPlayer(item, useSavedStart=false){
+  if(!musicPlayerOverlayEl || !item) return
+  const startSeconds = useSavedStart ? Number(item.startSeconds) || 0 : 0
+  const embedUrl = getMusicEmbedUrl(item, startSeconds)
+  if(!embedUrl){
+    alert('This item does not have a playable YouTube video.')
+    return
+  }
+  musicPlayerItemId = item.id
+  musicPlayerTitleEl.textContent = item.title || item.url || 'Music video'
+  musicPlayerTimeInputEl.value = item.startSeconds ? formatMusicStartTime(item.startSeconds) : ''
+  musicPlayerFrameEl.src = embedUrl
+  syncMusicPlayerFavoriteButton(item)
+  musicPlayerOverlayEl.classList.remove('hidden')
+  musicPlayerOverlayEl.setAttribute('aria-hidden', 'false')
+}
+
+function closeMusicPlayer(){
+  if(!musicPlayerOverlayEl) return
+  musicPlayerItemId = null
+  musicPlayerFrameEl.src = ''
+  musicPlayerOverlayEl.classList.add('hidden')
+  musicPlayerOverlayEl.setAttribute('aria-hidden', 'true')
+}
+
+function syncMusicPlayerFavoriteButton(item){
+  if(!musicPlayerFavoriteBtn || !item) return
+  const favorite = item.favorite === true
+  musicPlayerFavoriteBtn.textContent = favorite ? '★ Favorited' : '☆ Favorite'
+  musicPlayerFavoriteBtn.classList.toggle('selected', favorite)
+  musicPlayerFavoriteBtn.setAttribute('aria-pressed', String(favorite))
+}
+
+function toggleMusicPlayerFavorite(){
+  const item = items.find((entry)=>entry.id===musicPlayerItemId)
+  if(!item) return
+  item.favorite = item.favorite !== true
+  save()
+  syncMusicPlayerFavoriteButton(item)
+  render()
+}
+
+function startMusicPlayerAtEnteredTime(){
+  const item = items.find((entry)=>entry.id===musicPlayerItemId)
+  if(!item) return
+  const startSeconds = parseMusicStartTime(musicPlayerTimeInputEl.value)
+  if(startSeconds === null){
+    musicPlayerTimeInputEl.setCustomValidity('Use seconds, mm:ss, or hh:mm:ss.')
+    musicPlayerTimeInputEl.reportValidity()
+    return
+  }
+  musicPlayerTimeInputEl.setCustomValidity('')
+  item.startSeconds = startSeconds
+  save()
+  musicPlayerFrameEl.src = getMusicEmbedUrl(item, startSeconds)
+  render()
 }
 
 function loadHeaderLinks(){
@@ -4939,18 +5009,13 @@ function renderSection(title, list, showHomeControls = false, hideGrid = false){
         ev.preventDefault()
         removeItem(it.id)
       })
-    }else if(isMusicPage(currentPageId)){
-      el.addEventListener('contextmenu', (ev)=>{
-        ev.preventDefault()
-        openMusicItemDialog(it)
-      })
     }else if(isGymPage(currentPageId)){
       el.addEventListener('contextmenu', (ev)=>{
         ev.preventDefault()
         moveGymItemToOld(it)
       })
     }
-    el.addEventListener('click', ()=>{
+    el.addEventListener('click', (event)=>{
       if(dividerInsertMode && currentPageId!=='home'){
         const inserted = addDividerBeforeItem(it.id)
         dividerInsertMode = false
@@ -4970,14 +5035,43 @@ function renderSection(title, list, showHomeControls = false, hideGrid = false){
         return
       }
       if(editMode){ selectItem(it.id, list); return }
+      if(isMusicPage(currentPageId) && event.button !== 0) return
+      if(isMusicPage(currentPageId)){
+        markLastViewedItem(it.id)
+        openMusicPlayer(it, false)
+        return
+      }
       if(currentPageId==='home') removeItem(it.id)
       else markLastViewedItem(it.id)
-      window.open(getMusicItemOpenUrl(it), '_blank')
+      window.open(it.url, '_blank')
     })
+
+    if(isMusicPage(currentPageId)){
+      let rightPressTimer = null
+      let rightPressHandled = false
+      el.addEventListener('mousedown', (event)=>{
+        if(event.button !== 2 || editMode) return
+        rightPressHandled = false
+        rightPressTimer = setTimeout(()=>{
+          rightPressHandled = true
+          openMusicItemDialog(it)
+        }, 600)
+      })
+      el.addEventListener('mouseup', (event)=>{
+        if(event.button !== 2) return
+        clearTimeout(rightPressTimer)
+        if(!rightPressHandled && !editMode){
+          markLastViewedItem(it.id)
+          openMusicPlayer(it, true)
+        }
+      })
+      el.addEventListener('mouseleave', ()=>clearTimeout(rightPressTimer))
+      el.addEventListener('contextmenu', (event)=>event.preventDefault())
+    }
 
     // long-press to edit
     let pressTimer = null
-    el.addEventListener('mousedown', ()=>{ if(editMode) return; pressTimer = setTimeout(()=>{ manageItemWithPrompt(it.id) },600) })
+    el.addEventListener('mousedown', (event)=>{ if(editMode || event.button !== 0) return; pressTimer = setTimeout(()=>{ manageItemWithPrompt(it.id) },600) })
     el.addEventListener('mouseup', ()=>{ clearTimeout(pressTimer) })
     el.addEventListener('mouseleave', ()=>{ clearTimeout(pressTimer) })
 
@@ -5035,6 +5129,16 @@ if(musicItemDialogEl){
 }
 if(musicItemSaveBtn) musicItemSaveBtn.addEventListener('click', saveMusicItemSettings)
 if(musicItemCancelBtn) musicItemCancelBtn.addEventListener('click', closeMusicItemDialog)
+if(musicPlayerCloseBtn) musicPlayerCloseBtn.addEventListener('click', closeMusicPlayer)
+if(musicPlayerFavoriteBtn) musicPlayerFavoriteBtn.addEventListener('click', toggleMusicPlayerFavorite)
+if(musicPlayerStartBtn) musicPlayerStartBtn.addEventListener('click', startMusicPlayerAtEnteredTime)
+if(musicPlayerOverlayEl){
+  const backdrop = musicPlayerOverlayEl.querySelector('.music-player-backdrop')
+  if(backdrop) backdrop.addEventListener('click', closeMusicPlayer)
+}
+document.addEventListener('keydown', (event)=>{
+  if(event.key === 'Escape' && musicPlayerOverlayEl && !musicPlayerOverlayEl.classList.contains('hidden')) closeMusicPlayer()
+})
 
 if(noteToggleBtn){
   noteToggleBtn.addEventListener('click', (event)=>{
