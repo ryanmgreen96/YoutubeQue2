@@ -33,6 +33,8 @@ const JOURNAL_PAGE_ID = 'journal'
 const JOURNAL_PAGE_TITLE = 'Journal'
 const CARBS_PAGE_ID = 'carbs'
 const CARBS_PAGE_TITLE = 'Carbs'
+const MUSIC_PAGE_ID = 'music'
+const MUSIC_PAGE_TITLE = 'Music'
 const JOURNAL_TABS = [
   {id:'food', title:'Food'},
   {id:'cash', title:'Cash'},
@@ -101,10 +103,16 @@ const carbColorPickerEl = document.getElementById('carb-color-picker')
 const carbValueRowsEl = document.getElementById('carb-value-rows')
 const carbItemSaveBtn = document.getElementById('carb-item-save-btn')
 const carbItemCancelBtn = document.getElementById('carb-item-cancel-btn')
+const musicItemDialogEl = document.getElementById('music-item-dialog')
+const musicStartTimeInputEl = document.getElementById('music-start-time-input')
+const musicFavoriteCheckboxEl = document.getElementById('music-favorite-checkbox')
+const musicItemSaveBtn = document.getElementById('music-item-save-btn')
+const musicItemCancelBtn = document.getElementById('music-item-cancel-btn')
 
 let gymChannels = loadGymChannels()
 let gymOldHidden = loadGymOldHidden()
 let gymNoteItemId = null
+let musicDialogItemId = null
 let items = load()
 let pages = loadPages()
 let pageTabs = loadPageTabs()
@@ -305,9 +313,12 @@ function isJournalPage(pageId){
 function isCarbsPage(pageId){
   return normalizePageId(pageId) === CARBS_PAGE_ID
 }
+function isMusicPage(pageId){
+  return normalizePageId(pageId) === MUSIC_PAGE_ID
+}
 function isProtectedPage(pageId){
   const pid = normalizePageId(pageId)
-  return pid === LIBRARY_PAGE_ID || pid === GYM_PAGE_ID || pid === JOURNAL_PAGE_ID || pid === CARBS_PAGE_ID
+  return pid === LIBRARY_PAGE_ID || pid === GYM_PAGE_ID || pid === JOURNAL_PAGE_ID || pid === CARBS_PAGE_ID || pid === MUSIC_PAGE_ID
 }
 function ensureLibraryPageExists(){
   const existing = pages.find((page)=>page && page.id===LIBRARY_PAGE_ID)
@@ -411,6 +422,30 @@ function ensureCarbsPageExists(){
   pageTabs[CARBS_PAGE_ID] = [getDefaultTab()]
   activeTabs[CARBS_PAGE_ID] = 'default'
   pageTitleFilters[CARBS_PAGE_ID] = []
+
+  savePages()
+  savePageTabs()
+  saveActiveTabs()
+  savePageTitleFilters()
+}
+function ensureMusicPageExists(){
+  const existing = pages.find((page)=>page && page.id===MUSIC_PAGE_ID)
+  if(existing){
+    if(existing.title !== MUSIC_PAGE_TITLE){
+      existing.title = MUSIC_PAGE_TITLE
+      savePages()
+    }
+    return
+  }
+
+  pages.unshift({
+    id: MUSIC_PAGE_ID,
+    title: MUSIC_PAGE_TITLE,
+    created: new Date().toISOString()
+  })
+  pageTabs[MUSIC_PAGE_ID] = [getDefaultTab()]
+  activeTabs[MUSIC_PAGE_ID] = 'default'
+  pageTitleFilters[MUSIC_PAGE_ID] = []
 
   savePages()
   savePageTabs()
@@ -1296,6 +1331,23 @@ function renderThemeSwitcher(){
   carbsBtn.textContent = '🍞'
   carbsBtn.addEventListener('click', ()=>{ setCurrentPage(CARBS_PAGE_ID) })
   themeSwitcherEl.appendChild(carbsBtn)
+
+  const musicBtn = document.createElement('button')
+  musicBtn.type = 'button'
+  musicBtn.className = `theme-cycle-btn music-btn${isMusicPage(currentPageId) ? ' selected' : ''}`
+  musicBtn.title = editMode && selectedItemIds.size
+    ? `Move ${selectedItemIds.size} selected video${selectedItemIds.size===1 ? '' : 's'} to ${MUSIC_PAGE_TITLE}`
+    : `Open ${MUSIC_PAGE_TITLE} page`
+  musicBtn.textContent = '♫'
+  musicBtn.setAttribute('aria-label', MUSIC_PAGE_TITLE)
+  musicBtn.addEventListener('click', ()=>{
+    if(editMode && selectedItemIds.size){
+      moveSelectedItemsToPage(MUSIC_PAGE_ID)
+      return
+    }
+    setCurrentPage(MUSIC_PAGE_ID)
+  })
+  themeSwitcherEl.appendChild(musicBtn)
 
   const btn = document.createElement('button')
   btn.type = 'button'
@@ -3518,7 +3570,7 @@ function ensurePageTabIntegrity(){
   getPageTabs('home')
   getActiveTabId('home')
 
-  const validPageIds = new Set(['home', LIBRARY_PAGE_ID, GYM_PAGE_ID, JOURNAL_PAGE_ID, CARBS_PAGE_ID, ...pages.map(page=>page.id)])
+  const validPageIds = new Set(['home', LIBRARY_PAGE_ID, GYM_PAGE_ID, JOURNAL_PAGE_ID, CARBS_PAGE_ID, MUSIC_PAGE_ID, ...pages.map(page=>page.id)])
 
   Object.keys(pageTabs).forEach(pid=>{
     if(!validPageIds.has(pid)){
@@ -3572,6 +3624,10 @@ function ensurePageTabIntegrity(){
     }
     if(page.id===CARBS_PAGE_ID && page.title !== CARBS_PAGE_TITLE){
       page.title = CARBS_PAGE_TITLE
+      changedFilters = true
+    }
+    if(page.id===MUSIC_PAGE_ID && page.title !== MUSIC_PAGE_TITLE){
+      page.title = MUSIC_PAGE_TITLE
       changedFilters = true
     }
   })
@@ -3945,16 +4001,16 @@ function addDividerBeforeItem(targetItemId){
   return true
 }
 
-function buildChronologicalListWithDividers(list, chronologicalOrder = 'desc', timeResolver = itemChronologyMs){
+function buildChronologicalListWithDividers(list, chronologicalOrder = 'desc', timeResolver = itemChronologyMs, itemComparator = null){
   const dividersByAnchor = new Map()
   const orphans = []
   const videos = list.filter(item=>!isDividerItem(item))
 
-  const sortedVideos = videos.slice().sort((a, b)=>{
+  const sortedVideos = videos.slice().sort(itemComparator || ((a, b)=>{
     const aSafe = timeResolver(a)
     const bSafe = timeResolver(b)
     return chronologicalOrder === 'asc' ? (aSafe - bSafe) : (bSafe - aSafe)
-  })
+  }))
 
   list
     .filter(item=>isDividerItem(item))
@@ -3978,7 +4034,7 @@ function buildChronologicalListWithDividers(list, chronologicalOrder = 'desc', t
   return merged
 }
 
-function addItem({url,title,videoId,favorite=false,pageId='home',tabId='default',created=new Date().toISOString(),publishedAt='',channelName='',channelHandle='',note='',gymOld=false}){
+function addItem({url,title,videoId,favorite=false,pageId='home',tabId='default',created=new Date().toISOString(),publishedAt='',channelName='',channelHandle='',note='',gymOld=false,startSeconds=0}){
   const id = uid()
   const normalizedUrl = normalizeUrl(url)
   if(!normalizedUrl) return
@@ -3995,7 +4051,8 @@ function addItem({url,title,videoId,favorite=false,pageId='home',tabId='default'
     channelName: channelName || '',
     channelHandle: channelHandle || '',
     note: note || '',
-    gymOld: gymOld === true
+    gymOld: gymOld === true,
+    startSeconds: Number.isInteger(Number(startSeconds)) && Number(startSeconds) > 0 ? Number(startSeconds) : 0
   }
   if(itemMatchesGymChannel(item) && item.pageId==='home'){
     item.pageId = GYM_PAGE_ID
@@ -4051,6 +4108,67 @@ function handleDeleteButtonClick(){
 }
 
 function toggleFav(id){ const it = items.find(i=>i.id===id); if(!it) return; it.favorite=!it.favorite; save(); render() }
+
+function parseMusicStartTime(value){
+  const input = (value || '').trim()
+  if(!input) return 0
+  if(/^\d+$/.test(input)) return Number(input)
+  if(!/^\d+(?::\d{1,2}){1,2}$/.test(input)) return null
+  const parts = input.split(':').map(Number)
+  if(parts.slice(1).some((part)=>part > 59)) return null
+  return parts.length===3 ? parts[0] * 3600 + parts[1] * 60 + parts[2] : parts[0] * 60 + parts[1]
+}
+
+function formatMusicStartTime(seconds){
+  const safe = Math.max(0, Math.floor(Number(seconds) || 0))
+  const minutes = Math.floor(safe / 60)
+  const remainingSeconds = safe % 60
+  return `${minutes}:${String(remainingSeconds).padStart(2, '0')}`
+}
+
+function openMusicItemDialog(item){
+  if(!musicItemDialogEl || !item) return
+  musicDialogItemId = item.id
+  musicStartTimeInputEl.value = item.startSeconds ? formatMusicStartTime(item.startSeconds) : ''
+  musicFavoriteCheckboxEl.checked = item.favorite === true
+  musicItemDialogEl.classList.remove('hidden')
+  musicItemDialogEl.setAttribute('aria-hidden', 'false')
+  musicStartTimeInputEl.focus()
+}
+
+function closeMusicItemDialog(){
+  if(!musicItemDialogEl) return
+  musicDialogItemId = null
+  musicItemDialogEl.classList.add('hidden')
+  musicItemDialogEl.setAttribute('aria-hidden', 'true')
+}
+
+function saveMusicItemSettings(){
+  const item = items.find((entry)=>entry.id===musicDialogItemId)
+  if(!item) return closeMusicItemDialog()
+  const startSeconds = parseMusicStartTime(musicStartTimeInputEl.value)
+  if(startSeconds === null){
+    musicStartTimeInputEl.setCustomValidity('Use seconds, mm:ss, or hh:mm:ss.')
+    musicStartTimeInputEl.reportValidity()
+    return
+  }
+  musicStartTimeInputEl.setCustomValidity('')
+  item.startSeconds = startSeconds
+  item.favorite = musicFavoriteCheckboxEl.checked
+  save()
+  closeMusicItemDialog()
+  render()
+}
+
+function getMusicItemOpenUrl(item){
+  const seconds = Number(item && item.startSeconds)
+  if(!isMusicPage(currentPageId) || !Number.isInteger(seconds) || seconds <= 0) return item.url
+  try{
+    const url = new URL(item.url)
+    url.searchParams.set('t', String(seconds))
+    return url.href
+  }catch(e){ return item.url }
+}
 
 function loadHeaderLinks(){
   try{
@@ -4516,7 +4634,7 @@ function renderTabBar(pageId){
 }
 
 function render(){ sections.innerHTML=''
-  if(currentPageId !== 'home' && (!isProtectedPage(currentPageId) || isJournalPage(currentPageId))) renderTabBar(currentPageId)
+  if(currentPageId !== 'home' && (!isProtectedPage(currentPageId) || isJournalPage(currentPageId) || isMusicPage(currentPageId))) renderTabBar(currentPageId)
   const activeTabId = getActiveTabId(currentPageId)
   if(isJournalPage(currentPageId)){
     renderJournal(activeTabId)
@@ -4535,6 +4653,11 @@ function render(){ sections.innerHTML=''
       const heading = document.createElement('h2')
       heading.className = 'page-heading'
       heading.textContent = LIBRARY_PAGE_TITLE
+      sections.appendChild(heading)
+    }else if(isMusicPage(currentPageId)){
+      const heading = document.createElement('h2')
+      heading.className = 'page-heading'
+      heading.textContent = MUSIC_PAGE_TITLE
       sections.appendChild(heading)
     }else if(isGymPage(currentPageId)){
       const heading = document.createElement('h2')
@@ -4579,7 +4702,12 @@ function render(){ sections.innerHTML=''
         sections.appendChild(empty)
       }
     }else if(list.length){
-      const sortedList = buildChronologicalListWithDividers(list, sortOrder)
+      const musicComparator = isMusicPage(currentPageId) ? (a, b)=>{
+        if(!!a.favorite !== !!b.favorite) return a.favorite ? -1 : 1
+        const delta = itemChronologyMs(a) - itemChronologyMs(b)
+        return sortOrder === 'asc' ? delta : -delta
+      } : null
+      const sortedList = buildChronologicalListWithDividers(list, sortOrder, itemChronologyMs, musicComparator)
       renderSection('', sortedList)
     }else{
       const empty = document.createElement('p')
@@ -4811,6 +4939,11 @@ function renderSection(title, list, showHomeControls = false, hideGrid = false){
         ev.preventDefault()
         removeItem(it.id)
       })
+    }else if(isMusicPage(currentPageId)){
+      el.addEventListener('contextmenu', (ev)=>{
+        ev.preventDefault()
+        openMusicItemDialog(it)
+      })
     }else if(isGymPage(currentPageId)){
       el.addEventListener('contextmenu', (ev)=>{
         ev.preventDefault()
@@ -4839,7 +4972,7 @@ function renderSection(title, list, showHomeControls = false, hideGrid = false){
       if(editMode){ selectItem(it.id, list); return }
       if(currentPageId==='home') removeItem(it.id)
       else markLastViewedItem(it.id)
-      window.open(it.url, '_blank')
+      window.open(getMusicItemOpenUrl(it), '_blank')
     })
 
     // long-press to edit
@@ -4896,6 +5029,12 @@ if(sections){
 
 if(holdDialogBackdropEl) holdDialogBackdropEl.addEventListener('click', closeHoldDialog)
 if(holdExitBtn) holdExitBtn.addEventListener('click', closeHoldDialog)
+if(musicItemDialogEl){
+  const backdrop = musicItemDialogEl.querySelector('.hold-dialog-backdrop')
+  if(backdrop) backdrop.addEventListener('click', closeMusicItemDialog)
+}
+if(musicItemSaveBtn) musicItemSaveBtn.addEventListener('click', saveMusicItemSettings)
+if(musicItemCancelBtn) musicItemCancelBtn.addEventListener('click', closeMusicItemDialog)
 
 if(noteToggleBtn){
   noteToggleBtn.addEventListener('click', (event)=>{
@@ -4921,6 +5060,7 @@ if(noteTextareaEl){
 window.addEventListener('keydown', (ev)=>{
   if(ev.key!=='Escape') return
   closeHoldDialog()
+  closeMusicItemDialog()
   closeTitleFilterOverlay()
   closeGymItemNote()
   if(notePanelEl && !notePanelEl.classList.contains('hidden')) closeNotebook()
@@ -4938,6 +5078,7 @@ function handleParams(){ const p = new URLSearchParams(location.search); if(p.ha
     if(targetPage === GYM_PAGE_ID) setCurrentPage(GYM_PAGE_ID)
     if(targetPage === JOURNAL_PAGE_ID) setCurrentPage(JOURNAL_PAGE_ID)
     if(targetPage === CARBS_PAGE_ID) setCurrentPage(CARBS_PAGE_ID)
+    if(targetPage === MUSIC_PAGE_ID) setCurrentPage(MUSIC_PAGE_ID)
   }
   // remove params from url
   if(location.search) history.replaceState({},document.title,location.pathname)
@@ -4957,6 +5098,7 @@ window.addEventListener('load', ()=>{
   ensureGymPageExists()
   ensureJournalPageExists()
   ensureCarbsPageExists()
+  ensureMusicPageExists()
   if(gymChannels.length) saveGymChannels()
   ensurePageTabIntegrity()
   currentPageId = 'home'

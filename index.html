@@ -133,6 +133,25 @@
     </div>
   </div>
 
+  <div id="music-item-dialog" class="hold-dialog hidden" aria-hidden="true">
+    <div class="hold-dialog-backdrop"></div>
+    <div class="hold-dialog-panel music-dialog-panel" role="dialog" aria-modal="true" aria-labelledby="music-item-dialog-title">
+      <h2 id="music-item-dialog-title" class="hold-dialog-title">Music video</h2>
+      <label class="hold-link-field">
+        <span>Start at</span>
+        <input id="music-start-time-input" type="text" inputmode="text" autocomplete="off" placeholder="0:00" aria-label="Start time">
+      </label>
+      <label class="hold-random-row music-favorite-row">
+        <input id="music-favorite-checkbox" type="checkbox">
+        <span>Favorite</span>
+      </label>
+      <div class="hold-dialog-actions music-dialog-actions">
+        <button id="music-item-save-btn" type="button">Save</button>
+        <button id="music-item-cancel-btn" type="button" class="hold-exit-btn">Cancel</button>
+      </div>
+    </div>
+  </div>
+
   <script src="app.js?v=20260916a"></script>
 </body>
 </html>
