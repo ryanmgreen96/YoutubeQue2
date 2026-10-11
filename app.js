@@ -39,6 +39,15 @@ const MUSIC_PAGE_TITLE = 'Music'
 const AUDIO_PAGE_ID = 'audio'
 const AUDIO_PAGE_TITLE = 'Audio'
 const AUDIO_FILES_API_URL = 'https://api.github.com/repos/ryanmgreen96/YoutubeQue2/contents/audio?ref=main'
+const FEATURE_SHORTCUTS_KEY = 'ytFeatureShortcuts_v1'
+const FEATURE_SHORTCUTS = [
+  {id:'library', title:LIBRARY_PAGE_TITLE, glyph:'📚', pageId:LIBRARY_PAGE_ID},
+  {id:'gym', title:GYM_PAGE_TITLE, glyph:'🏋️', pageId:GYM_PAGE_ID},
+  {id:'journal', title:JOURNAL_PAGE_TITLE, glyph:'📓', pageId:JOURNAL_PAGE_ID},
+  {id:'carbs', title:CARBS_PAGE_TITLE, glyph:'🍞', pageId:CARBS_PAGE_ID},
+  {id:'music', title:MUSIC_PAGE_TITLE, glyph:'♫', pageId:MUSIC_PAGE_ID},
+  {id:'audio', title:AUDIO_PAGE_TITLE, glyph:'✚', pageId:AUDIO_PAGE_ID}
+]
 const JOURNAL_TABS = [
   {id:'food', title:'Food'},
   {id:'cash', title:'Cash'},
@@ -154,6 +163,8 @@ let activeTopbarRowId = loadTopbarActiveRowId()
 let topbarSelectedLinkId = null
 let topbarManageOpen = false
 const topbarHoldState = {timer: null, linkId: '', rowId: '', startX: 0, startY: 0, suppressClickLinkId: '', suppressClickUntil: 0}
+let featureShortcuts = loadFeatureShortcuts()
+let featureShortcutEditId = ''
 let currentPageId = loadCurrentPageId()
 let editMode = false
 let deleteMode = false
@@ -598,6 +609,33 @@ function loadAudioItems(){
   }
 }
 function saveAudioItems(){ localStorage.setItem(AUDIO_ITEMS_KEY, JSON.stringify(audioItems)) }
+function loadFeatureShortcuts(){
+  const defaults = FEATURE_SHORTCUTS.map((shortcut)=>({...shortcut}))
+  try{
+    const saved = JSON.parse(localStorage.getItem(FEATURE_SHORTCUTS_KEY) || 'null')
+    if(!saved || typeof saved!=='object' || !Array.isArray(saved.order) || !saved.icons || typeof saved.icons!=='object') return defaults
+    const byId = new Map(defaults.map((shortcut)=>[shortcut.id, shortcut]))
+    const ordered = saved.order
+      .filter((id, index, order)=>typeof id==='string' && byId.has(id) && order.indexOf(id)===index)
+      .map((id)=>byId.get(id))
+    defaults.forEach((shortcut)=>{ if(!ordered.includes(shortcut)) ordered.push(shortcut) })
+    return ordered.map((shortcut)=>({
+      ...shortcut,
+      glyph: typeof saved.icons[shortcut.id]==='string' && saved.icons[shortcut.id].trim()
+        ? saved.icons[shortcut.id].trim().slice(0, 8)
+        : shortcut.glyph
+    }))
+  }catch(error){
+    console.error('Failed to load feature icon settings', error)
+    return defaults
+  }
+}
+function saveFeatureShortcuts(){
+  localStorage.setItem(FEATURE_SHORTCUTS_KEY, JSON.stringify({
+    order: featureShortcuts.map((shortcut)=>shortcut.id),
+    icons: Object.fromEntries(featureShortcuts.map((shortcut)=>[shortcut.id, shortcut.glyph]))
+  }))
+}
 let carbsPickingEntryId = null
 let carbsSchedulingEntryId = null
 let carbsSchedulingSelectedItemId = null
@@ -1569,82 +1607,45 @@ function markLastViewedItem(itemId){
   saveLastViewedItems()
   render()
 }
+function createFeatureShortcutButton(shortcut){
+  const button = document.createElement('button')
+  button.type = 'button'
+  button.className = `theme-cycle-btn ${shortcut.id}-btn${normalizePageId(currentPageId)===shortcut.pageId ? ' selected' : ''}`
+  button.title = `Open ${shortcut.title} page. Hold to change its icon or position.`
+  button.textContent = shortcut.glyph
+  button.setAttribute('aria-label', shortcut.title)
+
+  const hold = attachLongPress(button, ()=>{
+    featureShortcutEditId = shortcut.id
+    renderThemeSwitcher()
+  })
+  button.addEventListener('click', ()=>{
+    if(hold.consume()) return
+    if(shortcut.id==='gym' && editMode && selectedItemIds.size){
+      moveSelectedItemsToPage(GYM_PAGE_ID)
+      return
+    }
+    setCurrentPage(shortcut.pageId)
+  })
+  return button
+}
+function moveFeatureShortcut(shortcutId, delta){
+  const index = featureShortcuts.findIndex((shortcut)=>shortcut.id===shortcutId)
+  const nextIndex = index + delta
+  if(index<0 || nextIndex<0 || nextIndex>=featureShortcuts.length) return
+  const [shortcut] = featureShortcuts.splice(index, 1)
+  featureShortcuts.splice(nextIndex, 0, shortcut)
+  saveFeatureShortcuts()
+  renderThemeSwitcher()
+}
 function renderThemeSwitcher(){
   if(!themeSwitcherEl) return
   const theme = THEMES[activeThemeIndex] || THEMES[0]
   themeSwitcherEl.innerHTML = ''
 
-  const libraryBtn = document.createElement('button')
-  libraryBtn.type = 'button'
-  libraryBtn.className = `theme-cycle-btn library-btn${isLibraryPage(currentPageId) ? ' selected' : ''}`
-  libraryBtn.title = 'Open Library page'
-  libraryBtn.textContent = '📚'
-  libraryBtn.addEventListener('click', ()=>{ setCurrentPage(LIBRARY_PAGE_ID) })
-  themeSwitcherEl.appendChild(libraryBtn)
-
-  const gymBtn = document.createElement('button')
-  gymBtn.type = 'button'
-  gymBtn.className = `theme-cycle-btn gym-btn${isGymPage(currentPageId) ? ' selected' : ''}`
-  gymBtn.title = editMode && selectedItemIds.size
-    ? `Move ${selectedItemIds.size} selected video${selectedItemIds.size===1 ? '' : 's'} to ${GYM_PAGE_TITLE}`
-    : `Open ${GYM_PAGE_TITLE} page`
-  gymBtn.textContent = '🏋️'
-  const gymHold = attachLongPress(gymBtn, ()=>{
-    if(currentPageId!=='home') setCurrentPage('home')
-    if(!editMode) toggleEditMode()
-    alert('Selection mode ON. Pick videos, then tap the dumbbell to move them to Gym.')
+  featureShortcuts.forEach((shortcut)=>{
+    themeSwitcherEl.appendChild(createFeatureShortcutButton(shortcut))
   })
-  gymBtn.addEventListener('click', ()=>{
-    if(gymHold.consume()) return
-    if(editMode && selectedItemIds.size){
-      moveSelectedItemsToPage(GYM_PAGE_ID)
-      return
-    }
-    setCurrentPage(GYM_PAGE_ID)
-  })
-  themeSwitcherEl.appendChild(gymBtn)
-
-  const journalBtn = document.createElement('button')
-  journalBtn.type = 'button'
-  journalBtn.className = `theme-cycle-btn journal-btn${isJournalPage(currentPageId) ? ' selected' : ''}`
-  journalBtn.title = `Open ${JOURNAL_PAGE_TITLE} page`
-  journalBtn.textContent = '📓'
-  journalBtn.addEventListener('click', ()=>{ setCurrentPage(JOURNAL_PAGE_ID) })
-  themeSwitcherEl.appendChild(journalBtn)
-
-  const carbsBtn = document.createElement('button')
-  carbsBtn.type = 'button'
-  carbsBtn.className = `theme-cycle-btn carbs-btn${isCarbsPage(currentPageId) ? ' selected' : ''}`
-  carbsBtn.title = `Open ${CARBS_PAGE_TITLE} page`
-  carbsBtn.textContent = '🍞'
-  carbsBtn.addEventListener('click', ()=>{ setCurrentPage(CARBS_PAGE_ID) })
-  themeSwitcherEl.appendChild(carbsBtn)
-
-  const musicBtn = document.createElement('button')
-  musicBtn.type = 'button'
-  musicBtn.className = `theme-cycle-btn music-btn${isMusicPage(currentPageId) ? ' selected' : ''}`
-  musicBtn.title = editMode && selectedItemIds.size
-    ? `Move ${selectedItemIds.size} selected video${selectedItemIds.size===1 ? '' : 's'} to ${MUSIC_PAGE_TITLE}`
-    : `Open ${MUSIC_PAGE_TITLE} page`
-  musicBtn.textContent = '♫'
-  musicBtn.setAttribute('aria-label', MUSIC_PAGE_TITLE)
-  musicBtn.addEventListener('click', ()=>{
-    if(editMode && selectedItemIds.size){
-      moveSelectedItemsToPage(MUSIC_PAGE_ID)
-      return
-    }
-    setCurrentPage(MUSIC_PAGE_ID)
-  })
-  themeSwitcherEl.appendChild(musicBtn)
-
-  const audioBtn = document.createElement('button')
-  audioBtn.type = 'button'
-  audioBtn.className = `theme-cycle-btn audio-page-btn${isAudioPage(currentPageId) ? ' selected' : ''}`
-  audioBtn.title = `Open ${AUDIO_PAGE_TITLE} page`
-  audioBtn.textContent = '✚'
-  audioBtn.setAttribute('aria-label', AUDIO_PAGE_TITLE)
-  audioBtn.addEventListener('click', ()=>{ setCurrentPage(AUDIO_PAGE_ID) })
-  themeSwitcherEl.appendChild(audioBtn)
 
   const btn = document.createElement('button')
   btn.type = 'button'
@@ -1668,6 +1669,58 @@ function renderThemeSwitcher(){
   timerBtn.textContent = '⏰'
   timerBtn.addEventListener('click', startTimerFromPrompt)
   themeSwitcherEl.appendChild(timerBtn)
+
+  const selectedShortcut = featureShortcuts.find((shortcut)=>shortcut.id===featureShortcutEditId)
+  if(selectedShortcut){
+    const editor = document.createElement('div')
+    editor.className = 'theme-shortcut-editor'
+    const heading = document.createElement('strong')
+    heading.textContent = `Edit ${selectedShortcut.title} icon`
+    const iconLabel = document.createElement('label')
+    iconLabel.textContent = 'Icon'
+    const iconInput = document.createElement('input')
+    iconInput.type = 'text'
+    iconInput.maxLength = 8
+    iconInput.value = selectedShortcut.glyph
+    iconInput.setAttribute('aria-label', `${selectedShortcut.title} icon`)
+    iconLabel.appendChild(iconInput)
+    const upButton = document.createElement('button')
+    upButton.type = 'button'
+    upButton.textContent = '↑'
+    upButton.title = 'Move up'
+    upButton.disabled = featureShortcuts[0]===selectedShortcut
+    upButton.addEventListener('click', ()=>moveFeatureShortcut(selectedShortcut.id, -1))
+    const downButton = document.createElement('button')
+    downButton.type = 'button'
+    downButton.textContent = '↓'
+    downButton.title = 'Move down'
+    downButton.disabled = featureShortcuts[featureShortcuts.length - 1]===selectedShortcut
+    downButton.addEventListener('click', ()=>moveFeatureShortcut(selectedShortcut.id, 1))
+    const saveButton = document.createElement('button')
+    saveButton.type = 'button'
+    saveButton.textContent = 'Save icon'
+    saveButton.addEventListener('click', ()=>{
+      const glyph = iconInput.value.trim()
+      if(!glyph){
+        alert('Enter an icon, emoji, or short label.')
+        return
+      }
+      selectedShortcut.glyph = glyph.slice(0, 8)
+      saveFeatureShortcuts()
+      renderThemeSwitcher()
+    })
+    const closeButton = document.createElement('button')
+    closeButton.type = 'button'
+    closeButton.className = 'theme-shortcut-editor-close'
+    closeButton.textContent = '×'
+    closeButton.title = 'Close'
+    closeButton.addEventListener('click', ()=>{
+      featureShortcutEditId = ''
+      renderThemeSwitcher()
+    })
+    editor.append(heading, iconLabel, upButton, downButton, saveButton, closeButton)
+    themeSwitcherEl.appendChild(editor)
+  }
 }
 function loadPages(){
   try{
