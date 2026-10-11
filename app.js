@@ -619,12 +619,22 @@ function loadFeatureShortcuts(){
       .filter((id, index, order)=>typeof id==='string' && byId.has(id) && order.indexOf(id)===index)
       .map((id)=>byId.get(id))
     defaults.forEach((shortcut)=>{ if(!ordered.includes(shortcut)) ordered.push(shortcut) })
-    return ordered.map((shortcut)=>({
-      ...shortcut,
-      glyph: typeof saved.icons[shortcut.id]==='string' && saved.icons[shortcut.id].trim()
-        ? saved.icons[shortcut.id].trim().slice(0, 8)
-        : shortcut.glyph
-    }))
+    return ordered.map((shortcut)=>{
+      const savedIcon = saved.icons[shortcut.id]
+      if(savedIcon && typeof savedIcon==='object'){
+        const iconUrl = typeof savedIcon.iconUrl==='string' ? normalizeIconChoice(savedIcon.iconUrl) : ''
+        return {
+          ...shortcut,
+          glyph: typeof savedIcon.glyph==='string' && savedIcon.glyph.trim() ? savedIcon.glyph.trim().slice(0, 8) : shortcut.glyph,
+          iconUrl
+        }
+      }
+      return {
+        ...shortcut,
+        glyph: typeof savedIcon==='string' && savedIcon.trim() ? savedIcon.trim().slice(0, 8) : shortcut.glyph,
+        iconUrl: ''
+      }
+    })
   }catch(error){
     console.error('Failed to load feature icon settings', error)
     return defaults
@@ -633,7 +643,10 @@ function loadFeatureShortcuts(){
 function saveFeatureShortcuts(){
   localStorage.setItem(FEATURE_SHORTCUTS_KEY, JSON.stringify({
     order: featureShortcuts.map((shortcut)=>shortcut.id),
-    icons: Object.fromEntries(featureShortcuts.map((shortcut)=>[shortcut.id, shortcut.glyph]))
+    icons: Object.fromEntries(featureShortcuts.map((shortcut)=>[shortcut.id, {
+      glyph: shortcut.glyph,
+      iconUrl: shortcut.iconUrl || ''
+    }]))
   }))
 }
 let carbsPickingEntryId = null
@@ -1612,8 +1625,20 @@ function createFeatureShortcutButton(shortcut){
   button.type = 'button'
   button.className = `theme-cycle-btn ${shortcut.id}-btn${normalizePageId(currentPageId)===shortcut.pageId ? ' selected' : ''}`
   button.title = `Open ${shortcut.title} page. Hold to change its icon or position.`
-  button.textContent = shortcut.glyph
   button.setAttribute('aria-label', shortcut.title)
+  if(shortcut.iconUrl){
+    const icon = document.createElement('img')
+    icon.className = 'theme-shortcut-icon-image'
+    icon.src = shortcut.iconUrl
+    icon.alt = ''
+    icon.addEventListener('error', ()=>{
+      icon.remove()
+      button.textContent = shortcut.glyph
+    }, {once:true})
+    button.appendChild(icon)
+  }else{
+    button.textContent = shortcut.glyph
+  }
 
   const hold = attachLongPress(button, ()=>{
     featureShortcutEditId = shortcut.id
@@ -1680,9 +1705,10 @@ function renderThemeSwitcher(){
     iconLabel.textContent = 'Icon'
     const iconInput = document.createElement('input')
     iconInput.type = 'text'
-    iconInput.maxLength = 8
-    iconInput.value = selectedShortcut.glyph
-    iconInput.setAttribute('aria-label', `${selectedShortcut.title} icon`)
+    iconInput.value = selectedShortcut.iconUrl || ''
+    iconInput.placeholder = 'Icon URL or domain'
+    iconInput.title = 'Paste an image URL or website/domain to use its favicon'
+    iconInput.setAttribute('aria-label', `${selectedShortcut.title} icon URL or domain`)
     iconLabel.appendChild(iconInput)
     const upButton = document.createElement('button')
     upButton.type = 'button'
@@ -1700,12 +1726,13 @@ function renderThemeSwitcher(){
     saveButton.type = 'button'
     saveButton.textContent = 'Save icon'
     saveButton.addEventListener('click', ()=>{
-      const glyph = iconInput.value.trim()
-      if(!glyph){
-        alert('Enter an icon, emoji, or short label.')
+      const iconValue = iconInput.value.trim()
+      const iconUrl = normalizeIconChoice(iconValue)
+      if(iconValue && !iconUrl){
+        alert('Enter a valid image URL or website/domain.')
         return
       }
-      selectedShortcut.glyph = glyph.slice(0, 8)
+      selectedShortcut.iconUrl = iconUrl
       saveFeatureShortcuts()
       renderThemeSwitcher()
     })
