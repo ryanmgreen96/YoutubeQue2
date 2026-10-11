@@ -153,7 +153,7 @@ let topbarRows = loadTopbarRows()
 let activeTopbarRowId = loadTopbarActiveRowId()
 let topbarSelectedLinkId = null
 let topbarManageOpen = false
-const topbarHoldState = {timer: null, pointerId: null, linkId: '', rowId: '', startX: 0, startY: 0, captured: false}
+const topbarHoldState = {timer: null, linkId: '', rowId: '', startX: 0, startY: 0, suppressClickLinkId: '', suppressClickUntil: 0}
 let currentPageId = loadCurrentPageId()
 let editMode = false
 let deleteMode = false
@@ -3300,54 +3300,62 @@ function fallbackGlyph(title, url){
 }
 function bindTopbarHoldHandlers(){
   if(!topbarLinksEl) return
-  topbarLinksEl.addEventListener('pointerdown', (event)=>{
-    if(event.pointerType==='mouse' && event.button!==0) return
+  const showManage = (linkId, rowId)=>{
+    const row = topbarRows.find((item)=>item.id===rowId)
+    if(!row || !row.links.some((link)=>link.id===linkId)) return
+    activeTopbarRowId = row.id
+    topbarSelectedLinkId = linkId
+    topbarManageOpen = true
+    saveTopbarActiveRowId()
+    renderHeaderLinks()
+  }
+  const beginHold = (event)=>{
+    if(event.type==='mousedown' && event.button!==0) return
     const button = event.target.closest && event.target.closest('.topbar-link-icon:not(.add)')
     if(!button) return
+    const touch = event.type==='touchstart' ? event.changedTouches[0] : null
     clearTimeout(topbarHoldState.timer)
-    topbarHoldState.pointerId = event.pointerId
     topbarHoldState.linkId = button.dataset.linkId
     topbarHoldState.rowId = button.dataset.rowId
-    topbarHoldState.startX = event.clientX
-    topbarHoldState.startY = event.clientY
-    topbarHoldState.captured = false
+    topbarHoldState.startX = touch ? touch.clientX : event.clientX
+    topbarHoldState.startY = touch ? touch.clientY : event.clientY
     topbarHoldState.timer = setTimeout(()=>{
-      const row = topbarRows.find((item)=>item.id===topbarHoldState.rowId)
-      if(!row || !row.links.some((link)=>link.id===topbarHoldState.linkId)) return
-      try{
-        topbarLinksEl.setPointerCapture(topbarHoldState.pointerId)
-        topbarHoldState.captured = true
-      }catch(error){
-        console.error('Could not capture the icon hold gesture', error)
-      }
-      activeTopbarRowId = row.id
-      topbarSelectedLinkId = topbarHoldState.linkId
-      topbarManageOpen = true
-      saveTopbarActiveRowId()
-      renderHeaderLinks()
-    }, 600)
-  })
-  document.addEventListener('pointermove', (event)=>{
-    if(event.pointerId!==topbarHoldState.pointerId || !topbarHoldState.timer) return
-    if(Math.hypot(event.clientX-topbarHoldState.startX, event.clientY-topbarHoldState.startY)>10){
-      clearTimeout(topbarHoldState.timer)
       topbarHoldState.timer = null
-    }
-  })
-  const finishHold = (event)=>{
-    if(event.pointerId!==topbarHoldState.pointerId) return
+      topbarHoldState.suppressClickLinkId = topbarHoldState.linkId
+      topbarHoldState.suppressClickUntil = Date.now() + 1000
+      showManage(topbarHoldState.linkId, topbarHoldState.rowId)
+    }, 600)
+  }
+  const cancelHold = ()=>{
     clearTimeout(topbarHoldState.timer)
     topbarHoldState.timer = null
-    if(topbarHoldState.captured && topbarLinksEl.hasPointerCapture(event.pointerId)){
-      topbarLinksEl.releasePointerCapture(event.pointerId)
-    }
-    topbarHoldState.pointerId = null
     topbarHoldState.linkId = ''
     topbarHoldState.rowId = ''
-    topbarHoldState.captured = false
   }
-  document.addEventListener('pointerup', finishHold)
-  document.addEventListener('pointercancel', finishHold)
+  topbarLinksEl.addEventListener('mousedown', beginHold)
+  topbarLinksEl.addEventListener('touchstart', beginHold, {passive:true})
+  document.addEventListener('mouseup', cancelHold)
+  document.addEventListener('touchend', cancelHold)
+  document.addEventListener('touchcancel', cancelHold)
+  document.addEventListener('touchmove', (event)=>{
+    if(!topbarHoldState.timer || !event.touches.length) return
+    const touch = event.touches[0]
+    if(Math.hypot(touch.clientX-topbarHoldState.startX, touch.clientY-topbarHoldState.startY)>10){
+      cancelHold()
+    }
+  }, {passive:true})
+  document.addEventListener('mousemove', (event)=>{
+    if(!topbarHoldState.timer) return
+    if(Math.hypot(event.clientX-topbarHoldState.startX, event.clientY-topbarHoldState.startY)>10){
+      cancelHold()
+    }
+  })
+  topbarLinksEl.addEventListener('contextmenu', (event)=>{
+    const button = event.target.closest && event.target.closest('.topbar-link-icon:not(.add)')
+    if(!button) return
+    event.preventDefault()
+    showManage(button.dataset.linkId, button.dataset.rowId)
+  })
 }
 bindTopbarHoldHandlers()
 
@@ -4720,6 +4728,11 @@ function renderHeaderLinks(){
       })
       img.addEventListener('load', ()=>{ img.style.display = 'block'; fallback.style.display = 'none' })
       iconBtn.addEventListener('click', ()=>{
+        if(topbarHoldState.suppressClickLinkId===link.id && Date.now()<=topbarHoldState.suppressClickUntil){
+          topbarHoldState.suppressClickLinkId = ''
+          topbarHoldState.suppressClickUntil = 0
+          return
+        }
         topbarManageOpen = false
         activeTopbarRowId = row.id
         topbarSelectedLinkId = link.id

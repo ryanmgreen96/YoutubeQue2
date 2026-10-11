@@ -290,8 +290,8 @@ main{display:grid;grid-template-columns:10% 75% 15%;height:100vh;overflow:hidden
 .audio-now-playing{display:flex;align-items:center;justify-content:center;gap:8px}
 .audio-now-playing-title{max-width:180px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .audio-player{display:block;width:min(300px,45vw);margin:0}
-.audio-item-list{display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:7px;width:100%;align-content:start}
-.audio-item-row{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:6px}
+.audio-item-list{display:flex;flex-flow:row nowrap;justify-content:center;align-items:flex-start;gap:7px;width:100%;overflow-x:auto;padding:2px 0 8px}
+.audio-item-row{display:grid;grid-template-columns:minmax(0,1fr) auto;flex:0 0 220px;gap:6px}
 .audio-item-button{text-align:left;min-height:38px}
 .audio-item-delete{color:#ffd0cc}
 @media (max-width:560px){.music-player-overlay{padding:10px}.music-player-panel{padding:12px}.music-player-controls{align-items:stretch;flex-wrap:wrap}.music-player-favorite{order:0}.music-player-time-field{order:1;margin-left:auto}.music-player-start-btn{order:2}}
