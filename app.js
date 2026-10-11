@@ -153,6 +153,7 @@ let topbarRows = loadTopbarRows()
 let activeTopbarRowId = loadTopbarActiveRowId()
 let topbarSelectedLinkId = null
 let topbarManageOpen = false
+const topbarHoldState = {timer: null, pointerId: null, linkId: '', rowId: '', startX: 0, startY: 0, captured: false}
 let currentPageId = loadCurrentPageId()
 let editMode = false
 let deleteMode = false
@@ -1130,6 +1131,14 @@ function audioFileUrl(filename){
   return new URL(`audio/${encodeURIComponent(filename)}`, window.location.href).href
 }
 function playAudioItem(item){
+  if(activeAudioItemId===item.id){
+    audioPlayer.pause()
+    audioPlayer.removeAttribute('src')
+    audioPlayer.load()
+    activeAudioItemId = ''
+    render()
+    return
+  }
   activeAudioItemId = item.id
   audioPlayer.src = audioFileUrl(item.filename)
   audioPlayer.setAttribute('aria-label', `${item.title} audio player`)
@@ -1139,6 +1148,7 @@ function playAudioItem(item){
     button.classList.toggle('selected', button.dataset.audioItemId===item.id)
   })
   audioPlayer.play().catch((error)=>{
+    if(error.name==='AbortError') return
     console.error(`Failed to play audio file "${item.filename}"`, error)
     if(status) status.textContent = `Could not play ${item.filename}. Check that the file exists in the audio folder.`
   })
@@ -1147,10 +1157,12 @@ function renderAudioPage(){
   const view = document.createElement('div')
   view.className = 'audio-view'
 
+  const toolbar = document.createElement('div')
+  toolbar.className = 'audio-toolbar-row'
   const heading = document.createElement('h2')
   heading.className = 'page-heading'
   heading.textContent = AUDIO_PAGE_TITLE
-  view.appendChild(heading)
+  toolbar.appendChild(heading)
 
   const controls = document.createElement('div')
   controls.className = 'audio-page-controls'
@@ -1177,27 +1189,11 @@ function renderAudioPage(){
     render()
   })
   controls.appendChild(refreshButton)
-  view.appendChild(controls)
-
-  const status = document.createElement('p')
-  status.id = 'audio-page-status'
-  status.className = `audio-page-status${audioFilesError ? ' error' : ''}`
-  status.setAttribute('role', 'status')
-  status.setAttribute('aria-live', 'polite')
-  if(audioFilesLoading){
-    status.textContent = 'Loading MP3s from the audio folder...'
-  }else if(audioFilesError){
-    status.textContent = audioFilesError
-  }else if(!availableAudioFiles.length){
-    status.textContent = 'No MP3 files found. Add MP3s to the audio folder in the repository, then select Refresh MP3s.'
-  }else{
-    status.textContent = `${availableAudioFiles.length} MP3${availableAudioFiles.length===1 ? '' : 's'} available`
-  }
-  view.appendChild(status)
+  toolbar.appendChild(controls)
 
   if(audioItemFormOpen){
     const form = document.createElement('form')
-    form.className = 'audio-item-form'
+    form.className = 'audio-item-form audio-item-form-inline'
     const fileLabel = document.createElement('label')
     fileLabel.textContent = 'MP3 file'
     const fileSelect = document.createElement('select')
@@ -1256,12 +1252,36 @@ function renderAudioPage(){
       audioItemFormOpen = false
       render()
     })
-    view.appendChild(form)
+    toolbar.appendChild(form)
   }
 
   if(activeAudioItemId && audioItems.some((item)=>item.id===activeAudioItemId)){
-    view.appendChild(audioPlayer)
+    const playerWrap = document.createElement('div')
+    playerWrap.className = 'audio-now-playing'
+    const playingItem = audioItems.find((item)=>item.id===activeAudioItemId)
+    const playingTitle = document.createElement('span')
+    playingTitle.className = 'audio-now-playing-title'
+    playingTitle.textContent = playingItem.title
+    playerWrap.append(playingTitle, audioPlayer)
+    toolbar.appendChild(playerWrap)
   }
+  view.appendChild(toolbar)
+
+  const status = document.createElement('p')
+  status.id = 'audio-page-status'
+  status.className = `audio-page-status${audioFilesError ? ' error' : ''}`
+  status.setAttribute('role', 'status')
+  status.setAttribute('aria-live', 'polite')
+  if(audioFilesLoading){
+    status.textContent = 'Loading MP3s from the audio folder...'
+  }else if(audioFilesError){
+    status.textContent = audioFilesError
+  }else if(!availableAudioFiles.length){
+    status.textContent = 'No MP3 files found. Add MP3s to the audio folder in the repository, then select Refresh MP3s.'
+  }else{
+    status.textContent = `${availableAudioFiles.length} MP3${availableAudioFiles.length===1 ? '' : 's'} available`
+  }
+  view.appendChild(status)
 
   const list = document.createElement('div')
   list.className = 'audio-item-list'
@@ -3278,6 +3298,59 @@ function fallbackGlyph(title, url){
   const first = source.replace(/^https?:\/\//i, '').trim().charAt(0).toUpperCase()
   return first || '?'
 }
+function bindTopbarHoldHandlers(){
+  if(!topbarLinksEl) return
+  topbarLinksEl.addEventListener('pointerdown', (event)=>{
+    if(event.pointerType==='mouse' && event.button!==0) return
+    const button = event.target.closest && event.target.closest('.topbar-link-icon:not(.add)')
+    if(!button) return
+    clearTimeout(topbarHoldState.timer)
+    topbarHoldState.pointerId = event.pointerId
+    topbarHoldState.linkId = button.dataset.linkId
+    topbarHoldState.rowId = button.dataset.rowId
+    topbarHoldState.startX = event.clientX
+    topbarHoldState.startY = event.clientY
+    topbarHoldState.captured = false
+    topbarHoldState.timer = setTimeout(()=>{
+      const row = topbarRows.find((item)=>item.id===topbarHoldState.rowId)
+      if(!row || !row.links.some((link)=>link.id===topbarHoldState.linkId)) return
+      try{
+        topbarLinksEl.setPointerCapture(topbarHoldState.pointerId)
+        topbarHoldState.captured = true
+      }catch(error){
+        console.error('Could not capture the icon hold gesture', error)
+      }
+      activeTopbarRowId = row.id
+      topbarSelectedLinkId = topbarHoldState.linkId
+      topbarManageOpen = true
+      saveTopbarActiveRowId()
+      renderHeaderLinks()
+    }, 600)
+  })
+  document.addEventListener('pointermove', (event)=>{
+    if(event.pointerId!==topbarHoldState.pointerId || !topbarHoldState.timer) return
+    if(Math.hypot(event.clientX-topbarHoldState.startX, event.clientY-topbarHoldState.startY)>10){
+      clearTimeout(topbarHoldState.timer)
+      topbarHoldState.timer = null
+    }
+  })
+  const finishHold = (event)=>{
+    if(event.pointerId!==topbarHoldState.pointerId) return
+    clearTimeout(topbarHoldState.timer)
+    topbarHoldState.timer = null
+    if(topbarHoldState.captured && topbarLinksEl.hasPointerCapture(event.pointerId)){
+      topbarLinksEl.releasePointerCapture(event.pointerId)
+    }
+    topbarHoldState.pointerId = null
+    topbarHoldState.linkId = ''
+    topbarHoldState.rowId = ''
+    topbarHoldState.captured = false
+  }
+  document.addEventListener('pointerup', finishHold)
+  document.addEventListener('pointercancel', finishHold)
+}
+bindTopbarHoldHandlers()
+
 function addTopbarRow(){
   const nameInput = prompt('Row name', 'New row')
   if(!nameInput) return
@@ -4629,6 +4702,8 @@ function renderHeaderLinks(){
       iconBtn.className = `topbar-link-icon${topbarSelectedLinkId===link.id ? ' selected' : ''}`
       iconBtn.title = `${link.title} - ${link.url}`
       iconBtn.setAttribute('aria-label', link.title)
+      iconBtn.dataset.linkId = link.id
+      iconBtn.dataset.rowId = row.id
       const img = document.createElement('img')
       img.className = 'topbar-link-favicon'
       const faviconCandidates = makeFaviconCandidates(link.url, link.iconUrl || '')
@@ -4645,19 +4720,12 @@ function renderHeaderLinks(){
       })
       img.addEventListener('load', ()=>{ img.style.display = 'block'; fallback.style.display = 'none' })
       iconBtn.addEventListener('click', ()=>{
-        if(iconHold.consume()) return
+        topbarManageOpen = false
         activeTopbarRowId = row.id
         topbarSelectedLinkId = link.id
         saveTopbarActiveRowId()
         renderHeaderLinks()
         window.open(link.url, '_blank', 'noopener,noreferrer')
-      })
-      const iconHold = attachLongPress(iconBtn, ()=>{
-        activeTopbarRowId = row.id
-        topbarSelectedLinkId = link.id
-        topbarManageOpen = true
-        saveTopbarActiveRowId()
-        renderHeaderLinks()
       })
       iconBtn.append(img, fallback)
       linkTrack.appendChild(iconBtn)
