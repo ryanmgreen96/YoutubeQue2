@@ -25,6 +25,7 @@ const GYM_OLD_HIDDEN_KEY = 'ytGymOldHidden_v1'
 const JOURNAL_DATA_KEY = 'ytJournalData_v1'
 const JOURNAL_CASH_REVERSED_KEY = 'ytJournalCashReversed_v1'
 const CARBS_DATA_KEY = 'ytCarbsData_v1'
+const AUDIO_ITEMS_KEY = 'ytAudioItems_v1'
 const LIBRARY_PAGE_ID = 'library'
 const LIBRARY_PAGE_TITLE = 'Library'
 const GYM_PAGE_ID = 'gym'
@@ -35,6 +36,9 @@ const CARBS_PAGE_ID = 'carbs'
 const CARBS_PAGE_TITLE = 'Carbs'
 const MUSIC_PAGE_ID = 'music'
 const MUSIC_PAGE_TITLE = 'Music'
+const AUDIO_PAGE_ID = 'audio'
+const AUDIO_PAGE_TITLE = 'Audio'
+const AUDIO_FILES_API_URL = 'https://api.github.com/repos/ryanmgreen96/YoutubeQue2/contents/audio?ref=main'
 const JOURNAL_TABS = [
   {id:'food', title:'Food'},
   {id:'cash', title:'Cash'},
@@ -115,7 +119,18 @@ const musicPlayerCloseBtn = document.getElementById('music-player-close-btn')
 const musicPlayerFavoriteBtn = document.getElementById('music-player-favorite-btn')
 const musicPlayerTimeInputEl = document.getElementById('music-player-time-input')
 const musicPlayerStartBtn = document.getElementById('music-player-start-btn')
+const audioPlayer = new Audio()
+audioPlayer.controls = true
+audioPlayer.preload = 'none'
+audioPlayer.className = 'audio-player'
 
+let audioItems = loadAudioItems()
+let availableAudioFiles = []
+let audioFilesLoaded = false
+let audioFilesLoading = false
+let audioFilesError = ''
+let audioItemFormOpen = false
+let activeAudioItemId = ''
 let gymChannels = loadGymChannels()
 let gymOldHidden = loadGymOldHidden()
 let gymNoteItemId = null
@@ -324,9 +339,12 @@ function isCarbsPage(pageId){
 function isMusicPage(pageId){
   return normalizePageId(pageId) === MUSIC_PAGE_ID
 }
+function isAudioPage(pageId){
+  return normalizePageId(pageId) === AUDIO_PAGE_ID
+}
 function isProtectedPage(pageId){
   const pid = normalizePageId(pageId)
-  return pid === LIBRARY_PAGE_ID || pid === GYM_PAGE_ID || pid === JOURNAL_PAGE_ID || pid === CARBS_PAGE_ID || pid === MUSIC_PAGE_ID
+  return pid === LIBRARY_PAGE_ID || pid === GYM_PAGE_ID || pid === JOURNAL_PAGE_ID || pid === CARBS_PAGE_ID || pid === MUSIC_PAGE_ID || pid === AUDIO_PAGE_ID
 }
 function ensureLibraryPageExists(){
   const existing = pages.find((page)=>page && page.id===LIBRARY_PAGE_ID)
@@ -460,6 +478,30 @@ function ensureMusicPageExists(){
   saveActiveTabs()
   savePageTitleFilters()
 }
+function ensureAudioPageExists(){
+  const existing = pages.find((page)=>page && page.id===AUDIO_PAGE_ID)
+  if(existing){
+    if(existing.title !== AUDIO_PAGE_TITLE){
+      existing.title = AUDIO_PAGE_TITLE
+      savePages()
+    }
+    return
+  }
+
+  pages.unshift({
+    id: AUDIO_PAGE_ID,
+    title: AUDIO_PAGE_TITLE,
+    created: new Date().toISOString()
+  })
+  pageTabs[AUDIO_PAGE_ID] = [getDefaultTab()]
+  activeTabs[AUDIO_PAGE_ID] = 'default'
+  pageTitleFilters[AUDIO_PAGE_ID] = []
+
+  savePages()
+  savePageTabs()
+  saveActiveTabs()
+  savePageTitleFilters()
+}
 function createJournalData(){
   return {
     food: {essentials: [], buy: []},
@@ -535,6 +577,26 @@ function loadCarbsData(){
 }
 let carbsData = loadCarbsData()
 function saveCarbsData(){ localStorage.setItem(CARBS_DATA_KEY, JSON.stringify(carbsData)) }
+function loadAudioItems(){
+  try{
+    const parsed = JSON.parse(localStorage.getItem(AUDIO_ITEMS_KEY) || '[]')
+    if(!Array.isArray(parsed)){
+      console.error('Saved audio items are not in the expected list format')
+      return []
+    }
+    return parsed
+      .filter((item)=>item && typeof item.filename==='string' && /\.mp3$/i.test(item.filename) && !/[\/\\]/.test(item.filename))
+      .map((item)=>({
+        id: typeof item.id==='string' && item.id ? item.id : uid(),
+        filename: item.filename,
+        title: typeof item.title==='string' && item.title.trim() ? item.title.trim() : item.filename.replace(/\.mp3$/i, '')
+      }))
+  }catch(error){
+    console.error('Failed to load saved audio items', error)
+    return []
+  }
+}
+function saveAudioItems(){ localStorage.setItem(AUDIO_ITEMS_KEY, JSON.stringify(audioItems)) }
 let carbsPickingEntryId = null
 let carbsSchedulingEntryId = null
 let carbsSchedulingSelectedItemId = null
@@ -1043,6 +1105,204 @@ function renderCarbsPage(){
   sections.appendChild(view)
 }
 
+async function loadAvailableAudioFiles(){
+  audioFilesLoading = true
+  audioFilesError = ''
+  try{
+    const response = await fetch(AUDIO_FILES_API_URL, {headers:{Accept:'application/vnd.github+json'}})
+    if(!response.ok) throw new Error(`GitHub returned ${response.status}`)
+    const files = await response.json()
+    if(!Array.isArray(files)) throw new Error('The audio folder listing was not available')
+    availableAudioFiles = files
+      .filter((file)=>file && file.type==='file' && typeof file.name==='string' && /\.mp3$/i.test(file.name))
+      .map((file)=>file.name)
+      .sort((a, b)=>a.localeCompare(b))
+    audioFilesLoaded = true
+  }catch(error){
+    console.error('Failed to load MP3 files from the audio folder', error)
+    audioFilesError = `Could not load MP3s from the audio folder (${error.message}). Add files to the repository's audio folder, then refresh.`
+  }finally{
+    audioFilesLoading = false
+    if(currentPageId===AUDIO_PAGE_ID) render()
+  }
+}
+function audioFileUrl(filename){
+  return new URL(`audio/${encodeURIComponent(filename)}`, window.location.href).href
+}
+function playAudioItem(item){
+  activeAudioItemId = item.id
+  audioPlayer.src = audioFileUrl(item.filename)
+  audioPlayer.setAttribute('aria-label', `${item.title} audio player`)
+  const status = document.getElementById('audio-page-status')
+  if(status) status.textContent = `Playing ${item.title}`
+  sections.querySelectorAll('.audio-item-button').forEach((button)=>{
+    button.classList.toggle('selected', button.dataset.audioItemId===item.id)
+  })
+  audioPlayer.play().catch((error)=>{
+    console.error(`Failed to play audio file "${item.filename}"`, error)
+    if(status) status.textContent = `Could not play ${item.filename}. Check that the file exists in the audio folder.`
+  })
+}
+function renderAudioPage(){
+  const view = document.createElement('div')
+  view.className = 'audio-view'
+
+  const heading = document.createElement('h2')
+  heading.className = 'page-heading'
+  heading.textContent = AUDIO_PAGE_TITLE
+  view.appendChild(heading)
+
+  const controls = document.createElement('div')
+  controls.className = 'audio-page-controls'
+  const addButton = document.createElement('button')
+  addButton.type = 'button'
+  addButton.className = 'audio-add-button'
+  addButton.textContent = '+'
+  addButton.title = 'Add an audio item'
+  addButton.setAttribute('aria-label', 'Add an audio item')
+  addButton.addEventListener('click', ()=>{
+    audioItemFormOpen = !audioItemFormOpen
+    render()
+  })
+  controls.appendChild(addButton)
+
+  const refreshButton = document.createElement('button')
+  refreshButton.type = 'button'
+  refreshButton.className = 'audio-refresh-button'
+  refreshButton.textContent = audioFilesLoading ? 'Refreshing...' : 'Refresh MP3s'
+  refreshButton.disabled = audioFilesLoading
+  refreshButton.addEventListener('click', ()=>{
+    audioFilesLoaded = false
+    loadAvailableAudioFiles()
+    render()
+  })
+  controls.appendChild(refreshButton)
+  view.appendChild(controls)
+
+  const status = document.createElement('p')
+  status.id = 'audio-page-status'
+  status.className = `audio-page-status${audioFilesError ? ' error' : ''}`
+  status.setAttribute('role', 'status')
+  status.setAttribute('aria-live', 'polite')
+  if(audioFilesLoading){
+    status.textContent = 'Loading MP3s from the audio folder...'
+  }else if(audioFilesError){
+    status.textContent = audioFilesError
+  }else if(!availableAudioFiles.length){
+    status.textContent = 'No MP3 files found. Add MP3s to the audio folder in the repository, then select Refresh MP3s.'
+  }else{
+    status.textContent = `${availableAudioFiles.length} MP3${availableAudioFiles.length===1 ? '' : 's'} available`
+  }
+  view.appendChild(status)
+
+  if(audioItemFormOpen){
+    const form = document.createElement('form')
+    form.className = 'audio-item-form'
+    const fileLabel = document.createElement('label')
+    fileLabel.textContent = 'MP3 file'
+    const fileSelect = document.createElement('select')
+    fileSelect.required = true
+    fileSelect.setAttribute('aria-label', 'MP3 file')
+    const placeholder = document.createElement('option')
+    placeholder.value = ''
+    placeholder.textContent = 'Choose an MP3'
+    fileSelect.appendChild(placeholder)
+    availableAudioFiles.forEach((filename)=>{
+      const option = document.createElement('option')
+      option.value = filename
+      option.textContent = filename
+      fileSelect.appendChild(option)
+    })
+    fileLabel.appendChild(fileSelect)
+
+    const titleLabel = document.createElement('label')
+    titleLabel.textContent = 'Button title'
+    const titleInput = document.createElement('input')
+    titleInput.type = 'text'
+    titleInput.required = true
+    titleInput.maxLength = 120
+    titleInput.placeholder = 'Title to show on the play button'
+    titleLabel.appendChild(titleInput)
+
+    let titleWasEdited = false
+    titleInput.addEventListener('input', ()=>{ titleWasEdited = true })
+    fileSelect.addEventListener('change', ()=>{
+      if(!titleWasEdited) titleInput.value = fileSelect.value.replace(/\.mp3$/i, '')
+    })
+
+    const formActions = document.createElement('div')
+    formActions.className = 'audio-form-actions'
+    const saveButton = document.createElement('button')
+    saveButton.type = 'submit'
+    saveButton.textContent = 'Add item'
+    saveButton.disabled = !availableAudioFiles.length
+    formActions.appendChild(saveButton)
+    const cancelButton = document.createElement('button')
+    cancelButton.type = 'button'
+    cancelButton.textContent = 'Cancel'
+    cancelButton.addEventListener('click', ()=>{
+      audioItemFormOpen = false
+      render()
+    })
+    formActions.appendChild(cancelButton)
+    form.append(fileLabel, titleLabel, formActions)
+    form.addEventListener('submit', (event)=>{
+      event.preventDefault()
+      const filename = fileSelect.value
+      const title = titleInput.value.trim()
+      if(!availableAudioFiles.includes(filename) || !title) return
+      audioItems.push({id: uid(), filename, title})
+      saveAudioItems()
+      audioItemFormOpen = false
+      render()
+    })
+    view.appendChild(form)
+  }
+
+  if(activeAudioItemId && audioItems.some((item)=>item.id===activeAudioItemId)){
+    view.appendChild(audioPlayer)
+  }
+
+  const list = document.createElement('div')
+  list.className = 'audio-item-list'
+  audioItems.forEach((item)=>{
+    const row = document.createElement('div')
+    row.className = 'audio-item-row'
+    const button = document.createElement('button')
+    button.type = 'button'
+    button.className = `audio-item-button${activeAudioItemId===item.id ? ' selected' : ''}`
+    button.textContent = item.title
+    button.title = `Play ${item.title} (${item.filename})`
+    button.dataset.audioItemId = item.id
+    button.addEventListener('click', ()=>playAudioItem(item))
+    row.appendChild(button)
+
+    const removeButton = document.createElement('button')
+    removeButton.type = 'button'
+    removeButton.className = 'audio-item-delete'
+    removeButton.textContent = '×'
+    removeButton.title = `Remove ${item.title}`
+    removeButton.setAttribute('aria-label', `Remove ${item.title}`)
+    removeButton.addEventListener('click', ()=>{
+      audioItems = audioItems.filter((audioItem)=>audioItem.id!==item.id)
+      if(activeAudioItemId===item.id){
+        audioPlayer.pause()
+        audioPlayer.removeAttribute('src')
+        audioPlayer.load()
+        activeAudioItemId = ''
+      }
+      saveAudioItems()
+      render()
+    })
+    row.appendChild(removeButton)
+    list.appendChild(row)
+  })
+  view.appendChild(list)
+
+  sections.appendChild(view)
+  if(!audioFilesLoaded && !audioFilesLoading && !audioFilesError) loadAvailableAudioFiles()
+}
+
 let carbItemDialogSelectedColor = 'red'
 function openCarbItemDialog(){
   if(!carbItemDialogEl) return
@@ -1356,6 +1616,15 @@ function renderThemeSwitcher(){
     setCurrentPage(MUSIC_PAGE_ID)
   })
   themeSwitcherEl.appendChild(musicBtn)
+
+  const audioBtn = document.createElement('button')
+  audioBtn.type = 'button'
+  audioBtn.className = `theme-cycle-btn audio-page-btn${isAudioPage(currentPageId) ? ' selected' : ''}`
+  audioBtn.title = `Open ${AUDIO_PAGE_TITLE} page`
+  audioBtn.textContent = '✚'
+  audioBtn.setAttribute('aria-label', AUDIO_PAGE_TITLE)
+  audioBtn.addEventListener('click', ()=>{ setCurrentPage(AUDIO_PAGE_ID) })
+  themeSwitcherEl.appendChild(audioBtn)
 
   const btn = document.createElement('button')
   btn.type = 'button'
@@ -3095,7 +3364,7 @@ function deleteTopbarLink(linkId){
   renderHeaderLinks()
 }
 function moveTopbarLink(linkId, delta){
-  const row = getActiveTopbarRow()
+  const row = topbarRows.find(item=>item.links.some(link=>link.id===linkId))
   if(!row) return
   const index = row.links.findIndex(item=>item.id===linkId)
   const nextIndex = index + delta
@@ -3103,6 +3372,18 @@ function moveTopbarLink(linkId, delta){
   const [link] = row.links.splice(index, 1)
   row.links.splice(nextIndex, 0, link)
   saveTopbarRows()
+  renderHeaderLinks()
+}
+function moveTopbarLinkToRow(linkId, rowId){
+  const sourceRow = topbarRows.find(row=>row.links.some(link=>link.id===linkId))
+  const targetRow = topbarRows.find(row=>row.id===rowId)
+  if(!sourceRow || !targetRow || sourceRow===targetRow) return
+  const index = sourceRow.links.findIndex(link=>link.id===linkId)
+  const [link] = sourceRow.links.splice(index, 1)
+  targetRow.links.push(link)
+  activeTopbarRowId = targetRow.id
+  saveTopbarRows()
+  saveTopbarActiveRowId()
   renderHeaderLinks()
 }
 function renameTopbarLink(linkId){
@@ -3448,7 +3729,7 @@ function openLinkHoldDialog(linkId){
 
 function normalizePageId(pageId){ return pageId || 'home' }
 function normalizeTabId(tabId){ return tabId || 'default' }
-function getPageTitle(pageId){ if(pageId==='home') return 'Home'; if(pageId===LIBRARY_PAGE_ID) return LIBRARY_PAGE_TITLE; if(pageId===GYM_PAGE_ID) return GYM_PAGE_TITLE; if(pageId===JOURNAL_PAGE_ID) return JOURNAL_PAGE_TITLE; if(pageId===CARBS_PAGE_ID) return CARBS_PAGE_TITLE; const page = pages.find(item=>item.id===pageId); return page ? page.title : 'Home' }
+function getPageTitle(pageId){ if(pageId==='home') return 'Home'; if(pageId===LIBRARY_PAGE_ID) return LIBRARY_PAGE_TITLE; if(pageId===GYM_PAGE_ID) return GYM_PAGE_TITLE; if(pageId===JOURNAL_PAGE_ID) return JOURNAL_PAGE_TITLE; if(pageId===CARBS_PAGE_ID) return CARBS_PAGE_TITLE; if(pageId===AUDIO_PAGE_ID) return AUDIO_PAGE_TITLE; const page = pages.find(item=>item.id===pageId); return page ? page.title : 'Home' }
 function getDefaultTab(){ return {id:'default', title:'Main'} }
 function getPageTabs(pageId){
   const pid = normalizePageId(pageId)
@@ -4400,19 +4681,31 @@ function renderHeaderLinks(){
     const selectedRow = topbarRows.find(item=>item.links.some(link=>link.id===topbarSelectedLinkId))
     const selected = selectedRow && selectedRow.links.find(link=>link.id===topbarSelectedLinkId)
     if(selected){
-      const label = document.createElement('span'); label.className = 'topbar-manage-label'; label.textContent = selected.title
-      const moveLeft = document.createElement('button'); moveLeft.type = 'button'; moveLeft.textContent = '<'; moveLeft.title = 'Move left'; moveLeft.addEventListener('click', ()=>moveTopbarLink(selected.id, -1))
-      const moveRight = document.createElement('button'); moveRight.type = 'button'; moveRight.textContent = '>'; moveRight.title = 'Move right'; moveRight.addEventListener('click', ()=>moveTopbarLink(selected.id, 1))
+      const label = document.createElement('span'); label.className = 'topbar-manage-label'; label.textContent = `Edit ${selected.title}`
+      const moveLeft = document.createElement('button'); moveLeft.type = 'button'; moveLeft.textContent = '<'; moveLeft.title = 'Move left'; moveLeft.setAttribute('aria-label', `Move ${selected.title} left`); moveLeft.addEventListener('click', ()=>moveTopbarLink(selected.id, -1))
+      const moveRight = document.createElement('button'); moveRight.type = 'button'; moveRight.textContent = '>'; moveRight.title = 'Move right'; moveRight.setAttribute('aria-label', `Move ${selected.title} right`); moveRight.addEventListener('click', ()=>moveTopbarLink(selected.id, 1))
+      const rowSelect = document.createElement('select')
+      rowSelect.className = 'topbar-manage-row'
+      rowSelect.title = 'Move to another icon row'
+      rowSelect.setAttribute('aria-label', `Move ${selected.title} to another icon row`)
+      topbarRows.forEach(row=>{
+        const option = document.createElement('option')
+        option.value = row.id
+        option.textContent = row.name
+        option.selected = row.id===selectedRow.id
+        rowSelect.appendChild(option)
+      })
+      rowSelect.addEventListener('change', ()=>moveTopbarLinkToRow(selected.id, rowSelect.value))
       const rename = document.createElement('button'); rename.type = 'button'; rename.textContent = 'Rename'; rename.addEventListener('click', ()=>renameTopbarLink(selected.id))
-      const iconInput = document.createElement('input'); iconInput.type = 'url'; iconInput.value = selected.iconUrl || ''; iconInput.placeholder = 'Icon URL or domain'; iconInput.title = 'Custom icon URL or domain'
-      const iconSave = document.createElement('button'); iconSave.type = 'button'; iconSave.textContent = 'Icon'; iconSave.addEventListener('click', ()=>{
+      const iconInput = document.createElement('input'); iconInput.type = 'url'; iconInput.value = selected.iconUrl || ''; iconInput.placeholder = 'Icon URL or domain'; iconInput.title = 'Custom icon URL or domain'; iconInput.setAttribute('aria-label', `Custom icon URL or domain for ${selected.title}`)
+      const iconSave = document.createElement('button'); iconSave.type = 'button'; iconSave.textContent = 'Save icon'; iconSave.addEventListener('click', ()=>{
         const iconUrl = normalizeIconChoice(iconInput.value.trim())
         if(iconInput.value.trim() && !iconUrl){ alert('Please enter a valid image URL or website/domain.'); return }
         selected.iconUrl = iconUrl; saveTopbarRows(); renderHeaderLinks()
       })
       const remove = document.createElement('button'); remove.type = 'button'; remove.className = 'danger'; remove.textContent = 'Delete'; remove.addEventListener('click', ()=>deleteTopbarLink(selected.id))
       const close = document.createElement('button'); close.type = 'button'; close.className = 'topbar-manage-close'; close.textContent = 'Close'; close.addEventListener('click', ()=>{ topbarManageOpen = false; renderHeaderLinks() })
-      manage.append(label, moveLeft, moveRight, rename, iconInput, iconSave, remove, close)
+      manage.append(label, moveLeft, moveRight, rowSelect, rename, iconInput, iconSave, remove, close)
     }else{
       const close = document.createElement('button'); close.type = 'button'; close.className = 'topbar-manage-close'; close.textContent = 'Close'; close.addEventListener('click', ()=>{ topbarManageOpen = false; renderHeaderLinks() })
       manage.appendChild(close)
@@ -4708,6 +5001,10 @@ function render(){ sections.innerHTML=''
   const activeTabId = getActiveTabId(currentPageId)
   if(isJournalPage(currentPageId)){
     renderJournal(activeTabId)
+    return
+  }
+  if(isAudioPage(currentPageId)){
+    renderAudioPage()
     return
   }
   if(isCarbsPage(currentPageId)){
@@ -5203,6 +5500,7 @@ window.addEventListener('load', ()=>{
   ensureJournalPageExists()
   ensureCarbsPageExists()
   ensureMusicPageExists()
+  ensureAudioPageExists()
   if(gymChannels.length) saveGymChannels()
   ensurePageTabIntegrity()
   currentPageId = 'home'

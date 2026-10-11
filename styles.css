@@ -30,7 +30,7 @@ header{position:fixed;top:0;left:10%;width:75%;height:94px;display:grid;grid-tem
 .topbar-manage button{padding:6px 9px;border:none;border-radius:6px;color:var(--text-soft);font-size:12px;background:rgba(255,255,255,0.05)}
 .topbar-manage button:hover{background:rgba(255,255,255,0.12);color:var(--text)}
 .topbar-manage button.danger{color:#ffd0cc}
-.topbar-manage input{width:190px;min-width:120px;padding:6px 8px;border:1px solid rgba(255,255,255,0.12);border-radius:6px;background:rgba(255,255,255,0.04);color:var(--text);font:inherit;font-size:12px}
+.topbar-manage input,.topbar-manage select{width:190px;min-width:120px;padding:6px 8px;border:1px solid rgba(255,255,255,0.12);border-radius:6px;background:var(--card);color:var(--text);font:inherit;font-size:12px}
 .theme-switcher{position:fixed;left:10%;transform:translateX(-50%);bottom:14px;top:auto;display:flex;flex-direction:column;align-items:center;justify-content:flex-end;gap:8px;z-index:1001}
 .theme-cycle-btn{width:35px;height:35px;min-width:35px;padding:0;border-radius:999px;font-size:15px;line-height:1;font-weight:700;color:#fff1d6;border:1px solid color-mix(in srgb, var(--accent) 45%, transparent);background:color-mix(in srgb, var(--accent) 14%, transparent)}
 .timer-btn,.library-btn,.gym-btn,.music-btn{font-size:16px}
@@ -270,6 +270,22 @@ main{display:grid;grid-template-columns:10% 75% 15%;height:100vh;overflow:hidden
 .music-player-time-field{display:grid;gap:4px;min-width:120px;margin-left:auto;font-size:10px;color:var(--text-soft);text-transform:uppercase}
 .music-player-time-field input{width:120px;padding:8px;border:1px solid rgba(255,255,255,0.16);border-radius:6px;background:rgba(255,255,255,0.04);color:var(--text);font:inherit;font-size:12px;text-transform:none}
 .music-player-start-btn{min-height:36px;padding:7px 14px;color:#fff2d8;border-color:color-mix(in srgb, var(--accent) 42%, transparent);background:color-mix(in srgb, var(--accent) 15%, transparent)}
+.audio-page-btn,.audio-page-btn.selected{color:#d63c45}
+.audio-view{max-width:760px;margin:0 auto;padding:8px}
+.audio-page-controls{display:flex;align-items:center;gap:8px;margin:10px 0}
+.audio-add-button{width:38px;height:38px;padding:0;border-radius:8px;color:#fff;font-size:25px;line-height:1;background:#b8323c}
+.audio-refresh-button{font-size:12px}
+.audio-page-status{min-height:1.5em;color:var(--text-soft);font-size:12px}
+.audio-page-status.error{color:#ffaaa9}
+.audio-item-form{display:grid;gap:10px;max-width:480px;padding:12px;margin:12px 0;border:1px solid rgba(255,255,255,0.12);border-radius:8px;background:rgba(255,255,255,0.03)}
+.audio-item-form label{display:grid;gap:5px;color:var(--text-soft);font-size:12px}
+.audio-item-form input,.audio-item-form select{width:100%;padding:8px;border:1px solid rgba(255,255,255,0.14);border-radius:6px;background:var(--card);color:var(--text);font:inherit}
+.audio-form-actions{display:flex;gap:8px}
+.audio-item-list{display:grid;gap:7px}
+.audio-item-row{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:6px}
+.audio-item-button{text-align:left;min-height:38px}
+.audio-item-delete{color:#ffd0cc}
+.audio-player{display:block;width:min(100%,480px);margin:12px 0}
 @media (max-width:560px){.music-player-overlay{padding:10px}.music-player-panel{padding:12px}.music-player-controls{align-items:stretch;flex-wrap:wrap}.music-player-favorite{order:0}.music-player-time-field{order:1;margin-left:auto}.music-player-start-btn{order:2}}
 
 @media (max-width:1200px){header{left:11%;width:71%}main{grid-template-columns:11% 71% 18%}.grid{grid-template-columns:repeat(4,1fr)}.thumb{height:110px}.movie-list-grid{column-count:3}.theme-switcher{left:11%}}

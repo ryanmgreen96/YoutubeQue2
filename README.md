@@ -18,3 +18,5 @@ A simple queue app and browser extension for YouTube videos and saved links.
 - Click the extension button to save the current YouTube video or the current page into the saved-for-later list.
 - Right-click a video and choose the queue action.
 - The web app reads URL parameters and adds items to local storage.
+- In the web app, hold an icon in the top bar to open its controls. Use the arrows to reorder it, choose another row to move it, or enter an icon URL/domain and select **Save icon**.
+- The red cross icon opens the Audio page. Add MP3 files to `audio/` and push them to the `main` branch; the page discovers them from GitHub when it loads. Use **+** to choose a file and title its play button. Audio items are saved in the browser, and **Refresh MP3s** reloads the folder listing.
