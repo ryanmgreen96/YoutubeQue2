@@ -176,6 +176,10 @@
     <section class="audio-script-panel" role="dialog" aria-modal="true" aria-labelledby="audio-script-title">
       <button id="audio-script-close-btn" class="audio-script-close" type="button" title="Close script" aria-label="Close script">×</button>
       <h2 id="audio-script-title" class="audio-script-title"></h2>
+      <div class="audio-item-metadata">
+        <label>Title<input id="audio-item-title-input" type="text" maxlength="120" required></label>
+        <label>MP3 file<select id="audio-item-file-select" required></select></label>
+      </div>
       <div class="audio-script-field">
         <div class="audio-script-edit-heading">
           <span>Script <span class="audio-script-edit-hint">· type anywhere; additions appear gold</span></span>
@@ -183,12 +187,12 @@
         <div id="audio-script-editor" class="audio-script-editor" role="textbox" aria-label="Script with gold additions" aria-multiline="true"></div>
       </div>
       <div class="audio-script-actions">
-        <button id="audio-script-save-btn" type="button">Save edits</button>
+        <button id="audio-script-save-btn" type="button">Save changes</button>
         <button id="audio-script-cancel-btn" type="button" class="hold-exit-btn">Cancel</button>
       </div>
     </section>
   </div>
 
-  <script src="app.js?v=20261012a"></script>
+  <script src="app.js?v=20261012b"></script>
 </body>
 </html>
