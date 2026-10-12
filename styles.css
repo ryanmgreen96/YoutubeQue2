@@ -300,9 +300,9 @@ main{display:grid;grid-template-columns:10% 75% 15%;height:100vh;overflow:hidden
 .audio-now-playing{display:flex;align-items:center;justify-content:center;gap:8px}
 .audio-now-playing-title{max-width:180px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .audio-player{display:block;width:min(300px,45vw);margin:0}
-.audio-item-list{display:flex;flex-flow:row nowrap;justify-content:flex-start;align-items:flex-start;gap:7px;width:100%;overflow-x:auto;padding:2px 0 8px}
-.audio-item-row{display:grid;grid-template-columns:minmax(0,1fr);flex:0 0 220px;gap:6px}
-.audio-item-button{width:100%;min-height:38px;text-align:left}
+.audio-item-list{display:flex;flex-flow:row wrap;justify-content:flex-start;align-items:flex-start;align-content:flex-start;gap:7px;width:100%;overflow:visible;padding:2px 0 8px}
+.audio-item-row{display:block;flex:0 0 max-content;width:max-content}
+.audio-item-button{display:block;width:max-content;min-height:38px;text-align:left;white-space:nowrap}
 .audio-script-overlay.hidden{display:none}
 .audio-script-overlay{position:fixed;inset:0;z-index:2200;display:flex;align-items:center;justify-content:center;padding:18px}
 .audio-script-backdrop{position:absolute;inset:0;background:rgba(0,0,0,0.78)}
