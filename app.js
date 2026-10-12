@@ -607,11 +607,11 @@ function loadAudioItems(){
       return []
     }
     return parsed
-      .filter((item)=>item && typeof item.filename==='string' && /\.mp3$/i.test(item.filename) && !/[\/\\]/.test(item.filename))
+      .filter((item)=>item && typeof item.filename==='string' && (!item.filename || (/\.mp3$/i.test(item.filename) && !/[\/\\]/.test(item.filename))))
       .map((item)=>({
         id: typeof item.id==='string' && item.id ? item.id : uid(),
         filename: item.filename,
-        title: typeof item.title==='string' && item.title.trim() ? item.title.trim() : item.filename.replace(/\.mp3$/i, ''),
+        title: typeof item.title==='string' && item.title.trim() ? item.title.trim() : item.filename.replace(/\.mp3$/i, '') || 'Untitled audio',
         script: typeof item.script==='string' ? item.script : '',
         scriptEdits: typeof item.scriptEdits==='string' ? item.scriptEdits : '',
         scriptSegments: Array.isArray(item.scriptSegments)
@@ -1197,6 +1197,11 @@ function audioFileUrl(filename){
   return new URL(`audio/${encodeURIComponent(filename)}`, window.location.href).href
 }
 function playAudioItem(item){
+  if(!item.filename){
+    const status = document.getElementById('audio-page-status')
+    if(status) status.textContent = `Choose an MP3 for "${item.title}" in its settings before playing.`
+    return
+  }
   if(activeAudioItemId===item.id){
     audioPlayer.pause()
     audioPlayer.removeAttribute('src')
@@ -1225,6 +1230,13 @@ function updateAudioItemMetadata(item, title, filename){
   item.filename = filename
   if(activeAudioItemId!==item.id) return
   audioPlayer.setAttribute('aria-label', `${title} audio player`)
+  if(!filename){
+    audioPlayer.pause()
+    audioPlayer.removeAttribute('src')
+    audioPlayer.load()
+    activeAudioItemId = ''
+    return
+  }
   if(filenameChanged){
     const wasPlaying = !audioPlayer.paused
     audioPlayer.src = audioFileUrl(filename)
@@ -1235,7 +1247,11 @@ function updateAudioItemMetadata(item, title, filename){
 }
 function populateAudioItemFileOptions(item){
   audioItemFileSelectEl.replaceChildren()
-  const filenames = [item.filename, ...availableAudioFiles.filter((filename)=>filename!==item.filename)]
+  const placeholder = document.createElement('option')
+  placeholder.value = ''
+  placeholder.textContent = 'No MP3 selected'
+  audioItemFileSelectEl.appendChild(placeholder)
+  const filenames = [item.filename, ...availableAudioFiles.filter((filename)=>filename!==item.filename)].filter(Boolean)
   filenames.forEach((filename)=>{
     const option = document.createElement('option')
     option.value = filename
@@ -1292,7 +1308,7 @@ function saveAudioScript(){
   if(!item) return
   const title = audioItemTitleInputEl.value.trim()
   const filename = audioItemFileSelectEl.value
-  if(!title || (!availableAudioFiles.includes(filename) && filename!==item.filename)) return
+  if(!title || (filename && !availableAudioFiles.includes(filename) && filename!==item.filename)) return
   updateAudioItemMetadata(item, title, filename)
   const segments = []
   function collectSegments(node, inheritedType='original'){
@@ -1517,11 +1533,10 @@ function renderAudioPage(){
     const fileLabel = document.createElement('label')
     fileLabel.textContent = 'MP3 file'
     const fileSelect = document.createElement('select')
-    fileSelect.required = true
     fileSelect.setAttribute('aria-label', 'MP3 file')
     const placeholder = document.createElement('option')
     placeholder.value = ''
-    placeholder.textContent = 'Choose an MP3'
+    placeholder.textContent = 'No MP3 selected (optional)'
     fileSelect.appendChild(placeholder)
     availableAudioFiles.forEach((filename)=>{
       const option = document.createElement('option')
@@ -1560,7 +1575,7 @@ function renderAudioPage(){
     const saveButton = document.createElement('button')
     saveButton.type = 'submit'
     saveButton.textContent = 'Add item'
-    saveButton.disabled = !availableAudioFiles.length
+    saveButton.disabled = false
     formActions.appendChild(saveButton)
     const cancelButton = document.createElement('button')
     cancelButton.type = 'button'
@@ -1575,7 +1590,7 @@ function renderAudioPage(){
       event.preventDefault()
       const filename = fileSelect.value
       const title = titleInput.value.trim()
-      if(!availableAudioFiles.includes(filename) || !title) return
+      if((filename && !availableAudioFiles.includes(filename)) || !title) return
       audioItems.push({id: uid(), filename, title, script: scriptInput.value, scriptEdits: ''})
       saveAudioItems()
       audioItemFormOpen = false
@@ -1661,6 +1676,10 @@ document.addEventListener('pointercancel', ()=>{
   clearTimeout(audioItemRightPress.timer)
   audioItemRightPress = null
 })
+document.addEventListener('contextmenu', (event)=>{
+  const target = event.target instanceof Element ? event.target : null
+  if(target && (target.closest('.audio-item-button') || (isMusicPage(currentPageId) && target.closest('.item')))) event.preventDefault()
+}, true)
 
 let carbItemDialogSelectedColor = 'red'
 function openCarbItemDialog(){
@@ -5809,7 +5828,10 @@ function renderSection(title, list, showHomeControls = false, hideGrid = false){
         }
       })
       el.addEventListener('mouseleave', ()=>clearTimeout(rightPressTimer))
-      el.addEventListener('contextmenu', (event)=>event.preventDefault())
+      el.addEventListener('contextmenu', (event)=>{
+        event.preventDefault()
+        event.stopPropagation()
+      })
     }
 
     // long-press to edit
