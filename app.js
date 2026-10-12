@@ -128,6 +128,14 @@ const musicPlayerCloseBtn = document.getElementById('music-player-close-btn')
 const musicPlayerFavoriteBtn = document.getElementById('music-player-favorite-btn')
 const musicPlayerTimeInputEl = document.getElementById('music-player-time-input')
 const musicPlayerStartBtn = document.getElementById('music-player-start-btn')
+const audioScriptOverlayEl = document.getElementById('audio-script-overlay')
+const audioScriptTitleEl = document.getElementById('audio-script-title')
+const audioScriptOriginalEl = document.getElementById('audio-script-original')
+const audioScriptEditsEl = document.getElementById('audio-script-edits')
+const audioScriptBrushBtn = document.getElementById('audio-script-brush-btn')
+const audioScriptSaveBtn = document.getElementById('audio-script-save-btn')
+const audioScriptCloseBtn = document.getElementById('audio-script-close-btn')
+const audioScriptCancelBtn = document.getElementById('audio-script-cancel-btn')
 const audioPlayer = new Audio()
 audioPlayer.controls = true
 audioPlayer.preload = 'none'
@@ -140,6 +148,7 @@ let audioFilesLoading = false
 let audioFilesError = ''
 let audioItemFormOpen = false
 let activeAudioItemId = ''
+let audioScriptItemId = ''
 let gymChannels = loadGymChannels()
 let gymOldHidden = loadGymOldHidden()
 let gymNoteItemId = null
@@ -601,7 +610,9 @@ function loadAudioItems(){
       .map((item)=>({
         id: typeof item.id==='string' && item.id ? item.id : uid(),
         filename: item.filename,
-        title: typeof item.title==='string' && item.title.trim() ? item.title.trim() : item.filename.replace(/\.mp3$/i, '')
+        title: typeof item.title==='string' && item.title.trim() ? item.title.trim() : item.filename.replace(/\.mp3$/i, ''),
+        script: typeof item.script==='string' ? item.script : '',
+        scriptEdits: typeof item.scriptEdits==='string' ? item.scriptEdits : ''
       }))
   }catch(error){
     console.error('Failed to load saved audio items', error)
@@ -1204,6 +1215,45 @@ function playAudioItem(item){
     if(status) status.textContent = `Could not play ${item.filename}. Check that the file exists in the audio folder.`
   })
 }
+function openAudioScript(item){
+  audioScriptItemId = item.id
+  audioScriptTitleEl.textContent = `${item.title} script`
+  audioScriptOriginalEl.value = item.script || ''
+  audioScriptEditsEl.value = item.scriptEdits || ''
+  audioScriptEditsEl.readOnly = true
+  audioScriptBrushBtn.classList.remove('selected')
+  audioScriptBrushBtn.setAttribute('aria-pressed', 'false')
+  audioScriptOverlayEl.classList.remove('hidden')
+  audioScriptOverlayEl.setAttribute('aria-hidden', 'false')
+  audioScriptCloseBtn.focus()
+}
+function closeAudioScript(){
+  audioScriptItemId = ''
+  audioScriptOverlayEl.classList.add('hidden')
+  audioScriptOverlayEl.setAttribute('aria-hidden', 'true')
+}
+function saveAudioScript(){
+  const item = audioItems.find((audioItem)=>audioItem.id===audioScriptItemId)
+  if(!item) return
+  item.scriptEdits = audioScriptEditsEl.value
+  saveAudioItems()
+  closeAudioScript()
+  render()
+}
+audioScriptBrushBtn.addEventListener('click', ()=>{
+  const editing = audioScriptEditsEl.readOnly
+  audioScriptEditsEl.readOnly = !editing
+  audioScriptBrushBtn.classList.toggle('selected', editing)
+  audioScriptBrushBtn.setAttribute('aria-pressed', String(editing))
+  if(editing) audioScriptEditsEl.focus()
+})
+audioScriptSaveBtn.addEventListener('click', saveAudioScript)
+audioScriptCloseBtn.addEventListener('click', closeAudioScript)
+audioScriptCancelBtn.addEventListener('click', closeAudioScript)
+audioScriptOverlayEl.querySelector('.audio-script-backdrop').addEventListener('click', closeAudioScript)
+document.addEventListener('keydown', (event)=>{
+  if(event.key==='Escape' && !audioScriptOverlayEl.classList.contains('hidden')) closeAudioScript()
+})
 function renderAudioPage(){
   const view = document.createElement('div')
   view.className = 'audio-view'
@@ -1271,6 +1321,15 @@ function renderAudioPage(){
     titleInput.placeholder = 'Title to show on the play button'
     titleLabel.appendChild(titleInput)
 
+    const scriptLabel = document.createElement('label')
+    scriptLabel.textContent = 'Script (optional)'
+    const scriptInput = document.createElement('textarea')
+    scriptInput.className = 'audio-item-script-input'
+    scriptInput.rows = 3
+    scriptInput.maxLength = 20000
+    scriptInput.placeholder = 'Paste the original yoga guide script'
+    scriptLabel.appendChild(scriptInput)
+
     let titleWasEdited = false
     titleInput.addEventListener('input', ()=>{ titleWasEdited = true })
     fileSelect.addEventListener('change', ()=>{
@@ -1292,13 +1351,13 @@ function renderAudioPage(){
       render()
     })
     formActions.appendChild(cancelButton)
-    form.append(fileLabel, titleLabel, formActions)
+    form.append(fileLabel, titleLabel, scriptLabel, formActions)
     form.addEventListener('submit', (event)=>{
       event.preventDefault()
       const filename = fileSelect.value
       const title = titleInput.value.trim()
       if(!availableAudioFiles.includes(filename) || !title) return
-      audioItems.push({id: uid(), filename, title})
+      audioItems.push({id: uid(), filename, title, script: scriptInput.value, scriptEdits: ''})
       saveAudioItems()
       audioItemFormOpen = false
       render()
@@ -1347,6 +1406,15 @@ function renderAudioPage(){
     button.dataset.audioItemId = item.id
     button.addEventListener('click', ()=>playAudioItem(item))
     row.appendChild(button)
+
+    const scriptButton = document.createElement('button')
+    scriptButton.type = 'button'
+    scriptButton.className = 'audio-script-button'
+    scriptButton.textContent = '✎'
+    scriptButton.title = `View or edit the script for ${item.title}`
+    scriptButton.setAttribute('aria-label', `View or edit the script for ${item.title}`)
+    scriptButton.addEventListener('click', ()=>openAudioScript(item))
+    row.appendChild(scriptButton)
 
     const removeButton = document.createElement('button')
     removeButton.type = 'button'

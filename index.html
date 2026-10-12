@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width,initial-scale=1" />
   <title>YouTube Queue</title>
   <meta name="build" content="staged-push-20260831" />
-  <link rel="stylesheet" href="styles.css?v=20261010e">
+  <link rel="stylesheet" href="styles.css?v=20261011a">
 </head>
 <body>
   <header>
@@ -171,6 +171,29 @@
     </section>
   </div>
 
-  <script src="app.js?v=20261010e"></script>
+  <div id="audio-script-overlay" class="audio-script-overlay hidden" aria-hidden="true">
+    <div class="audio-script-backdrop"></div>
+    <section class="audio-script-panel" role="dialog" aria-modal="true" aria-labelledby="audio-script-title">
+      <button id="audio-script-close-btn" class="audio-script-close" type="button" title="Close script" aria-label="Close script">×</button>
+      <h2 id="audio-script-title" class="audio-script-title"></h2>
+      <label class="audio-script-field">
+        <span>Original script</span>
+        <textarea id="audio-script-original" readonly aria-label="Original script" placeholder="No original script was added for this item."></textarea>
+      </label>
+      <div class="audio-script-edits">
+        <div class="audio-script-edit-heading">
+          <span>Edits and additions <span class="audio-script-edit-hint">(gold)</span></span>
+          <button id="audio-script-brush-btn" class="audio-script-brush" type="button" title="Enable gold text editing" aria-label="Enable gold text editing" aria-pressed="false">🖌️</button>
+        </div>
+        <textarea id="audio-script-edits" class="audio-script-edit-text" readonly aria-label="Gold script edits" placeholder="Use the brush to add a note or revised line..."></textarea>
+      </div>
+      <div class="audio-script-actions">
+        <button id="audio-script-save-btn" type="button">Save edits</button>
+        <button id="audio-script-cancel-btn" type="button" class="hold-exit-btn">Cancel</button>
+      </div>
+    </section>
+  </div>
+
+  <script src="app.js?v=20261011a"></script>
 </body>
 </html>
