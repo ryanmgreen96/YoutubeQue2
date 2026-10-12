@@ -131,6 +131,8 @@ const musicPlayerStartBtn = document.getElementById('music-player-start-btn')
 const audioScriptOverlayEl = document.getElementById('audio-script-overlay')
 const audioScriptTitleEl = document.getElementById('audio-script-title')
 const audioScriptEditorEl = document.getElementById('audio-script-editor')
+const audioScriptUndoBtn = document.getElementById('audio-script-undo-btn')
+const audioScriptRedoBtn = document.getElementById('audio-script-redo-btn')
 const audioScriptSaveBtn = document.getElementById('audio-script-save-btn')
 const audioScriptCloseBtn = document.getElementById('audio-script-close-btn')
 const audioScriptCancelBtn = document.getElementById('audio-script-cancel-btn')
@@ -1241,6 +1243,7 @@ function openAudioScript(item){
   audioScriptEditorEl.contentEditable = 'true'
   audioScriptUndoStack = []
   audioScriptRedoStack = []
+  updateAudioScriptHistoryButtons()
   audioScriptOverlayEl.classList.remove('hidden')
   audioScriptOverlayEl.setAttribute('aria-hidden', 'false')
   audioScriptCloseBtn.focus()
@@ -1408,13 +1411,32 @@ function recordAudioScriptUndo(){
   audioScriptUndoStack.push(captureAudioScriptState())
   if(audioScriptUndoStack.length>100) audioScriptUndoStack.shift()
   audioScriptRedoStack = []
+  updateAudioScriptHistoryButtons()
 }
 function undoAudioScriptEdit(redo=false){
   const from = redo ? audioScriptRedoStack : audioScriptUndoStack
   const to = redo ? audioScriptUndoStack : audioScriptRedoStack
-  if(!from.length) return
+  if(!from.length){
+    updateAudioScriptHistoryButtons()
+    return
+  }
   to.push(captureAudioScriptState())
   restoreAudioScriptState(from.pop())
+  updateAudioScriptHistoryButtons()
+}
+function updateAudioScriptHistoryButtons(){
+  audioScriptUndoBtn.disabled = !audioScriptUndoStack.length
+  audioScriptRedoBtn.disabled = !audioScriptRedoStack.length
+}
+audioScriptUndoBtn.addEventListener('click', ()=>undoAudioScriptEdit())
+audioScriptRedoBtn.addEventListener('click', ()=>undoAudioScriptEdit(true))
+function handleAudioScriptHistoryShortcut(event){
+  if(audioScriptOverlayEl.classList.contains('hidden') || !(event.ctrlKey || event.metaKey)) return
+  const key = event.key.toLowerCase()
+  if(key!=='z' && key!=='y') return
+  event.preventDefault()
+  event.stopImmediatePropagation()
+  undoAudioScriptEdit(key==='y' || event.shiftKey)
 }
 function deleteAudioScriptText(inputType){
   const selection = window.getSelection()
@@ -1466,12 +1488,7 @@ audioScriptEditorEl.addEventListener('paste', (event)=>{
   insertAudioScriptText(event.clipboardData.getData('text/plain'))
 })
 document.addEventListener('keydown', (event)=>{
-  if(audioScriptOverlayEl.classList.contains('hidden') || !(event.ctrlKey || event.metaKey)) return
-  const key = event.key.toLowerCase()
-  if(key!=='z' && key!=='y') return
-  event.preventDefault()
-  event.stopPropagation()
-  undoAudioScriptEdit(key==='y' || event.shiftKey)
+  handleAudioScriptHistoryShortcut(event)
 }, true)
 audioScriptSaveBtn.addEventListener('click', saveAudioScript)
 audioScriptCloseBtn.addEventListener('click', closeAudioScript)

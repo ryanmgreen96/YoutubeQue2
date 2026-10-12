@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width,initial-scale=1" />
   <title>YouTube Queue</title>
   <meta name="build" content="staged-push-20260831" />
-  <link rel="stylesheet" href="styles.css?v=20261011e">
+  <link rel="stylesheet" href="styles.css?v=20261011h">
 </head>
 <body>
   <header>
@@ -179,6 +179,10 @@
       <div class="audio-script-field">
         <div class="audio-script-edit-heading">
           <span>Script <span class="audio-script-edit-hint">· type anywhere; additions appear gold</span></span>
+          <div class="audio-script-history">
+            <button id="audio-script-undo-btn" type="button" title="Undo (Ctrl+Z)" aria-label="Undo script edit" disabled>↶</button>
+            <button id="audio-script-redo-btn" type="button" title="Redo (Ctrl+Y)" aria-label="Redo script edit" disabled>↷</button>
+          </div>
         </div>
         <div id="audio-script-editor" class="audio-script-editor" role="textbox" aria-label="Script with gold additions" aria-multiline="true"></div>
       </div>
@@ -189,6 +193,6 @@
     </section>
   </div>
 
-  <script src="app.js?v=20261011g"></script>
+  <script src="app.js?v=20261011h"></script>
 </body>
 </html>

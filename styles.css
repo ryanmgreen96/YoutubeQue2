@@ -314,6 +314,9 @@ main{display:grid;grid-template-columns:10% 75% 15%;height:100vh;overflow:hidden
 .audio-script-field{display:grid;gap:7px;color:#fff;font-size:13px}
 .audio-script-edit-heading{display:flex;align-items:center;justify-content:space-between;gap:10px}
 .audio-script-edit-hint{color:#e6bf62}
+.audio-script-history{display:flex;gap:5px}
+.audio-script-history button{width:32px;height:30px;padding:0;font-size:18px}
+.audio-script-history button:disabled{opacity:.35;cursor:default}
 .audio-script-editor{width:100%;min-height:300px;max-height:60vh;overflow:auto;padding:12px;border:1px solid rgba(255,255,255,0.16);border-radius:8px;background:#191a1e;color:#fff;font:14px/1.55 system-ui,-apple-system,Segoe UI,Roboto,sans-serif;white-space:pre-wrap;overflow-wrap:anywhere}
 .audio-script-editor[contenteditable="true"]{outline:1px solid rgba(230,191,98,0.55)}
 .audio-script-original{color:#fff}
