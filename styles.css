@@ -319,7 +319,8 @@ main{display:grid;grid-template-columns:10% 75% 15%;height:100vh;overflow:hidden
 .audio-script-editor{width:100%;min-height:300px;max-height:60vh;overflow:auto;padding:12px;border:1px solid rgba(255,255,255,0.16);border-radius:8px;background:#191a1e;color:#fff;font:14px/1.55 system-ui,-apple-system,Segoe UI,Roboto,sans-serif;white-space:pre-wrap;overflow-wrap:anywhere}
 .audio-script-editor[contenteditable="true"]{outline:1px solid rgba(230,191,98,0.55)}
 .audio-script-original{color:#fff}
-.audio-script-additions{color:#e6bf62;white-space:pre-wrap}
+.audio-script-additions{display:block;min-height:1.55em;color:#e6bf62;white-space:pre-wrap}
+.audio-script-additions[contenteditable="true"]{outline:1px solid rgba(230,191,98,0.28);outline-offset:4px}
 .audio-script-additions-break{user-select:none}
 .audio-script-actions{display:flex;justify-content:flex-end;gap:8px}
 .audio-script-actions button{min-width:90px;text-align:center}

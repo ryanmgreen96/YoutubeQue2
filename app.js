@@ -1252,14 +1252,14 @@ function saveAudioScript(){
   render()
 }
 audioScriptBrushBtn.addEventListener('click', ()=>{
-  const editing = audioScriptEditorEl.contentEditable !== 'true'
   const additions = audioScriptEditorEl.querySelector('.audio-script-additions')
-  audioScriptEditorEl.contentEditable = String(editing)
+  if(!additions) return
+  const editing = additions.contentEditable !== 'true'
   if(additions) additions.contentEditable = String(editing)
   audioScriptBrushBtn.classList.toggle('selected', editing)
   audioScriptBrushBtn.setAttribute('aria-pressed', String(editing))
   if(editing && additions){
-    audioScriptEditorEl.focus()
+    additions.focus()
     const range = document.createRange()
     range.selectNodeContents(additions)
     range.collapse(false)
@@ -1271,8 +1271,15 @@ audioScriptBrushBtn.addEventListener('click', ()=>{
 function insertAudioScriptText(text){
   const additions = audioScriptEditorEl.querySelector('.audio-script-additions')
   const selection = window.getSelection()
-  if(!additions || !selection || !selection.rangeCount || !additions.contains(selection.anchorNode)) return
-  const range = selection.getRangeAt(0)
+  if(!additions || !selection) return
+  let range
+  if(selection.rangeCount && additions.contains(selection.anchorNode)){
+    range = selection.getRangeAt(0)
+  }else{
+    range = document.createRange()
+    range.selectNodeContents(additions)
+    range.collapse(false)
+  }
   range.deleteContents()
   const textNode = document.createTextNode(text)
   range.insertNode(textNode)
