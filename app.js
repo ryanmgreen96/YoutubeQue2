@@ -1268,25 +1268,26 @@ function saveAudioScript(){
   closeAudioScript()
   render()
 }
-function insertAudioScriptText(text){
-  if(!text) return
-  const selection = window.getSelection()
-  if(!selection || !selection.rangeCount) return
-  const offsets = getAudioScriptSelectionOffsets(selection)
-  if(!offsets) return
-  const range = selection.getRangeAt(0)
-  if(!range.collapsed && !audioScriptRangeIsAdditions(offsets.start, offsets.end)){
-    range.collapse(true)
-    selection.removeAllRanges()
-    selection.addRange(range)
-  }
-  const escaped = text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;')
-  document.execCommand('insertHTML', false, `<span class="audio-script-addition">${escaped}</span>`)
-}
 function appendAudioScriptSegment(segments, type, text){
   const previous = segments[segments.length - 1]
   if(previous && previous.type===type) previous.text += text
   else segments.push({type, text})
+}
+function getAudioScriptSegments(){
+  const segments = []
+  function collect(node, inheritedType='original'){
+    if(node.nodeType===Node.TEXT_NODE){
+      if(node.nodeValue) appendAudioScriptSegment(segments, inheritedType, node.nodeValue)
+      return
+    }
+    if(node.nodeType!==Node.ELEMENT_NODE) return
+    const type = node.classList.contains('audio-script-addition') ? 'addition'
+      : node.classList.contains('audio-script-original') ? 'original'
+      : inheritedType
+    Array.from(node.childNodes).forEach((child)=>collect(child, type))
+  }
+  Array.from(audioScriptEditorEl.childNodes).forEach((child)=>collect(child))
+  return segments
 }
 function getAudioScriptTextNodes(){
   const nodes = []
@@ -1337,6 +1338,52 @@ function audioScriptRangeIsAdditions(start, end){
     entries.every((entry)=>entry.isAddition) &&
     entries.reduce((total, entry)=>total + Math.max(0, Math.min(end, entry.end) - Math.max(start, entry.start)), 0)===end-start
 }
+function prepareAudioScriptInsertion(){
+  const selection = window.getSelection()
+  if(!selection || !selection.rangeCount) return
+  let range = selection.getRangeAt(0)
+  const offsets = getAudioScriptSelectionOffsets(selection)
+  if(!offsets) return
+  if(range.collapsed && range.startContainer.parentElement?.closest('.audio-script-addition')) return
+  if(!range.collapsed && audioScriptRangeIsAdditions(offsets.start, offsets.end)) return
+
+  const insertionOffset = offsets.start
+  const nextSegments = []
+  const insertionSegment = {type:'addition', text:''}
+  let position = 0
+  let inserted = false
+  getAudioScriptSegments().forEach((segment)=>{
+    const segmentEnd = position + segment.text.length
+    if(!inserted && segment.type==='original' && insertionOffset>=position && insertionOffset<=segmentEnd){
+      const splitAt = insertionOffset - position
+      if(splitAt) appendAudioScriptSegment(nextSegments, 'original', segment.text.slice(0, splitAt))
+      nextSegments.push(insertionSegment)
+      if(splitAt<segment.text.length) appendAudioScriptSegment(nextSegments, 'original', segment.text.slice(splitAt))
+      inserted = true
+    }else{
+      appendAudioScriptSegment(nextSegments, segment.type, segment.text)
+    }
+    position = segmentEnd
+  })
+  if(!inserted) nextSegments.push(insertionSegment)
+  audioScriptEditorEl.replaceChildren()
+  let insertionTextNode = null
+  nextSegments.forEach((segment)=>{
+    const span = document.createElement('span')
+    span.className = segment.type==='addition' ? 'audio-script-addition' : 'audio-script-original'
+    if(segment===insertionSegment){
+      insertionTextNode = document.createTextNode('')
+      span.appendChild(insertionTextNode)
+      if(segment.text) span.appendChild(document.createTextNode(segment.text))
+    }else span.textContent = segment.text
+    audioScriptEditorEl.appendChild(span)
+  })
+  range = document.createRange()
+  range.setStart(insertionTextNode, 0)
+  range.collapse(true)
+  selection.removeAllRanges()
+  selection.addRange(range)
+}
 function audioScriptDeletionRange(inputType, start){
   const text = audioScriptEditorEl.textContent
   if(inputType==='deleteContentBackward' || inputType==='deleteWordBackward' || inputType==='deleteSoftLineBackward' || inputType==='deleteHardLineBackward'){
@@ -1368,16 +1415,11 @@ function allowAudioScriptDeletion(inputType){
   return audioScriptRangeIsAdditions(deletion.start, deletion.end)
 }
 audioScriptEditorEl.addEventListener('beforeinput', (event)=>{
-  if(event.inputType==='insertText' || event.inputType==='insertParagraph' || event.inputType==='insertLineBreak'){
-    event.preventDefault()
-    insertAudioScriptText(event.inputType==='insertText' ? event.data || '' : '\n')
+  if(['insertText','insertParagraph','insertLineBreak','insertFromPaste','insertFromDrop','insertReplacementText'].includes(event.inputType)){
+    prepareAudioScriptInsertion()
   }else if(event.inputType.startsWith('delete')){
     if(!allowAudioScriptDeletion(event.inputType)) event.preventDefault()
   }
-})
-audioScriptEditorEl.addEventListener('paste', (event)=>{
-  event.preventDefault()
-  insertAudioScriptText(event.clipboardData.getData('text/plain'))
 })
 audioScriptSaveBtn.addEventListener('click', saveAudioScript)
 audioScriptCloseBtn.addEventListener('click', closeAudioScript)
