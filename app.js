@@ -130,8 +130,7 @@ const musicPlayerTimeInputEl = document.getElementById('music-player-time-input'
 const musicPlayerStartBtn = document.getElementById('music-player-start-btn')
 const audioScriptOverlayEl = document.getElementById('audio-script-overlay')
 const audioScriptTitleEl = document.getElementById('audio-script-title')
-const audioScriptOriginalEl = document.getElementById('audio-script-original')
-const audioScriptEditsEl = document.getElementById('audio-script-edits')
+const audioScriptEditorEl = document.getElementById('audio-script-editor')
 const audioScriptBrushBtn = document.getElementById('audio-script-brush-btn')
 const audioScriptSaveBtn = document.getElementById('audio-script-save-btn')
 const audioScriptCloseBtn = document.getElementById('audio-script-close-btn')
@@ -1218,9 +1217,20 @@ function playAudioItem(item){
 function openAudioScript(item){
   audioScriptItemId = item.id
   audioScriptTitleEl.textContent = `${item.title} script`
-  audioScriptOriginalEl.value = item.script || ''
-  audioScriptEditsEl.value = item.scriptEdits || ''
-  audioScriptEditsEl.readOnly = true
+  audioScriptEditorEl.replaceChildren()
+  const original = document.createElement('span')
+  original.className = 'audio-script-original'
+  original.contentEditable = 'false'
+  original.textContent = item.script || ''
+  const additionsBreak = document.createElement('br')
+  additionsBreak.className = 'audio-script-additions-break'
+  additionsBreak.setAttribute('aria-hidden', 'true')
+  const additions = document.createElement('span')
+  additions.className = 'audio-script-additions'
+  additions.contentEditable = 'false'
+  additions.textContent = item.scriptEdits || ''
+  audioScriptEditorEl.append(original, additionsBreak, additions)
+  audioScriptEditorEl.contentEditable = 'false'
   audioScriptBrushBtn.classList.remove('selected')
   audioScriptBrushBtn.setAttribute('aria-pressed', 'false')
   audioScriptOverlayEl.classList.remove('hidden')
@@ -1235,17 +1245,51 @@ function closeAudioScript(){
 function saveAudioScript(){
   const item = audioItems.find((audioItem)=>audioItem.id===audioScriptItemId)
   if(!item) return
-  item.scriptEdits = audioScriptEditsEl.value
+  const additions = audioScriptEditorEl.querySelector('.audio-script-additions')
+  item.scriptEdits = additions ? additions.textContent : ''
   saveAudioItems()
   closeAudioScript()
   render()
 }
 audioScriptBrushBtn.addEventListener('click', ()=>{
-  const editing = audioScriptEditsEl.readOnly
-  audioScriptEditsEl.readOnly = !editing
+  const editing = audioScriptEditorEl.contentEditable !== 'true'
+  const additions = audioScriptEditorEl.querySelector('.audio-script-additions')
+  audioScriptEditorEl.contentEditable = String(editing)
+  if(additions) additions.contentEditable = String(editing)
   audioScriptBrushBtn.classList.toggle('selected', editing)
   audioScriptBrushBtn.setAttribute('aria-pressed', String(editing))
-  if(editing) audioScriptEditsEl.focus()
+  if(editing && additions){
+    audioScriptEditorEl.focus()
+    const range = document.createRange()
+    range.selectNodeContents(additions)
+    range.collapse(false)
+    const selection = window.getSelection()
+    selection.removeAllRanges()
+    selection.addRange(range)
+  }
+})
+function insertAudioScriptText(text){
+  const additions = audioScriptEditorEl.querySelector('.audio-script-additions')
+  const selection = window.getSelection()
+  if(!additions || !selection || !selection.rangeCount || !additions.contains(selection.anchorNode)) return
+  const range = selection.getRangeAt(0)
+  range.deleteContents()
+  const textNode = document.createTextNode(text)
+  range.insertNode(textNode)
+  range.setStartAfter(textNode)
+  range.collapse(true)
+  selection.removeAllRanges()
+  selection.addRange(range)
+}
+audioScriptEditorEl.addEventListener('beforeinput', (event)=>{
+  if(event.inputType==='insertParagraph' || event.inputType==='insertLineBreak'){
+    event.preventDefault()
+    insertAudioScriptText('\n')
+  }
+})
+audioScriptEditorEl.addEventListener('paste', (event)=>{
+  event.preventDefault()
+  insertAudioScriptText(event.clipboardData.getData('text/plain'))
 })
 audioScriptSaveBtn.addEventListener('click', saveAudioScript)
 audioScriptCloseBtn.addEventListener('click', closeAudioScript)

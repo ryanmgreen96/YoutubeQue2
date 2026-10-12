@@ -176,16 +176,12 @@
     <section class="audio-script-panel" role="dialog" aria-modal="true" aria-labelledby="audio-script-title">
       <button id="audio-script-close-btn" class="audio-script-close" type="button" title="Close script" aria-label="Close script">×</button>
       <h2 id="audio-script-title" class="audio-script-title"></h2>
-      <label class="audio-script-field">
-        <span>Original script</span>
-        <textarea id="audio-script-original" readonly aria-label="Original script" placeholder="No original script was added for this item."></textarea>
-      </label>
-      <div class="audio-script-edits">
+      <div class="audio-script-field">
         <div class="audio-script-edit-heading">
-          <span>Edits and additions <span class="audio-script-edit-hint">(gold)</span></span>
-          <button id="audio-script-brush-btn" class="audio-script-brush" type="button" title="Enable gold text editing" aria-label="Enable gold text editing" aria-pressed="false">🖌️</button>
+          <span>Script <span class="audio-script-edit-hint">· gold text marks additions</span></span>
+          <button id="audio-script-brush-btn" class="audio-script-brush" type="button" title="Enable gold text additions" aria-label="Enable gold text additions" aria-pressed="false">🖌️</button>
         </div>
-        <textarea id="audio-script-edits" class="audio-script-edit-text" readonly aria-label="Gold script edits" placeholder="Use the brush to add a note or revised line..."></textarea>
+        <div id="audio-script-editor" class="audio-script-editor" role="textbox" aria-label="Script with gold additions" aria-multiline="true"></div>
       </div>
       <div class="audio-script-actions">
         <button id="audio-script-save-btn" type="button">Save edits</button>
