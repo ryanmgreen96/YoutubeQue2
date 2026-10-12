@@ -131,8 +131,6 @@ const musicPlayerStartBtn = document.getElementById('music-player-start-btn')
 const audioScriptOverlayEl = document.getElementById('audio-script-overlay')
 const audioScriptTitleEl = document.getElementById('audio-script-title')
 const audioScriptEditorEl = document.getElementById('audio-script-editor')
-const audioScriptUndoBtn = document.getElementById('audio-script-undo-btn')
-const audioScriptRedoBtn = document.getElementById('audio-script-redo-btn')
 const audioScriptSaveBtn = document.getElementById('audio-script-save-btn')
 const audioScriptCloseBtn = document.getElementById('audio-script-close-btn')
 const audioScriptCancelBtn = document.getElementById('audio-script-cancel-btn')
@@ -149,8 +147,6 @@ let audioFilesError = ''
 let audioItemFormOpen = false
 let activeAudioItemId = ''
 let audioScriptItemId = ''
-let audioScriptUndoStack = []
-let audioScriptRedoStack = []
 let gymChannels = loadGymChannels()
 let gymOldHidden = loadGymOldHidden()
 let gymNoteItemId = null
@@ -1241,9 +1237,6 @@ function openAudioScript(item){
     audioScriptEditorEl.appendChild(original)
   }
   audioScriptEditorEl.contentEditable = 'true'
-  audioScriptUndoStack = []
-  audioScriptRedoStack = []
-  updateAudioScriptHistoryButtons()
   audioScriptOverlayEl.classList.remove('hidden')
   audioScriptOverlayEl.setAttribute('aria-hidden', 'false')
   audioScriptCloseBtn.focus()
@@ -1281,21 +1274,14 @@ function insertAudioScriptText(text){
   if(!selection || !selection.rangeCount) return
   const offsets = getAudioScriptSelectionOffsets(selection)
   if(!offsets) return
-  recordAudioScriptUndo()
-  const selectionIsAdditionOnly = !selection.getRangeAt(0).collapsed &&
-    selection.getRangeAt(0).startContainer.parentElement?.closest('.audio-script-addition') &&
-    selection.getRangeAt(0).endContainer.parentElement?.closest('.audio-script-addition')
-  if(!selection.getRangeAt(0).collapsed && selectionIsAdditionOnly){
-    removeAudioScriptAdditions(offsets.start, offsets.end)
+  const range = selection.getRangeAt(0)
+  if(!range.collapsed && !audioScriptRangeIsAdditions(offsets.start, offsets.end)){
+    range.collapse(true)
+    selection.removeAllRanges()
+    selection.addRange(range)
   }
-  const insertionRange = getAudioScriptRangeAtOffset(offsets.start)
-  const textNode = document.createTextNode(text)
-  const addition = document.createElement('span')
-  addition.className = 'audio-script-addition'
-  addition.appendChild(textNode)
-  insertionRange.insertNode(addition)
-  normalizeAudioScriptSegments()
-  setAudioScriptCaret(offsets.start + text.length)
+  const escaped = text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;')
+  document.execCommand('insertHTML', false, `<span class="audio-script-addition">${escaped}</span>`)
 }
 function appendAudioScriptSegment(segments, type, text){
   const previous = segments[segments.length - 1]
@@ -1344,152 +1330,55 @@ function getAudioScriptRangeAtOffset(offset){
   range.collapse(true)
   return range
 }
-function setAudioScriptCaret(offset){
-  const range = getAudioScriptRangeAtOffset(offset)
-  const selection = window.getSelection()
-  selection.removeAllRanges()
-  selection.addRange(range)
+function audioScriptRangeIsAdditions(start, end){
+  if(start===end) return false
+  const entries = getAudioScriptTextNodes().filter((entry)=>entry.end>start && entry.start<end)
+  return entries.length>0 &&
+    entries.every((entry)=>entry.isAddition) &&
+    entries.reduce((total, entry)=>total + Math.max(0, Math.min(end, entry.end) - Math.max(start, entry.start)), 0)===end-start
 }
-function removeAudioScriptAdditions(start, end){
-  getAudioScriptTextNodes().reverse().forEach((entry)=>{
-    if(!entry.isAddition || entry.end<=start || entry.start>=end) return
-    const from = Math.max(start, entry.start) - entry.start
-    const to = Math.min(end, entry.end) - entry.start
-    entry.node.nodeValue = entry.node.nodeValue.slice(0, from) + entry.node.nodeValue.slice(to)
-  })
-}
-function normalizeAudioScriptSegments(){
-  const segments = []
-  function collect(node, inheritedType='original'){
-    if(node.nodeType===Node.TEXT_NODE){
-      if(node.nodeValue) appendAudioScriptSegment(segments, inheritedType, node.nodeValue)
-      return
-    }
-    if(node.nodeType!==Node.ELEMENT_NODE) return
-    const type = node.classList.contains('audio-script-addition') ? 'addition'
-      : node.classList.contains('audio-script-original') ? 'original'
-      : inheritedType
-    Array.from(node.childNodes).forEach((child)=>collect(child, type))
-  }
-  Array.from(audioScriptEditorEl.childNodes).forEach((child)=>collect(child))
-  audioScriptEditorEl.replaceChildren()
-  segments.forEach((segment)=>{
-    const span = document.createElement('span')
-    span.className = segment.type==='addition' ? 'audio-script-addition' : 'audio-script-original'
-    span.textContent = segment.text
-    audioScriptEditorEl.appendChild(span)
-  })
-}
-function captureAudioScriptState(){
-  const segments = []
-  function collect(node, inheritedType='original'){
-    if(node.nodeType===Node.TEXT_NODE){
-      if(node.nodeValue) appendAudioScriptSegment(segments, inheritedType, node.nodeValue)
-      return
-    }
-    if(node.nodeType!==Node.ELEMENT_NODE) return
-    const type = node.classList.contains('audio-script-addition') ? 'addition'
-      : node.classList.contains('audio-script-original') ? 'original'
-      : inheritedType
-    Array.from(node.childNodes).forEach((child)=>collect(child, type))
-  }
-  Array.from(audioScriptEditorEl.childNodes).forEach((child)=>collect(child))
-  const selection = window.getSelection()
-  return {segments, selection:getAudioScriptSelectionOffsets(selection)}
-}
-function restoreAudioScriptState(state){
-  audioScriptEditorEl.replaceChildren()
-  state.segments.forEach((segment)=>{
-    const span = document.createElement('span')
-    span.className = segment.type==='addition' ? 'audio-script-addition' : 'audio-script-original'
-    span.textContent = segment.text
-    audioScriptEditorEl.appendChild(span)
-  })
-  if(state.selection) setAudioScriptCaret(state.selection.start)
-}
-function recordAudioScriptUndo(){
-  audioScriptUndoStack.push(captureAudioScriptState())
-  if(audioScriptUndoStack.length>100) audioScriptUndoStack.shift()
-  audioScriptRedoStack = []
-  updateAudioScriptHistoryButtons()
-}
-function undoAudioScriptEdit(redo=false){
-  const from = redo ? audioScriptRedoStack : audioScriptUndoStack
-  const to = redo ? audioScriptUndoStack : audioScriptRedoStack
-  if(!from.length){
-    updateAudioScriptHistoryButtons()
-    return
-  }
-  to.push(captureAudioScriptState())
-  restoreAudioScriptState(from.pop())
-  updateAudioScriptHistoryButtons()
-}
-function updateAudioScriptHistoryButtons(){
-  audioScriptUndoBtn.disabled = !audioScriptUndoStack.length
-  audioScriptRedoBtn.disabled = !audioScriptRedoStack.length
-}
-audioScriptUndoBtn.addEventListener('click', ()=>undoAudioScriptEdit())
-audioScriptRedoBtn.addEventListener('click', ()=>undoAudioScriptEdit(true))
-function handleAudioScriptHistoryShortcut(event){
-  if(audioScriptOverlayEl.classList.contains('hidden') || !(event.ctrlKey || event.metaKey)) return
-  const key = event.key.toLowerCase()
-  if(key!=='z' && key!=='y') return
-  event.preventDefault()
-  event.stopImmediatePropagation()
-  undoAudioScriptEdit(key==='y' || event.shiftKey)
-}
-function deleteAudioScriptText(inputType){
-  const selection = window.getSelection()
-  if(!selection || !selection.rangeCount) return
-  const offsets = getAudioScriptSelectionOffsets(selection)
-  if(!offsets) return
+function audioScriptDeletionRange(inputType, start){
   const text = audioScriptEditorEl.textContent
-  let {start, end} = offsets
-  if(start===end){
-    if(inputType==='deleteContentBackward' || inputType==='deleteWordBackward' || inputType==='deleteSoftLineBackward' || inputType==='deleteHardLineBackward'){
-      const prefix = text.slice(0, start)
-      if(inputType==='deleteWordBackward'){
-        const match = prefix.match(/\s*\S+\s*$/)
-        start = match ? start - match[0].length : Math.max(0, start - 1)
-      }else if(inputType==='deleteSoftLineBackward' || inputType==='deleteHardLineBackward'){
-        start = Math.max(prefix.lastIndexOf('\n') + 1, start - 1)
-      }else start = Math.max(0, start - 1)
-    }else{
-      const suffix = text.slice(end)
-      if(inputType==='deleteWordForward'){
-        const match = suffix.match(/^\s*\S+\s*/)
-        end = match ? end + match[0].length : Math.min(text.length, end + 1)
-      }else if(inputType==='deleteSoftLineForward' || inputType==='deleteHardLineForward'){
-        const lineEnd = text.indexOf('\n', end)
-        end = lineEnd<0 ? Math.min(text.length, end + 1) : Math.max(end + 1, lineEnd)
-      }else end = Math.min(text.length, end + 1)
+  if(inputType==='deleteContentBackward' || inputType==='deleteWordBackward' || inputType==='deleteSoftLineBackward' || inputType==='deleteHardLineBackward'){
+    const prefix = text.slice(0, start)
+    if(inputType==='deleteWordBackward'){
+      const match = prefix.match(/\s*\S+\s*$/)
+      return {start:match ? start - match[0].length : Math.max(0, start - 1), end:start}
     }
+    if(inputType==='deleteSoftLineBackward' || inputType==='deleteHardLineBackward') return {start:Math.max(prefix.lastIndexOf('\n') + 1, start - 1), end:start}
+    return {start:Math.max(0, start - 1), end:start}
   }
-  if(!getAudioScriptTextNodes().some((entry)=>entry.isAddition && entry.end>start && entry.start<end)) return
-  recordAudioScriptUndo()
-  removeAudioScriptAdditions(start, end)
-  normalizeAudioScriptSegments()
-  setAudioScriptCaret(start)
+  const suffix = text.slice(start)
+  if(inputType==='deleteWordForward'){
+    const match = suffix.match(/^\s*\S+\s*/)
+    return {start, end:match ? start + match[0].length : Math.min(text.length, start + 1)}
+  }
+  if(inputType==='deleteSoftLineForward' || inputType==='deleteHardLineForward'){
+    const lineEnd = text.indexOf('\n', start)
+    return {start, end:lineEnd<0 ? Math.min(text.length, start + 1) : Math.max(start + 1, lineEnd)}
+  }
+  return {start, end:Math.min(text.length, start + 1)}
+}
+function allowAudioScriptDeletion(inputType){
+  const selection = window.getSelection()
+  if(!selection || !selection.rangeCount) return false
+  const offsets = getAudioScriptSelectionOffsets(selection)
+  if(!offsets) return false
+  const deletion = offsets.start===offsets.end ? audioScriptDeletionRange(inputType, offsets.start) : offsets
+  return audioScriptRangeIsAdditions(deletion.start, deletion.end)
 }
 audioScriptEditorEl.addEventListener('beforeinput', (event)=>{
-  if(event.inputType==='historyUndo' || event.inputType==='historyRedo'){
-    event.preventDefault()
-    undoAudioScriptEdit(event.inputType==='historyRedo')
-  }else if(event.inputType==='insertText' || event.inputType==='insertParagraph' || event.inputType==='insertLineBreak'){
+  if(event.inputType==='insertText' || event.inputType==='insertParagraph' || event.inputType==='insertLineBreak'){
     event.preventDefault()
     insertAudioScriptText(event.inputType==='insertText' ? event.data || '' : '\n')
   }else if(event.inputType.startsWith('delete')){
-    event.preventDefault()
-    deleteAudioScriptText(event.inputType)
+    if(!allowAudioScriptDeletion(event.inputType)) event.preventDefault()
   }
 })
 audioScriptEditorEl.addEventListener('paste', (event)=>{
   event.preventDefault()
   insertAudioScriptText(event.clipboardData.getData('text/plain'))
 })
-document.addEventListener('keydown', (event)=>{
-  handleAudioScriptHistoryShortcut(event)
-}, true)
 audioScriptSaveBtn.addEventListener('click', saveAudioScript)
 audioScriptCloseBtn.addEventListener('click', closeAudioScript)
 audioScriptCancelBtn.addEventListener('click', closeAudioScript)
