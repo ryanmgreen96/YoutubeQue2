@@ -145,6 +145,7 @@ let audioFilesLoaded = false
 let audioFilesLoading = false
 let audioFilesError = ''
 let audioItemFormOpen = false
+let audioItemFormId = ''
 let activeAudioItemId = ''
 let audioScriptItemId = ''
 let gymChannels = loadGymChannels()
@@ -1449,6 +1450,7 @@ function renderAudioPage(){
   addButton.setAttribute('aria-label', 'Add an audio item')
   addButton.addEventListener('click', ()=>{
     audioItemFormOpen = !audioItemFormOpen
+    audioItemFormId = ''
     render()
   })
   controls.appendChild(addButton)
@@ -1467,6 +1469,7 @@ function renderAudioPage(){
   toolbar.appendChild(controls)
 
   if(audioItemFormOpen){
+    const editingItem = audioItems.find((item)=>item.id===audioItemFormId)
     const form = document.createElement('form')
     form.className = 'audio-item-form audio-item-form-inline'
     const fileLabel = document.createElement('label')
@@ -1478,12 +1481,19 @@ function renderAudioPage(){
     placeholder.value = ''
     placeholder.textContent = 'Choose an MP3'
     fileSelect.appendChild(placeholder)
+    if(editingItem && !availableAudioFiles.includes(editingItem.filename)){
+      const currentFileOption = document.createElement('option')
+      currentFileOption.value = editingItem.filename
+      currentFileOption.textContent = editingItem.filename
+      fileSelect.appendChild(currentFileOption)
+    }
     availableAudioFiles.forEach((filename)=>{
       const option = document.createElement('option')
       option.value = filename
       option.textContent = filename
       fileSelect.appendChild(option)
     })
+    if(editingItem) fileSelect.value = editingItem.filename
     fileLabel.appendChild(fileSelect)
 
     const titleLabel = document.createElement('label')
@@ -1493,6 +1503,7 @@ function renderAudioPage(){
     titleInput.required = true
     titleInput.maxLength = 120
     titleInput.placeholder = 'Title to show on the play button'
+    if(editingItem) titleInput.value = editingItem.title
     titleLabel.appendChild(titleInput)
 
     const scriptLabel = document.createElement('label')
@@ -1504,7 +1515,7 @@ function renderAudioPage(){
     scriptInput.placeholder = 'Paste the original yoga guide script'
     scriptLabel.appendChild(scriptInput)
 
-    let titleWasEdited = false
+    let titleWasEdited = !!editingItem
     titleInput.addEventListener('input', ()=>{ titleWasEdited = true })
     fileSelect.addEventListener('change', ()=>{
       if(!titleWasEdited) titleInput.value = fileSelect.value.replace(/\.mp3$/i, '')
@@ -1514,26 +1525,45 @@ function renderAudioPage(){
     formActions.className = 'audio-form-actions'
     const saveButton = document.createElement('button')
     saveButton.type = 'submit'
-    saveButton.textContent = 'Add item'
-    saveButton.disabled = !availableAudioFiles.length
+    saveButton.textContent = editingItem ? 'Save changes' : 'Add item'
+    saveButton.disabled = !availableAudioFiles.length && !editingItem
     formActions.appendChild(saveButton)
     const cancelButton = document.createElement('button')
     cancelButton.type = 'button'
     cancelButton.textContent = 'Cancel'
     cancelButton.addEventListener('click', ()=>{
       audioItemFormOpen = false
+      audioItemFormId = ''
       render()
     })
     formActions.appendChild(cancelButton)
-    form.append(fileLabel, titleLabel, scriptLabel, formActions)
+    if(!editingItem) form.appendChild(scriptLabel)
+    form.append(fileLabel, titleLabel, formActions)
     form.addEventListener('submit', (event)=>{
       event.preventDefault()
       const filename = fileSelect.value
       const title = titleInput.value.trim()
-      if(!availableAudioFiles.includes(filename) || !title) return
-      audioItems.push({id: uid(), filename, title, script: scriptInput.value, scriptEdits: ''})
+      if((!availableAudioFiles.includes(filename) && filename!==editingItem?.filename) || !title) return
+      if(editingItem){
+        const filenameChanged = editingItem.filename!==filename
+        editingItem.filename = filename
+        editingItem.title = title
+        if(activeAudioItemId===editingItem.id){
+          audioPlayer.setAttribute('aria-label', `${title} audio player`)
+          if(filenameChanged){
+            const wasPlaying = !audioPlayer.paused
+            audioPlayer.src = audioFileUrl(filename)
+            if(wasPlaying) audioPlayer.play().catch((error)=>{
+              if(error.name!=='AbortError') console.error(`Failed to play audio file "${filename}"`, error)
+            })
+          }
+        }
+      }else{
+        audioItems.push({id: uid(), filename, title, script: scriptInput.value, scriptEdits: ''})
+      }
       saveAudioItems()
       audioItemFormOpen = false
+      audioItemFormId = ''
       render()
     })
     toolbar.appendChild(form)
@@ -1589,6 +1619,19 @@ function renderAudioPage(){
     scriptButton.setAttribute('aria-label', `View or edit the script for ${item.title}`)
     scriptButton.addEventListener('click', ()=>openAudioScript(item))
     row.appendChild(scriptButton)
+
+    const editButton = document.createElement('button')
+    editButton.type = 'button'
+    editButton.className = 'audio-item-edit'
+    editButton.textContent = 'Edit'
+    editButton.title = `Edit the title or MP3 for ${item.title}`
+    editButton.setAttribute('aria-label', `Edit the title or MP3 for ${item.title}`)
+    editButton.addEventListener('click', ()=>{
+      audioItemFormId = item.id
+      audioItemFormOpen = true
+      render()
+    })
+    row.appendChild(editButton)
 
     const removeButton = document.createElement('button')
     removeButton.type = 'button'

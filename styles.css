@@ -301,9 +301,10 @@ main{display:grid;grid-template-columns:10% 75% 15%;height:100vh;overflow:hidden
 .audio-now-playing-title{max-width:180px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .audio-player{display:block;width:min(300px,45vw);margin:0}
 .audio-item-list{display:flex;flex-flow:row nowrap;justify-content:flex-start;align-items:flex-start;gap:7px;width:100%;overflow-x:auto;padding:2px 0 8px}
-.audio-item-row{display:grid;grid-template-columns:minmax(0,1fr) auto auto;flex:0 0 220px;gap:6px}
+.audio-item-row{display:grid;grid-template-columns:minmax(0,1fr) auto auto auto;flex:0 0 260px;gap:6px}
 .audio-item-button{text-align:left;min-height:38px}
 .audio-script-button{width:38px;min-height:38px;padding:0;color:#fff2d8;font-size:18px}
+.audio-item-edit{min-height:38px;padding:6px 8px;font-size:12px}
 .audio-item-delete{color:#ffd0cc}
 .audio-script-overlay.hidden{display:none}
 .audio-script-overlay{position:fixed;inset:0;z-index:2200;display:flex;align-items:center;justify-content:center;padding:18px}
