@@ -131,7 +131,6 @@ const musicPlayerStartBtn = document.getElementById('music-player-start-btn')
 const audioScriptOverlayEl = document.getElementById('audio-script-overlay')
 const audioScriptTitleEl = document.getElementById('audio-script-title')
 const audioScriptEditorEl = document.getElementById('audio-script-editor')
-const audioScriptBrushBtn = document.getElementById('audio-script-brush-btn')
 const audioScriptSaveBtn = document.getElementById('audio-script-save-btn')
 const audioScriptCloseBtn = document.getElementById('audio-script-close-btn')
 const audioScriptCancelBtn = document.getElementById('audio-script-cancel-btn')
@@ -1237,9 +1236,7 @@ function openAudioScript(item){
     original.textContent = item.script || ''
     audioScriptEditorEl.appendChild(original)
   }
-  audioScriptEditorEl.contentEditable = 'false'
-  audioScriptBrushBtn.classList.remove('selected')
-  audioScriptBrushBtn.setAttribute('aria-pressed', 'false')
+  audioScriptEditorEl.contentEditable = 'true'
   audioScriptOverlayEl.classList.remove('hidden')
   audioScriptOverlayEl.setAttribute('aria-hidden', 'false')
   audioScriptCloseBtn.focus()
@@ -1271,12 +1268,6 @@ function saveAudioScript(){
   closeAudioScript()
   render()
 }
-audioScriptBrushBtn.addEventListener('click', ()=>{
-  const editing = audioScriptEditorEl.contentEditable !== 'true'
-  audioScriptEditorEl.contentEditable = String(editing)
-  audioScriptBrushBtn.classList.toggle('selected', editing)
-  audioScriptBrushBtn.setAttribute('aria-pressed', String(editing))
-})
 function insertAudioScriptText(text){
   const selection = window.getSelection()
   if(!selection || !selection.rangeCount) return
@@ -1297,7 +1288,7 @@ function insertAudioScriptText(text){
   addition.className = 'audio-script-addition'
   addition.appendChild(textNode)
   insertionRange.insertNode(addition)
-  insertionRange.setStartAfter(addition)
+  insertionRange.setStart(textNode, text.length)
   insertionRange.collapse(true)
   selection.removeAllRanges()
   selection.addRange(insertionRange)
@@ -1329,7 +1320,6 @@ function deleteAudioScriptText(backward){
   selection.addRange(range)
 }
 audioScriptEditorEl.addEventListener('beforeinput', (event)=>{
-  if(audioScriptEditorEl.contentEditable!=='true') return
   if(event.inputType==='insertText' || event.inputType==='insertParagraph' || event.inputType==='insertLineBreak'){
     event.preventDefault()
     insertAudioScriptText(event.inputType==='insertText' ? event.data || '' : '\n')
@@ -1339,7 +1329,6 @@ audioScriptEditorEl.addEventListener('beforeinput', (event)=>{
   }
 })
 audioScriptEditorEl.addEventListener('paste', (event)=>{
-  if(audioScriptEditorEl.contentEditable!=='true') return
   event.preventDefault()
   insertAudioScriptText(event.clipboardData.getData('text/plain'))
 })
@@ -5155,7 +5144,7 @@ function renderTabBar(pageId){
     })
 
     wrap.appendChild(button)
-    if(!isJournalPage(pid)){
+    if(!isJournalPage(pid) && !isMusicPage(pid)){
       const thumbnailBtn = document.createElement('button')
       thumbnailBtn.type = 'button'
       thumbnailBtn.className = `main-tab title-filter-toggle${areTabThumbnailsHidden(pid, tab.id) ? ' selected' : ''}`
@@ -5394,12 +5383,9 @@ function render(){ sections.innerHTML=''
         sections.appendChild(empty)
       }
     }else if(list.length){
-      const musicComparator = isMusicPage(currentPageId) ? (a, b)=>{
-        if(!!a.favorite !== !!b.favorite) return a.favorite ? -1 : 1
-        const delta = itemChronologyMs(a) - itemChronologyMs(b)
-        return sortOrder === 'asc' ? delta : -delta
-      } : null
-      const sortedList = buildChronologicalListWithDividers(list, sortOrder, itemChronologyMs, musicComparator)
+      const sortedList = isMusicPage(currentPageId)
+        ? list
+        : buildChronologicalListWithDividers(list, sortOrder, itemChronologyMs)
       renderSection('', sortedList)
     }else{
       const empty = document.createElement('p')
@@ -5574,7 +5560,7 @@ function renderSection(title, list, showHomeControls = false, hideGrid = false){
     sections.appendChild(s)
     return
   }
-  const g = document.createElement('div'); g.className=`grid${currentPageId!=='home' && areTabThumbnailsHidden(currentPageId, getActiveTabId(currentPageId)) ? ' thumbnails-hidden' : ''}`
+  const g = document.createElement('div'); g.className=`grid${currentPageId!=='home' && !isMusicPage(currentPageId) && areTabThumbnailsHidden(currentPageId, getActiveTabId(currentPageId)) ? ' thumbnails-hidden' : ''}`
   list.forEach(it=>{
     if(isDividerItem(it)){
       const dividerItem = document.createElement('div')
