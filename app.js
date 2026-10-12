@@ -1450,7 +1450,10 @@ function deleteAudioScriptText(inputType){
   setAudioScriptCaret(start)
 }
 audioScriptEditorEl.addEventListener('beforeinput', (event)=>{
-  if(event.inputType==='insertText' || event.inputType==='insertParagraph' || event.inputType==='insertLineBreak'){
+  if(event.inputType==='historyUndo' || event.inputType==='historyRedo'){
+    event.preventDefault()
+    undoAudioScriptEdit(event.inputType==='historyRedo')
+  }else if(event.inputType==='insertText' || event.inputType==='insertParagraph' || event.inputType==='insertLineBreak'){
     event.preventDefault()
     insertAudioScriptText(event.inputType==='insertText' ? event.data || '' : '\n')
   }else if(event.inputType.startsWith('delete')){
@@ -1462,11 +1465,14 @@ audioScriptEditorEl.addEventListener('paste', (event)=>{
   event.preventDefault()
   insertAudioScriptText(event.clipboardData.getData('text/plain'))
 })
-audioScriptEditorEl.addEventListener('keydown', (event)=>{
-  if(!(event.ctrlKey || event.metaKey) || event.key.toLowerCase()!=='z' && event.key.toLowerCase()!=='y') return
+document.addEventListener('keydown', (event)=>{
+  if(audioScriptOverlayEl.classList.contains('hidden') || !(event.ctrlKey || event.metaKey)) return
+  const key = event.key.toLowerCase()
+  if(key!=='z' && key!=='y') return
   event.preventDefault()
-  undoAudioScriptEdit(event.key.toLowerCase()==='y' || event.shiftKey)
-})
+  event.stopPropagation()
+  undoAudioScriptEdit(key==='y' || event.shiftKey)
+}, true)
 audioScriptSaveBtn.addEventListener('click', saveAudioScript)
 audioScriptCloseBtn.addEventListener('click', closeAudioScript)
 audioScriptCancelBtn.addEventListener('click', closeAudioScript)
