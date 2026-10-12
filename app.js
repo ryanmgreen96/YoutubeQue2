@@ -1676,9 +1676,12 @@ document.addEventListener('pointercancel', ()=>{
   clearTimeout(audioItemRightPress.timer)
   audioItemRightPress = null
 })
-document.addEventListener('contextmenu', (event)=>{
+window.addEventListener('contextmenu', (event)=>{
   const target = event.target instanceof Element ? event.target : null
-  if(target && (target.closest('.audio-item-button') || (isMusicPage(currentPageId) && target.closest('.item')))) event.preventDefault()
+  if(target && (target.closest('.audio-item-button') || (isMusicPage(currentPageId) && target.closest('.item')))){
+    event.preventDefault()
+    event.stopImmediatePropagation()
+  }
 }, true)
 
 let carbItemDialogSelectedColor = 'red'
