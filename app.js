@@ -1653,7 +1653,7 @@ function renderAudioPage(){
         deleteAudioItem(item.id)
       }, 2000)
     })
-    button.addEventListener('contextmenu', (event)=>event.preventDefault())
+    button.addEventListener('contextmenu', (event)=>event.preventDefault(), true)
     row.appendChild(button)
     list.appendChild(row)
   })
@@ -5831,7 +5831,7 @@ function renderSection(title, list, showHomeControls = false, hideGrid = false){
       el.addEventListener('contextmenu', (event)=>{
         event.preventDefault()
         event.stopPropagation()
-      })
+      }, true)
     }
 
     // long-press to edit
