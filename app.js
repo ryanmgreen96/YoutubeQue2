@@ -150,6 +150,7 @@ let audioItemFormOpen = false
 let activeAudioItemId = ''
 let audioScriptItemId = ''
 let audioItemRightPress = null
+let suppressAudioMusicContextMenuUntil = 0
 let gymChannels = loadGymChannels()
 let gymOldHidden = loadGymOldHidden()
 let gymNoteItemId = null
@@ -1643,6 +1644,7 @@ function renderAudioPage(){
     })
     button.addEventListener('pointerdown', (event)=>{
       if(event.button!==2) return
+      suppressAudioMusicContextMenuUntil = Date.now() + 5000
       event.preventDefault()
       if(audioItemRightPress) clearTimeout(audioItemRightPress.timer)
       const press = {itemId:item.id, timer:null}
@@ -1669,7 +1671,10 @@ document.addEventListener('pointerup', (event)=>{
   clearTimeout(press.timer)
   audioItemRightPress = null
   const item = audioItems.find((audioItem)=>audioItem.id===press.itemId)
-  if(item) openAudioScript(item)
+  if(item){
+    suppressAudioMusicContextMenuUntil = Date.now() + 1500
+    openAudioScript(item)
+  }
 })
 document.addEventListener('pointercancel', ()=>{
   if(!audioItemRightPress) return
@@ -1678,10 +1683,11 @@ document.addEventListener('pointercancel', ()=>{
 })
 window.addEventListener('contextmenu', (event)=>{
   const target = event.target instanceof Element ? event.target : null
-  if(target && (target.closest('.audio-item-button') || (isMusicPage(currentPageId) && target.closest('.item')))){
-    event.preventDefault()
-    event.stopImmediatePropagation()
-  }
+  const targetIsAudioOrMusicItem = target && (target.closest('.audio-item-button') || (isMusicPage(currentPageId) && target.closest('.item')))
+  if(!targetIsAudioOrMusicItem && Date.now()>=suppressAudioMusicContextMenuUntil) return
+  suppressAudioMusicContextMenuUntil = 0
+  event.preventDefault()
+  event.stopImmediatePropagation()
 }, true)
 
 let carbItemDialogSelectedColor = 'red'
@@ -5816,6 +5822,7 @@ function renderSection(title, list, showHomeControls = false, hideGrid = false){
       let rightPressHandled = false
       el.addEventListener('mousedown', (event)=>{
         if(event.button !== 2 || editMode) return
+        suppressAudioMusicContextMenuUntil = Date.now() + 5000
         rightPressHandled = false
         rightPressTimer = setTimeout(()=>{
           rightPressHandled = true
@@ -5825,6 +5832,7 @@ function renderSection(title, list, showHomeControls = false, hideGrid = false){
       el.addEventListener('mouseup', (event)=>{
         if(event.button !== 2) return
         clearTimeout(rightPressTimer)
+        suppressAudioMusicContextMenuUntil = Date.now() + 1500
         if(!rightPressHandled && !editMode){
           markLastViewedItem(it.id)
           openMusicPlayer(it, true)
