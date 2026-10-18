@@ -173,7 +173,7 @@ let homeOldHidden = loadHomeOldHidden()
 let headerLinks = loadHeaderLinks()
 let topbarRows = loadTopbarRows()
 let activeTopbarRowId = loadTopbarActiveRowId()
-let secondaryTopbarRowId = localStorage.getItem(TOPBAR_SECONDARY_ROW_KEY) || ''
+let secondaryTopbarRowIndex = 1
 let topbarLinkCopy = loadTopbarLinkCopy()
 let topbarSelectedLinkId = null
 let topbarManageOpen = false
@@ -3702,12 +3702,13 @@ function ensureTopbarState(){
     activeTopbarRowId = topbarRows[0].id
     saveTopbarActiveRowId()
   }
-  if(secondaryTopbarRowId!==topbarRows[1].id && secondaryTopbarRowId!==topbarRows[2].id){
-    secondaryTopbarRowId = topbarRows[1].id
+  const savedSecondaryRow = localStorage.getItem(TOPBAR_SECONDARY_ROW_KEY)
+  secondaryTopbarRowIndex = savedSecondaryRow==='2' || savedSecondaryRow===topbarRows[2].id ? 2 : 1
+  if(savedSecondaryRow!=='1' && savedSecondaryRow!=='2'){
     saveTopbarSecondaryRowId()
   }
 }
-function saveTopbarSecondaryRowId(){ localStorage.setItem(TOPBAR_SECONDARY_ROW_KEY, secondaryTopbarRowId || '') }
+function saveTopbarSecondaryRowId(){ localStorage.setItem(TOPBAR_SECONDARY_ROW_KEY, String(secondaryTopbarRowIndex)) }
 function getActiveTopbarRow(){
   ensureTopbarState()
   return topbarRows.find(row=>row.id===activeTopbarRowId) || topbarRows[0]
@@ -3894,10 +3895,23 @@ function moveTopbarLink(linkId, delta){
   saveTopbarRows()
   renderHeaderLinks()
 }
+function moveTopbarLinkToOtherLowerRow(linkId){
+  const sourceIndex = topbarRows.findIndex(row=>row.links.some(link=>link.id===linkId))
+  if(sourceIndex!==1 && sourceIndex!==2) return
+  const targetIndex = sourceIndex===1 ? 2 : 1
+  const sourceRow = topbarRows[sourceIndex]
+  const targetRow = topbarRows[targetIndex]
+  const linkIndex = sourceRow.links.findIndex(link=>link.id===linkId)
+  if(linkIndex<0 || !targetRow) return
+  const [link] = sourceRow.links.splice(linkIndex, 1)
+  targetRow.links.push(link)
+  activeTopbarRowId = targetRow.id
+  saveTopbarRows()
+  saveTopbarActiveRowId()
+  renderHeaderLinks()
+}
 function advanceTopbarSecondaryRow(){
-  secondaryTopbarRowId = secondaryTopbarRowId===topbarRows[1].id
-    ? topbarRows[2].id
-    : topbarRows[1].id
+  secondaryTopbarRowIndex = secondaryTopbarRowIndex===1 ? 2 : 1
   saveTopbarSecondaryRowId()
   renderHeaderLinks()
 }
@@ -5132,7 +5146,7 @@ function renderHeaderLinks(){
   ensureTopbarState()
   topbarRolesEl.innerHTML = ''
   topbarLinksEl.innerHTML = ''
-  const visibleRows = [topbarRows[0], topbarRows.find(row=>row.id===secondaryTopbarRowId)]
+  const visibleRows = [topbarRows[0], topbarRows[secondaryTopbarRowIndex]]
   visibleRows.forEach((row, rowIndex)=>{
     if(!row) return
     const rowWrap = document.createElement('div')
@@ -5144,10 +5158,13 @@ function renderHeaderLinks(){
       const rowArrow = document.createElement('button')
       rowArrow.type = 'button'
       rowArrow.className = 'topbar-row-arrow'
-      rowArrow.textContent = '›'
+      rowArrow.textContent = secondaryTopbarRowIndex===1 ? '›' : '‹'
       rowArrow.title = 'Switch between the two lower favorites rows'
       rowArrow.setAttribute('aria-label', 'Switch between the two lower favorites rows')
-      rowArrow.addEventListener('click', advanceTopbarSecondaryRow)
+      rowArrow.addEventListener('click', (event)=>{
+        event.stopPropagation()
+        advanceTopbarSecondaryRow()
+      })
       linkTrack.appendChild(rowArrow)
     }
     row.links.forEach(link=>{
@@ -5211,6 +5228,12 @@ function renderHeaderLinks(){
       const label = document.createElement('span'); label.className = 'topbar-manage-label'; label.textContent = `Edit ${selected.title}`
       const moveLeft = document.createElement('button'); moveLeft.type = 'button'; moveLeft.textContent = '<'; moveLeft.title = 'Move left'; moveLeft.setAttribute('aria-label', `Move ${selected.title} left`); moveLeft.addEventListener('click', ()=>moveTopbarLink(selected.id, -1))
       const moveRight = document.createElement('button'); moveRight.type = 'button'; moveRight.textContent = '>'; moveRight.title = 'Move right'; moveRight.setAttribute('aria-label', `Move ${selected.title} right`); moveRight.addEventListener('click', ()=>moveTopbarLink(selected.id, 1))
+      const selectedRowIndex = topbarRows.indexOf(selectedRow)
+      const switchLowerRow = document.createElement('button')
+      switchLowerRow.type = 'button'
+      switchLowerRow.textContent = 'Switch lower row'
+      switchLowerRow.title = 'Move this favorite to the other lower row'
+      switchLowerRow.addEventListener('click', ()=>moveTopbarLinkToOtherLowerRow(selected.id))
       const copyLink = document.createElement('button')
       copyLink.type = 'button'
       copyLink.textContent = topbarLinkCopy && topbarLinkCopy.url===selected.url && topbarLinkCopy.iconUrl===selected.iconUrl
@@ -5231,7 +5254,9 @@ function renderHeaderLinks(){
       })
       const remove = document.createElement('button'); remove.type = 'button'; remove.className = 'danger'; remove.textContent = 'Delete'; remove.addEventListener('click', ()=>deleteTopbarLink(selected.id))
       const close = document.createElement('button'); close.type = 'button'; close.className = 'topbar-manage-close'; close.textContent = 'Close'; close.addEventListener('click', ()=>{ topbarManageOpen = false; renderHeaderLinks() })
-      manage.append(label, moveLeft, moveRight, copyLink, rename, iconInput, iconSave, remove, close)
+      manage.append(label, moveLeft, moveRight)
+      if(selectedRowIndex===1 || selectedRowIndex===2) manage.appendChild(switchLowerRow)
+      manage.append(copyLink, rename, iconInput, iconSave, remove, close)
     }else{
       const close = document.createElement('button'); close.type = 'button'; close.className = 'topbar-manage-close'; close.textContent = 'Close'; close.addEventListener('click', ()=>{ topbarManageOpen = false; renderHeaderLinks() })
       manage.appendChild(close)
