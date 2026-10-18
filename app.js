@@ -3880,20 +3880,8 @@ function moveTopbarLinkToRow(linkId, rowId){
 }
 function advanceTopbarSecondaryRow(){
   const currentIndex = topbarRows.findIndex(row=>row.id===secondaryTopbarRowId)
-  const nextIndex = currentIndex + 1
-  if(nextIndex < topbarRows.length){
-    secondaryTopbarRowId = topbarRows[nextIndex].id
-  }else{
-    const row = {
-      id: uid(),
-      name: `Small row ${topbarRows.length}`,
-      symbol: '#',
-      links: []
-    }
-    topbarRows.push(row)
-    secondaryTopbarRowId = row.id
-    saveTopbarRows()
-  }
+  const nextIndex = (currentIndex + 1) % topbarRows.length
+  secondaryTopbarRowId = topbarRows[nextIndex].id
   saveTopbarSecondaryRowId()
   renderHeaderLinks()
 }
