@@ -7,6 +7,7 @@ const SAVED_LINKS_APP_KEY = 'ytSavedVideos_v1'
 const HEADER_LINKS_KEY = 'ytHeaderLinks_v1'
 const TOPBAR_ROWS_KEY = 'ytTopbarRows_v1'
 const TOPBAR_ACTIVE_ROW_KEY = 'ytTopbarActiveRow_v1'
+const TOPBAR_SECONDARY_ROW_KEY = 'ytTopbarSecondaryRow_v1'
 const THEME_INDEX_KEY = 'ytThemeIndex_v1'
 const SCROLL_POSITIONS_KEY = 'ytScrollPositions_v1'
 const LAST_VIEWED_KEY = 'ytLastViewedItem_v1'
@@ -171,7 +172,9 @@ let homeOldHidden = loadHomeOldHidden()
 let headerLinks = loadHeaderLinks()
 let topbarRows = loadTopbarRows()
 let activeTopbarRowId = loadTopbarActiveRowId()
+let secondaryTopbarRowId = localStorage.getItem(TOPBAR_SECONDARY_ROW_KEY) || ''
 let topbarSelectedLinkId = null
+let topbarHoveredLinkId = ''
 let topbarManageOpen = false
 const topbarHoldState = {timer: null, linkId: '', rowId: '', startX: 0, startY: 0, suppressClickLinkId: '', suppressClickUntil: 0}
 let featureShortcuts = loadFeatureShortcuts()
@@ -841,6 +844,8 @@ function renderJournalInput(list, includeDate = false, placeholder = 'Add an ite
     dateInput = document.createElement('input')
     dateInput.type = 'date'
     dateInput.className = 'journal-date-input'
+    const today = new Date()
+    dateInput.value = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`
   }
   const submit = document.createElement('button')
   submit.type = 'submit'
@@ -3661,7 +3666,12 @@ function ensureTopbarState(){
     topbarRows.push({id: uid(), name: 'Small row', symbol: '#', links: []})
     saveTopbarRows()
   }
+  if(!topbarRows.some(row=>row.id===secondaryTopbarRowId) || secondaryTopbarRowId===topbarRows[0].id){
+    secondaryTopbarRowId = topbarRows[1].id
+    saveTopbarSecondaryRowId()
+  }
 }
+function saveTopbarSecondaryRowId(){ localStorage.setItem(TOPBAR_SECONDARY_ROW_KEY, secondaryTopbarRowId || '') }
 function getActiveTopbarRow(){
   ensureTopbarState()
   return topbarRows.find(row=>row.id===activeTopbarRowId) || topbarRows[0]
@@ -3752,6 +3762,11 @@ function bindTopbarHoldHandlers(){
     event.preventDefault()
     showManage(button.dataset.linkId, button.dataset.rowId)
   })
+  topbarLinksEl.addEventListener('mouseover', (event)=>{
+    const button = event.target.closest && event.target.closest('.topbar-link-icon:not(.add)')
+    if(button) topbarHoveredLinkId = button.dataset.linkId
+  })
+  topbarLinksEl.addEventListener('mouseleave', ()=>{ topbarHoveredLinkId = '' })
 }
 bindTopbarHoldHandlers()
 
@@ -3862,6 +3877,34 @@ function moveTopbarLinkToRow(linkId, rowId){
   saveTopbarRows()
   saveTopbarActiveRowId()
   renderHeaderLinks()
+}
+function advanceTopbarSecondaryRow(){
+  const currentIndex = topbarRows.findIndex(row=>row.id===secondaryTopbarRowId)
+  const nextIndex = currentIndex + 1
+  if(nextIndex < topbarRows.length){
+    secondaryTopbarRowId = topbarRows[nextIndex].id
+  }else{
+    const row = {
+      id: uid(),
+      name: `Small row ${topbarRows.length}`,
+      symbol: '#',
+      links: []
+    }
+    topbarRows.push(row)
+    secondaryTopbarRowId = row.id
+    saveTopbarRows()
+  }
+  saveTopbarSecondaryRowId()
+  renderHeaderLinks()
+}
+function handleTopbarSecondaryArrow(){
+  const sourceRow = topbarRows.find(row=>row.links.some(link=>link.id===topbarHoveredLinkId))
+  if(sourceRow && sourceRow.id!==secondaryTopbarRowId){
+    moveTopbarLinkToRow(topbarHoveredLinkId, secondaryTopbarRowId)
+    topbarHoveredLinkId = ''
+    return
+  }
+  advanceTopbarSecondaryRow()
 }
 function renameTopbarLink(linkId){
   const row = getActiveTopbarRow()
@@ -5094,12 +5137,24 @@ function renderHeaderLinks(){
   ensureTopbarState()
   topbarRolesEl.innerHTML = ''
   topbarLinksEl.innerHTML = ''
-  topbarRows.forEach((row, rowIndex)=>{
+  const visibleRows = [topbarRows[0], topbarRows.find(row=>row.id===secondaryTopbarRowId)]
+  visibleRows.forEach((row, rowIndex)=>{
+    if(!row) return
     const rowWrap = document.createElement('div')
     rowWrap.className = `topbar-row-wrap${rowIndex===0 ? ' main' : ' secondary'}`
     rowWrap.title = row.name
     const linkTrack = document.createElement('div')
     linkTrack.className = 'topbar-link-track'
+    if(rowIndex===1){
+      const rowArrow = document.createElement('button')
+      rowArrow.type = 'button'
+      rowArrow.className = 'topbar-row-arrow'
+      rowArrow.textContent = '›'
+      rowArrow.title = 'Switch to the next row, or move the hovered icon here'
+      rowArrow.setAttribute('aria-label', 'Switch to the next favorites row or move the hovered icon here')
+      rowArrow.addEventListener('click', handleTopbarSecondaryArrow)
+      linkTrack.appendChild(rowArrow)
+    }
     row.links.forEach(link=>{
       const iconBtn = document.createElement('button')
       iconBtn.type = 'button'

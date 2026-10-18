@@ -18,6 +18,8 @@ header{position:fixed;top:0;left:10%;width:75%;height:94px;display:grid;grid-tem
 .topbar-link-icon:hover,.topbar-link-icon.selected{background:rgba(255,255,255,0.08)}
 .topbar-row-wrap.secondary .topbar-link-track{gap:7px}
 .topbar-row-wrap.secondary .topbar-link-icon{width:28px;height:28px;min-width:28px;border-radius:5px}
+.topbar-row-arrow{flex:0 0 18px;width:18px;height:22px;min-width:18px;padding:0;border:0;border-radius:4px;color:var(--text-soft);font-size:18px;line-height:1;background:transparent}
+.topbar-row-arrow:hover{color:#fff1d6;background:rgba(255,255,255,0.1)}
 .topbar-link-icon.add{font-size:17px;color:#fff1d6;background:transparent}
 .topbar-row-wrap.secondary .topbar-link-icon.add{font-size:14px}
 .topbar-link-favicon{width:24px;height:24px;display:block;border-radius:6px}
@@ -31,8 +33,9 @@ header{position:fixed;top:0;left:10%;width:75%;height:94px;display:grid;grid-tem
 .topbar-manage button:hover{background:rgba(255,255,255,0.12);color:var(--text)}
 .topbar-manage button.danger{color:#ffd0cc}
 .topbar-manage input,.topbar-manage select{width:190px;min-width:120px;padding:6px 8px;border:1px solid rgba(255,255,255,0.12);border-radius:6px;background:var(--card);color:var(--text);font:inherit;font-size:12px}
-.theme-switcher{position:absolute;left:50%;bottom:0;transform:translateX(-50%);display:flex;align-items:stretch;justify-content:center;gap:0;max-width:100%;z-index:1001;border:1px solid color-mix(in srgb, var(--accent) 45%, transparent);background:color-mix(in srgb, var(--accent) 14%, var(--bg))}
-.theme-cycle-btn{flex:0 0 48px;width:48px;height:48px;min-width:48px;padding:0;border:0;border-right:1px solid color-mix(in srgb, var(--accent) 35%, transparent);border-radius:0;font-size:18px;line-height:1;font-weight:700;color:#fff1d6;background:transparent;display:flex;align-items:center;justify-content:center;overflow:hidden;touch-action:manipulation;-webkit-touch-callout:none;user-select:none}
+.theme-switcher{position:absolute;left:50%;bottom:0;transform:translateX(-50%);display:flex;align-items:stretch;justify-content:center;gap:0;max-width:calc(100% - 12px);overflow-x:auto;scrollbar-width:none;padding:4px;z-index:1001;border:1px solid color-mix(in srgb, var(--accent) 45%, transparent);border-radius:10px;background:rgba(8,13,21,0.96);box-shadow:0 4px 16px rgba(0,0,0,0.4)}
+.theme-switcher::-webkit-scrollbar{display:none}
+.theme-cycle-btn{flex:0 0 56px;width:56px;height:56px;min-width:56px;padding:0;border:0;border-right:1px solid color-mix(in srgb, var(--accent) 35%, transparent);border-radius:0;font-size:22px;line-height:1;font-weight:700;color:#fff1d6;background:transparent;display:flex;align-items:center;justify-content:center;overflow:hidden;touch-action:manipulation;-webkit-touch-callout:none;user-select:none}
 .theme-cycle-btn:last-of-type{border-right:0}
 .theme-cycle-btn:hover{background:rgba(255,255,255,0.08)}
 .theme-shortcut-editor{position:absolute;left:50%;bottom:calc(100% + 8px);transform:translateX(-50%);display:flex;align-items:center;gap:7px;width:max-content;max-width:min(540px,82vw);padding:9px;border:1px solid rgba(255,255,255,0.16);border-radius:9px;background:var(--card);box-shadow:0 8px 28px rgba(0,0,0,0.45);color:var(--text);font-size:12px}
@@ -40,12 +43,12 @@ header{position:fixed;top:0;left:10%;width:75%;height:94px;display:grid;grid-tem
 .theme-shortcut-editor label{display:flex;align-items:center;gap:5px}
 .theme-shortcut-editor input{width:58px;padding:5px;border:1px solid rgba(255,255,255,0.16);border-radius:5px;background:rgba(255,255,255,0.06);color:var(--text);font:inherit;text-align:center}
 .theme-shortcut-editor input{width:210px;text-align:left}
-.theme-shortcut-icon-image{display:block;flex:0 0 21px;width:21px;height:21px;max-width:100%;max-height:100%;margin:auto;object-fit:contain;object-position:center;border-radius:4px}
+.theme-shortcut-icon-image{display:block;flex:0 0 28px;width:28px;height:28px;max-width:100%;max-height:100%;margin:auto;object-fit:contain;object-position:center;border-radius:4px}
 .theme-shortcut-editor button{padding:5px 7px}
 .theme-shortcut-editor button:disabled{opacity:0.4;cursor:not-allowed}
 .theme-shortcut-editor-close{font-size:16px}
-.timer-btn,.library-btn,.gym-btn,.music-btn{font-size:16px}
-.movie-btn{font-size:12px}
+.timer-btn,.library-btn,.gym-btn,.music-btn{font-size:22px}
+.movie-btn{font-size:18px}
 button{background:transparent;border:1px solid rgba(255,255,255,0.06);color:var(--text);padding:6px 10px;border-radius:6px;cursor:pointer}
 button.selected{background:var(--accent);color:#000;border-color:transparent}
 main{display:grid;grid-template-columns:10% 75% 15%;height:100vh;overflow:hidden}
@@ -120,7 +123,7 @@ main{display:grid;grid-template-columns:10% 75% 15%;height:100vh;overflow:hidden
 .journal-actions button{padding:3px 6px;border-radius:5px;font-size:10px;color:var(--text-soft);background:rgba(255,255,255,0.05)}
 .journal-actions button:disabled{opacity:0.35;cursor:not-allowed}
 .journal-actions .journal-delete{color:#ffd2c9;border-color:rgba(208,108,91,0.5)}
-.journal-checkbox{accent-color:#4caf50;width:15px;height:15px;margin:0}
+.journal-checkbox{accent-color:#e0c341;width:18px;height:18px;margin:0}
 .journal-add-form{display:flex;align-items:center;gap:7px;margin-top:2px}
 .journal-cash-add-form{margin-bottom:2px}
 .journal-input,.journal-date-input{min-width:0;padding:6px 7px;border:1px solid rgba(255,255,255,0.16);border-radius:6px;background:rgba(255,255,255,0.04);color:var(--text);font:inherit;font-size:12px}
