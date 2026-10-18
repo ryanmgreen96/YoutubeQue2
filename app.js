@@ -8,6 +8,7 @@ const HEADER_LINKS_KEY = 'ytHeaderLinks_v1'
 const TOPBAR_ROWS_KEY = 'ytTopbarRows_v1'
 const TOPBAR_ACTIVE_ROW_KEY = 'ytTopbarActiveRow_v1'
 const TOPBAR_SECONDARY_ROW_KEY = 'ytTopbarSecondaryRow_v1'
+const TOPBAR_LINK_COPY_KEY = 'ytTopbarLinkCopy_v1'
 const THEME_INDEX_KEY = 'ytThemeIndex_v1'
 const SCROLL_POSITIONS_KEY = 'ytScrollPositions_v1'
 const LAST_VIEWED_KEY = 'ytLastViewedItem_v1'
@@ -173,8 +174,8 @@ let headerLinks = loadHeaderLinks()
 let topbarRows = loadTopbarRows()
 let activeTopbarRowId = loadTopbarActiveRowId()
 let secondaryTopbarRowId = localStorage.getItem(TOPBAR_SECONDARY_ROW_KEY) || ''
+let topbarLinkCopy = loadTopbarLinkCopy()
 let topbarSelectedLinkId = null
-let topbarHoveredLinkId = ''
 let topbarManageOpen = false
 const topbarHoldState = {timer: null, linkId: '', rowId: '', startX: 0, startY: 0, suppressClickLinkId: '', suppressClickUntil: 0}
 let featureShortcuts = loadFeatureShortcuts()
@@ -3110,7 +3111,24 @@ function loadTopbarRows(){
       }))
   }catch(e){ return [] }
 }
+function loadTopbarLinkCopy(){
+  try{
+    const copy = JSON.parse(localStorage.getItem(TOPBAR_LINK_COPY_KEY) || 'null')
+    if(!copy || typeof copy.url !== 'string' || typeof copy.title !== 'string') return null
+    const url = normalizeUrl(copy.url)
+    try{ new URL(url) }catch(e){ return null }
+    return {
+      title: copy.title,
+      url,
+      iconUrl: normalizeIconChoice(copy.iconUrl || '')
+    }
+  }catch(error){
+    console.error('Failed to load copied favorite link info', error)
+    return null
+  }
+}
 function saveTopbarRows(){ localStorage.setItem(TOPBAR_ROWS_KEY, JSON.stringify(topbarRows)) }
+function saveTopbarLinkCopy(){ localStorage.setItem(TOPBAR_LINK_COPY_KEY, JSON.stringify(topbarLinkCopy)) }
 function loadTopbarActiveRowId(){ return localStorage.getItem(TOPBAR_ACTIVE_ROW_KEY) || '' }
 function saveTopbarActiveRowId(){ localStorage.setItem(TOPBAR_ACTIVE_ROW_KEY, activeTopbarRowId || '') }
 function normalizeUrl(value){
@@ -3662,20 +3680,29 @@ function ensureTopbarState(){
   if(!topbarRows.length){
     topbarRows = [
       {id: uid(), name: 'Main', symbol: '#', links: []},
-      {id: uid(), name: 'Small row', symbol: '#', links: []}
+      {id: uid(), name: 'Small row', symbol: '#', links: []},
+      {id: uid(), name: 'Small row 2', symbol: '#', links: []}
     ]
     saveTopbarRows()
-  }
-  const exists = topbarRows.some(row=>row.id===activeTopbarRowId)
-  if(!exists){
-    activeTopbarRowId = topbarRows[0].id
-    saveTopbarActiveRowId()
   }
   if(topbarRows.length===1){
     topbarRows.push({id: uid(), name: 'Small row', symbol: '#', links: []})
     saveTopbarRows()
   }
-  if(!topbarRows.some(row=>row.id===secondaryTopbarRowId) || secondaryTopbarRowId===topbarRows[0].id){
+  if(topbarRows.length===2){
+    topbarRows.push({id: uid(), name: 'Small row 2', symbol: '#', links: []})
+    saveTopbarRows()
+  }
+  if(topbarRows.length>3){
+    topbarRows[2].links = topbarRows[2].links.concat(topbarRows.slice(3).flatMap(row=>row.links))
+    topbarRows = topbarRows.slice(0, 3)
+    saveTopbarRows()
+  }
+  if(!topbarRows.some(row=>row.id===activeTopbarRowId)){
+    activeTopbarRowId = topbarRows[0].id
+    saveTopbarActiveRowId()
+  }
+  if(secondaryTopbarRowId!==topbarRows[1].id && secondaryTopbarRowId!==topbarRows[2].id){
     secondaryTopbarRowId = topbarRows[1].id
     saveTopbarSecondaryRowId()
   }
@@ -3771,32 +3798,24 @@ function bindTopbarHoldHandlers(){
     event.preventDefault()
     showManage(button.dataset.linkId, button.dataset.rowId)
   })
-  topbarLinksEl.addEventListener('mouseover', (event)=>{
-    const button = event.target.closest && event.target.closest('.topbar-link-icon:not(.add)')
-    if(button) topbarHoveredLinkId = button.dataset.linkId
-  })
-  topbarLinksEl.addEventListener('mouseleave', ()=>{ topbarHoveredLinkId = '' })
 }
 bindTopbarHoldHandlers()
-
-function addTopbarRow(){
-  const nameInput = prompt('Row name', 'New row')
-  if(!nameInput) return
-  const row = {
-    id: uid(),
-    name: nameInput.trim() || 'Row',
-    symbol: '#',
-    links: []
-  }
-  topbarRows.push(row)
-  activeTopbarRowId = row.id
-  saveTopbarRows()
-  saveTopbarActiveRowId()
-  renderHeaderLinks()
-}
 function addTopbarLink(){
   const row = getActiveTopbarRow()
   if(!row) return
+  if(topbarLinkCopy && confirm(`Copy URL and icon from "${topbarLinkCopy.title}"?`)){
+    const titleInput = prompt('Label for copied link', `${topbarLinkCopy.title} copy`)
+    if(titleInput===null) return
+    row.links.push({
+      id: uid(),
+      title: titleInput.trim() || `${topbarLinkCopy.title} copy`,
+      url: topbarLinkCopy.url,
+      iconUrl: topbarLinkCopy.iconUrl
+    })
+    saveTopbarRows()
+    renderHeaderLinks()
+    return
+  }
   const urlInput = prompt('Website URL')
   if(!urlInput) return
   const url = normalizeUrl(urlInput)
@@ -3875,33 +3894,12 @@ function moveTopbarLink(linkId, delta){
   saveTopbarRows()
   renderHeaderLinks()
 }
-function moveTopbarLinkToRow(linkId, rowId){
-  const sourceRow = topbarRows.find(row=>row.links.some(link=>link.id===linkId))
-  const targetRow = topbarRows.find(row=>row.id===rowId)
-  if(!sourceRow || !targetRow || sourceRow===targetRow) return
-  const index = sourceRow.links.findIndex(link=>link.id===linkId)
-  const [link] = sourceRow.links.splice(index, 1)
-  targetRow.links.push(link)
-  activeTopbarRowId = targetRow.id
-  saveTopbarRows()
-  saveTopbarActiveRowId()
-  renderHeaderLinks()
-}
 function advanceTopbarSecondaryRow(){
-  const currentIndex = topbarRows.findIndex(row=>row.id===secondaryTopbarRowId)
-  const nextIndex = (currentIndex + 1) % topbarRows.length
-  secondaryTopbarRowId = topbarRows[nextIndex].id
+  secondaryTopbarRowId = secondaryTopbarRowId===topbarRows[1].id
+    ? topbarRows[2].id
+    : topbarRows[1].id
   saveTopbarSecondaryRowId()
   renderHeaderLinks()
-}
-function handleTopbarSecondaryArrow(){
-  const sourceRow = topbarRows.find(row=>row.links.some(link=>link.id===topbarHoveredLinkId))
-  if(sourceRow && sourceRow.id!==secondaryTopbarRowId){
-    moveTopbarLinkToRow(topbarHoveredLinkId, secondaryTopbarRowId)
-    topbarHoveredLinkId = ''
-    return
-  }
-  advanceTopbarSecondaryRow()
 }
 function renameTopbarLink(linkId){
   const row = getActiveTopbarRow()
@@ -5147,9 +5145,9 @@ function renderHeaderLinks(){
       rowArrow.type = 'button'
       rowArrow.className = 'topbar-row-arrow'
       rowArrow.textContent = '›'
-      rowArrow.title = 'Switch to the next row, or move the hovered icon here'
-      rowArrow.setAttribute('aria-label', 'Switch to the next favorites row or move the hovered icon here')
-      rowArrow.addEventListener('click', handleTopbarSecondaryArrow)
+      rowArrow.title = 'Switch between the two lower favorites rows'
+      rowArrow.setAttribute('aria-label', 'Switch between the two lower favorites rows')
+      rowArrow.addEventListener('click', advanceTopbarSecondaryRow)
       linkTrack.appendChild(rowArrow)
     }
     row.links.forEach(link=>{
@@ -5213,18 +5211,17 @@ function renderHeaderLinks(){
       const label = document.createElement('span'); label.className = 'topbar-manage-label'; label.textContent = `Edit ${selected.title}`
       const moveLeft = document.createElement('button'); moveLeft.type = 'button'; moveLeft.textContent = '<'; moveLeft.title = 'Move left'; moveLeft.setAttribute('aria-label', `Move ${selected.title} left`); moveLeft.addEventListener('click', ()=>moveTopbarLink(selected.id, -1))
       const moveRight = document.createElement('button'); moveRight.type = 'button'; moveRight.textContent = '>'; moveRight.title = 'Move right'; moveRight.setAttribute('aria-label', `Move ${selected.title} right`); moveRight.addEventListener('click', ()=>moveTopbarLink(selected.id, 1))
-      const rowSelect = document.createElement('select')
-      rowSelect.className = 'topbar-manage-row'
-      rowSelect.title = 'Move to another icon row'
-      rowSelect.setAttribute('aria-label', `Move ${selected.title} to another icon row`)
-      topbarRows.forEach(row=>{
-        const option = document.createElement('option')
-        option.value = row.id
-        option.textContent = row.name
-        option.selected = row.id===selectedRow.id
-        rowSelect.appendChild(option)
+      const copyLink = document.createElement('button')
+      copyLink.type = 'button'
+      copyLink.textContent = topbarLinkCopy && topbarLinkCopy.url===selected.url && topbarLinkCopy.iconUrl===selected.iconUrl
+        ? 'Link info set'
+        : 'Copy link info/set'
+      copyLink.title = 'Use this link URL and icon when creating a new favorite'
+      copyLink.addEventListener('click', ()=>{
+        topbarLinkCopy = {title: selected.title, url: selected.url, iconUrl: selected.iconUrl || ''}
+        saveTopbarLinkCopy()
+        renderHeaderLinks()
       })
-      rowSelect.addEventListener('change', ()=>moveTopbarLinkToRow(selected.id, rowSelect.value))
       const rename = document.createElement('button'); rename.type = 'button'; rename.textContent = 'Rename'; rename.addEventListener('click', ()=>renameTopbarLink(selected.id))
       const iconInput = document.createElement('input'); iconInput.type = 'url'; iconInput.value = selected.iconUrl || ''; iconInput.placeholder = 'Icon URL or domain'; iconInput.title = 'Custom icon URL or domain'; iconInput.setAttribute('aria-label', `Custom icon URL or domain for ${selected.title}`)
       const iconSave = document.createElement('button'); iconSave.type = 'button'; iconSave.textContent = 'Save icon'; iconSave.addEventListener('click', ()=>{
@@ -5234,7 +5231,7 @@ function renderHeaderLinks(){
       })
       const remove = document.createElement('button'); remove.type = 'button'; remove.className = 'danger'; remove.textContent = 'Delete'; remove.addEventListener('click', ()=>deleteTopbarLink(selected.id))
       const close = document.createElement('button'); close.type = 'button'; close.className = 'topbar-manage-close'; close.textContent = 'Close'; close.addEventListener('click', ()=>{ topbarManageOpen = false; renderHeaderLinks() })
-      manage.append(label, moveLeft, moveRight, rowSelect, rename, iconInput, iconSave, remove, close)
+      manage.append(label, moveLeft, moveRight, copyLink, rename, iconInput, iconSave, remove, close)
     }else{
       const close = document.createElement('button'); close.type = 'button'; close.className = 'topbar-manage-close'; close.textContent = 'Close'; close.addEventListener('click', ()=>{ topbarManageOpen = false; renderHeaderLinks() })
       manage.appendChild(close)
