@@ -123,7 +123,9 @@ main{display:grid;grid-template-columns:10% 75% 15%;height:100vh;overflow:hidden
 .journal-actions button{padding:3px 6px;border-radius:5px;font-size:10px;color:var(--text-soft);background:rgba(255,255,255,0.05)}
 .journal-actions button:disabled{opacity:0.35;cursor:not-allowed}
 .journal-actions .journal-delete{color:#ffd2c9;border-color:rgba(208,108,91,0.5)}
-.journal-checkbox{accent-color:#e0c341;width:18px;height:18px;margin:0}
+.journal-checkbox{accent-color:#f5f5f5;width:18px;height:18px;margin:0}
+.journal-checkbox[data-state="green"]{accent-color:#4caf50}
+.journal-checkbox[data-state="yellow"]{accent-color:#e0c341}
 .journal-add-form{display:flex;align-items:center;gap:7px;margin-top:2px}
 .journal-cash-add-form{margin-bottom:2px}
 .journal-input,.journal-date-input{min-width:0;padding:6px 7px;border:1px solid rgba(255,255,255,0.16);border-radius:6px;background:rgba(255,255,255,0.04);color:var(--text);font:inherit;font-size:12px}

@@ -544,7 +544,12 @@ function loadJournalData(){
       ? list.filter((entry)=>entry && typeof entry.text === 'string' && entry.text.trim()).map((entry)=>({
           id: entry.id || uid(),
           text: entry.text.trim(),
-          ...(includePurchaseFields ? {date: typeof entry.date === 'string' ? entry.date : '', checked: entry.checked === true} : {})
+          ...(includePurchaseFields ? {
+            date: typeof entry.date === 'string' ? entry.date : '',
+            checked: entry.checked === true || entry.checked === 'green'
+              ? 'green'
+              : entry.checked === 'yellow' ? 'yellow' : false
+          } : {})
         }))
       : []
     const loaded = {
@@ -877,10 +882,14 @@ function renderJournalList(list, title, options = {}){
     if(options.checkable) {
       const checkbox = document.createElement('input')
       checkbox.type = 'checkbox'
-      checkbox.checked = item.checked === true
+      const checkState = item.checked === 'green' || item.checked === 'yellow' ? item.checked : 'white'
+      checkbox.checked = checkState !== 'white'
       checkbox.className = 'journal-checkbox'
-      checkbox.addEventListener('change', ()=>{
-        item.checked = checkbox.checked
+      checkbox.dataset.state = checkState
+      checkbox.setAttribute('aria-label', `${item.text}: ${checkState}`)
+      checkbox.addEventListener('click', (event)=>{
+        event.preventDefault()
+        item.checked = checkState === 'white' ? 'green' : checkState === 'green' ? 'yellow' : false
         saveJournalData()
         render()
       })
