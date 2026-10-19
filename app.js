@@ -2,6 +2,7 @@ const APP_KEY = 'ytQueueItems_v1'
 const PAGE_KEY = 'ytQueuePages_v1'
 const PAGE_TABS_KEY = 'ytPageTabs_v1'
 const ACTIVE_TAB_KEY = 'ytActiveTabs_v1'
+const CREATE_PAGES_KEY = 'ytCreatePages_v1'
 const PAGE_TITLE_FILTERS_KEY = 'ytPageTitleFilters_v1'
 const SAVED_LINKS_APP_KEY = 'ytSavedVideos_v1'
 const HEADER_LINKS_KEY = 'ytHeaderLinks_v1'
@@ -160,6 +161,9 @@ let musicDialogItemId = null
 let musicPlayerItemId = null
 let items = load()
 let pages = loadPages()
+let createPages = loadCreatePages()
+let currentCreatePageId = createPages.length ? createPages[0].id : ''
+let createMode = false
 let pageTabs = loadPageTabs()
 let activeTabs = loadActiveTabs()
 let pageTitleFilters = loadPageTitleFilters()
@@ -2003,6 +2007,22 @@ function renderThemeSwitcher(){
     themeSwitcherEl.appendChild(createFeatureShortcutButton(shortcut))
   })
 
+  const createButton = document.createElement('button')
+  createButton.type = 'button'
+  createButton.className = `theme-cycle-btn movie-btn${createMode ? ' selected' : ''}`
+  createButton.title = createMode ? 'Return to links' : 'Open create workspace'
+  createButton.setAttribute('aria-label', createButton.title)
+  createButton.setAttribute('aria-pressed', String(createMode))
+  createButton.textContent = '🎬'
+  createButton.addEventListener('click', ()=>{
+    createMode = !createMode
+    featureShortcutEditId = ''
+    renderThemeSwitcher()
+    renderLeftNav()
+    render()
+  })
+  themeSwitcherEl.appendChild(createButton)
+
   const btn = document.createElement('button')
   btn.type = 'button'
   btn.className = 'theme-cycle-btn'
@@ -2120,6 +2140,26 @@ function loadPages(){
   }catch(e){return[]}
 }
 function savePages(){ localStorage.setItem(PAGE_KEY, JSON.stringify(pages)) }
+function loadCreatePages(){
+  try{
+    const stored = JSON.parse(localStorage.getItem(CREATE_PAGES_KEY) || '[]')
+    if(!Array.isArray(stored)) return []
+    return stored
+      .filter(page=>page && typeof page.id==='string' && page.id && typeof page.title==='string' && page.title.trim() && Array.isArray(page.tabs))
+      .map(page=>{
+        const tabs = page.tabs
+          .filter(tab=>tab && typeof tab.id==='string' && tab.id && typeof tab.title==='string' && tab.title.trim())
+          .map(tab=>({id:tab.id, title:tab.title.trim()}))
+        const activeTabId = tabs.some(tab=>tab.id===page.activeTabId) ? page.activeTabId : (tabs[0] ? tabs[0].id : '')
+        return {...page, title:page.title.trim(), tabs, activeTabId}
+      })
+      .filter(page=>page.tabs.length)
+  }catch(error){
+    console.error('Failed to load create pages from browser storage', error)
+    return []
+  }
+}
+function saveCreatePages(){ localStorage.setItem(CREATE_PAGES_KEY, JSON.stringify(createPages)) }
 function loadPageTabs(){
   try{
     const parsed = JSON.parse(localStorage.getItem(PAGE_TABS_KEY)||'{}')
@@ -4347,6 +4387,41 @@ function addPage(title){
   setCurrentPage(page.id)
   renderLeftNav()
 }
+function makeCreateId(kind, title){
+  const slug = title
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-|-$/g, '')
+    .slice(0, 36) || kind
+  return `create-${kind}-${slug}-${uid()}`
+}
+function addCreatePage(title){
+  const pageTitle = (title || '').trim()
+  if(!pageTitle) return
+  const pageId = makeCreateId('page', pageTitle)
+  const firstTab = {id:makeCreateId('tab', 'main'), title:'Main'}
+  const page = {
+    id:pageId,
+    title:pageTitle,
+    createdAt:new Date().toISOString(),
+    tabs:[firstTab],
+    activeTabId:firstTab.id
+  }
+  createPages.push(page)
+  currentCreatePageId = page.id
+  saveCreatePages()
+  renderLeftNav()
+  render()
+}
+function addCreateTab(page, title){
+  const tabTitle = (title || '').trim()
+  if(!tabTitle) return
+  const tab = {id:makeCreateId('tab', tabTitle), title:tabTitle}
+  page.tabs.push(tab)
+  page.activeTabId = tab.id
+  saveCreatePages()
+  render()
+}
 function deletePage(pageId){
   const pid = normalizePageId(pageId)
   if(pid === 'home' || isProtectedPage(pid)) return
@@ -5268,10 +5343,115 @@ function renderHeaderLinks(){
 
 function editItem(id){ const it = items.find(i=>i.id===id); if(!it) return; const newUrl = prompt('Edit URL', it.url); if(!newUrl) return; const newTitle = prompt('Edit title', it.title)||it.title; const vid = extractVideoId(newUrl)||it.videoId; it.url=newUrl; it.title=newTitle; it.videoId=vid; save(); render() }
 
+function renderCreateWorkspace(){
+  if(!sections) return
+  const page = createPages.find(item=>item.id===currentCreatePageId)
+  if(!page){
+    const empty = document.createElement('div')
+    empty.className = 'create-workspace-empty'
+    empty.textContent = createPages.length
+      ? 'Select a page from the create sidebar, or use + to make a new page.'
+      : 'Use + in the create sidebar to make your first page.'
+    sections.appendChild(empty)
+    return
+  }
+
+  const workspace = document.createElement('section')
+  workspace.className = 'create-workspace'
+  workspace.dataset.createPageId = page.id
+  const heading = document.createElement('div')
+  heading.className = 'create-workspace-heading'
+  const title = document.createElement('h1')
+  title.className = 'page-heading'
+  title.textContent = page.title
+  const pageId = document.createElement('code')
+  pageId.className = 'create-workspace-id'
+  pageId.textContent = `Page ID: ${page.id}`
+  heading.append(title, pageId)
+  workspace.appendChild(heading)
+
+  const tabs = document.createElement('div')
+  tabs.className = 'tab-row create-tab-row'
+  page.tabs.forEach(tab=>{
+    const button = document.createElement('button')
+    button.type = 'button'
+    button.className = `main-tab${page.activeTabId===tab.id ? ' selected' : ''}`
+    button.textContent = tab.title
+    button.title = `${tab.title} (${tab.id})`
+    button.dataset.createPageId = page.id
+    button.dataset.createTabId = tab.id
+    button.addEventListener('click', ()=>{
+      page.activeTabId = tab.id
+      saveCreatePages()
+      render()
+    })
+    tabs.appendChild(button)
+  })
+  const addTabButton = document.createElement('button')
+  addTabButton.type = 'button'
+  addTabButton.className = 'main-tab add-tab'
+  addTabButton.title = 'Add tab'
+  addTabButton.setAttribute('aria-label', 'Add tab')
+  addTabButton.textContent = '+'
+  addTabButton.addEventListener('click', ()=>{
+    const label = prompt('Tab title')
+    if(label) addCreateTab(page, label)
+  })
+  tabs.appendChild(addTabButton)
+  workspace.appendChild(tabs)
+
+  const activeTab = page.tabs.find(tab=>tab.id===page.activeTabId) || page.tabs[0]
+  const content = document.createElement('div')
+  content.className = 'create-tab-content'
+  content.dataset.createPageId = page.id
+  content.dataset.createTabId = activeTab.id
+  const tabId = document.createElement('code')
+  tabId.className = 'create-workspace-id'
+  tabId.textContent = `Tab ID: ${activeTab.id}`
+  const placeholder = document.createElement('p')
+  placeholder.textContent = 'This tab is ready for its own layout and behavior.'
+  content.append(tabId, placeholder)
+  workspace.appendChild(content)
+  sections.appendChild(workspace)
+}
+
 function renderLeftNav(){
   if(!leftNavEl) return
   leftNavEl.innerHTML = ''
   syncSavedPagesButton()
+  if(addPageBtn){
+    addPageBtn.hidden = false
+    addPageBtn.title = createMode ? 'Create page' : 'Add page'
+    addPageBtn.setAttribute('aria-label', addPageBtn.title)
+  }
+  if(addLinkBtn) addLinkBtn.hidden = createMode
+  if(deletePageItemsBtn) deletePageItemsBtn.hidden = createMode
+  if(savedPagesBtn) savedPagesBtn.hidden = createMode
+
+  if(createMode){
+    const note = document.createElement('div')
+    note.className = 'left-nav-note'
+    note.textContent = 'Create pages'
+    leftNavEl.appendChild(note)
+    createPages.forEach(page=>{
+      const row = document.createElement('div')
+      row.className = 'page-link-row'
+      const button = document.createElement('button')
+      button.type = 'button'
+      button.className = `page-link create-page-link${currentCreatePageId===page.id ? ' selected' : ''}`
+      button.textContent = page.title
+      button.title = `${page.title} (${page.id})`
+      button.dataset.createPageId = page.id
+      button.addEventListener('click', ()=>{
+        currentCreatePageId = page.id
+        renderLeftNav()
+        render()
+      })
+      row.appendChild(button)
+      leftNavEl.appendChild(row)
+    })
+    return
+  }
 
   if(savedPagesPanelOpen){
     const savedPages = getSavedPages()
@@ -5548,6 +5728,10 @@ function renderTabBar(pageId){
 }
 
 function render(){ sections.innerHTML=''
+  if(createMode){
+    renderCreateWorkspace()
+    return
+  }
   if(currentPageId !== 'home' && (!isProtectedPage(currentPageId) || isJournalPage(currentPageId) || isMusicPage(currentPageId))) renderTabBar(currentPageId)
   const activeTabId = getActiveTabId(currentPageId)
   if(isJournalPage(currentPageId)){
@@ -5932,9 +6116,10 @@ function renderSection(title, list, showHomeControls = false, hideGrid = false){
 }
 
 addPageBtn.addEventListener('click', ()=>{
-  const label = prompt('Page title')
+  const label = prompt(createMode ? 'Create page title' : 'Page title')
   if(!label) return
-  addPage(label)
+  if(createMode) addCreatePage(label)
+  else addPage(label)
 })
 
 if(addLinkBtn){
