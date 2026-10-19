@@ -139,6 +139,11 @@ const audioScriptEditorEl = document.getElementById('audio-script-editor')
 const audioScriptSaveBtn = document.getElementById('audio-script-save-btn')
 const audioScriptCloseBtn = document.getElementById('audio-script-close-btn')
 const audioScriptCancelBtn = document.getElementById('audio-script-cancel-btn')
+const createDialogEl = document.getElementById('create-dialog')
+const createDialogTitleEl = document.getElementById('create-dialog-title')
+const createDialogContentEl = document.getElementById('create-dialog-content')
+const createDialogActionsEl = document.getElementById('create-dialog-actions')
+const createDialogCloseBtn = document.getElementById('create-dialog-close')
 const audioPlayer = new Audio()
 audioPlayer.controls = true
 audioPlayer.preload = 'none'
@@ -2149,7 +2154,23 @@ function loadCreatePages(){
       .map(page=>{
         const tabs = page.tabs
           .filter(tab=>tab && typeof tab.id==='string' && tab.id && typeof tab.title==='string' && tab.title.trim())
-          .map(tab=>({id:tab.id, title:tab.title.trim()}))
+          .map(tab=>({
+            ...tab,
+            id:tab.id,
+            title:tab.title.trim(),
+            kind:tab.kind==='film' ? 'film' : 'new',
+            filmTitle:typeof tab.filmTitle==='string' ? tab.filmTitle : '',
+            filmUrl:typeof tab.filmUrl==='string' ? tab.filmUrl : '',
+            bookmarks:Array.isArray(tab.bookmarks)
+              ? tab.bookmarks
+                  .filter(bookmark=>bookmark && Number.isFinite(Number(bookmark.time)) && Number(bookmark.time)>=0)
+                  .map(bookmark=>({
+                    id:typeof bookmark.id==='string' && bookmark.id ? bookmark.id : uid(),
+                    time:Number(bookmark.time),
+                    thumbnail:typeof bookmark.thumbnail==='string' && bookmark.thumbnail.startsWith('data:image/jpeg;base64,') ? bookmark.thumbnail : ''
+                  }))
+              : []
+          }))
         const activeTabId = tabs.some(tab=>tab.id===page.activeTabId) ? page.activeTabId : (tabs[0] ? tabs[0].id : '')
         return {...page, title:page.title.trim(), tabs, activeTabId}
       })
@@ -4413,14 +4434,99 @@ function addCreatePage(title){
   renderLeftNav()
   render()
 }
-function addCreateTab(page, title){
+function addCreateTab(page, title, kind='new'){
   const tabTitle = (title || '').trim()
   if(!tabTitle) return
-  const tab = {id:makeCreateId('tab', tabTitle), title:tabTitle}
+  const tab = {id:makeCreateId('tab', tabTitle), title:tabTitle, kind, filmTitle:'', filmUrl:'', bookmarks:[]}
   page.tabs.push(tab)
   page.activeTabId = tab.id
   saveCreatePages()
   render()
+}
+function closeCreateDialog(){
+  if(!createDialogEl) return
+  createDialogEl.classList.add('hidden')
+  createDialogEl.setAttribute('aria-hidden', 'true')
+}
+function openCreateDialog(title, contentNodes, actions){
+  if(!createDialogEl || !createDialogTitleEl || !createDialogContentEl || !createDialogActionsEl) return
+  createDialogTitleEl.textContent = title
+  createDialogContentEl.replaceChildren(...contentNodes)
+  createDialogActionsEl.replaceChildren(...actions)
+  createDialogEl.classList.remove('hidden')
+  createDialogEl.setAttribute('aria-hidden', 'false')
+  const firstControl = createDialogContentEl.querySelector('input, button') || createDialogActionsEl.querySelector('button')
+  if(firstControl) requestAnimationFrame(()=>firstControl.focus())
+}
+function createDialogButton(label, className, onClick){
+  const button = document.createElement('button')
+  button.type = 'button'
+  button.className = className || ''
+  button.textContent = label
+  button.addEventListener('click', onClick)
+  return button
+}
+function openCreateForm(title, fieldDefinitions, submitLabel, onSubmit){
+  const fields = fieldDefinitions.map(definition=>{
+    const label = document.createElement('label')
+    label.className = 'create-dialog-field'
+    const caption = document.createElement('span')
+    caption.textContent = definition.label
+    const input = document.createElement('input')
+    input.type = definition.type || 'text'
+    input.maxLength = definition.maxLength || 120
+    input.value = definition.value || ''
+    input.placeholder = definition.placeholder || ''
+    input.autocomplete = definition.autocomplete || 'off'
+    label.append(caption, input)
+    return {label, input}
+  })
+  const submit = createDialogButton(submitLabel, 'create-dialog-primary', ()=>{
+    const values = fields.map(field=>field.input.value.trim())
+    const requiredField = fields.find((field, index)=>field.input.required && !values[index])
+    if(requiredField){
+      requiredField.input.focus()
+      return
+    }
+    closeCreateDialog()
+    onSubmit(...values)
+  })
+  const cancel = createDialogButton('Cancel', '', closeCreateDialog)
+  fields.forEach((field, index)=>{
+    field.input.required = !!fieldDefinitions[index].required
+    field.input.addEventListener('keydown', event=>{
+      if(event.key==='Enter') submit.click()
+      if(event.key==='Escape') closeCreateDialog()
+    })
+  })
+  openCreateDialog(title, fields.map(field=>field.label), [cancel, submit])
+}
+function chooseCreateTabKind(page, existingTab){
+  const kindOptions = document.createElement('div')
+  kindOptions.className = 'create-template-options'
+  const addTab = (kind)=>{
+    closeCreateDialog()
+    if(existingTab){
+      existingTab.kind = kind
+      saveCreatePages()
+      render()
+      return
+    }
+    openCreateForm(kind==='film' ? 'Create film tab' : 'Create tab', [
+      {label:'Tab title', placeholder:kind==='film' ? 'e.g. Film study' : 'e.g. Notes', required:true}
+    ], 'Create tab', title=>addCreateTab(page, title, kind))
+  }
+  const filmOption = createDialogButton('Film tab', 'create-template-option', ()=>addTab('film'))
+  const filmDescription = document.createElement('span')
+  filmDescription.textContent = 'MP4 player with timestamp bookmarks'
+  filmOption.appendChild(filmDescription)
+  const newOption = createDialogButton('New tab', 'create-template-option', ()=>addTab('new'))
+  const newDescription = document.createElement('span')
+  newDescription.textContent = 'Start with a blank tab'
+  newOption.appendChild(newDescription)
+  kindOptions.append(filmOption, newOption)
+  const cancel = createDialogButton('Cancel', '', closeCreateDialog)
+  openCreateDialog(existingTab ? `Change "${existingTab.title}" tab` : 'Choose a tab type', [kindOptions], [cancel])
 }
 function deletePage(pageId){
   const pid = normalizePageId(pageId)
@@ -5375,12 +5481,14 @@ function renderCreateWorkspace(){
   page.tabs.forEach(tab=>{
     const button = document.createElement('button')
     button.type = 'button'
-    button.className = `main-tab${page.activeTabId===tab.id ? ' selected' : ''}`
+    button.className = `main-tab create-tab-button${page.activeTabId===tab.id ? ' selected' : ''}`
     button.textContent = tab.title
-    button.title = `${tab.title} (${tab.id})`
+    button.title = `${tab.title} (${tab.id}). Hold to change tab type.`
     button.dataset.createPageId = page.id
     button.dataset.createTabId = tab.id
+    const hold = attachLongPress(button, ()=>chooseCreateTabKind(page, tab))
     button.addEventListener('click', ()=>{
+      if(hold.consume()) return
       page.activeTabId = tab.id
       saveCreatePages()
       render()
@@ -5393,10 +5501,7 @@ function renderCreateWorkspace(){
   addTabButton.title = 'Add tab'
   addTabButton.setAttribute('aria-label', 'Add tab')
   addTabButton.textContent = '+'
-  addTabButton.addEventListener('click', ()=>{
-    const label = prompt('Tab title')
-    if(label) addCreateTab(page, label)
-  })
+  addTabButton.addEventListener('click', ()=>chooseCreateTabKind(page, null))
   tabs.appendChild(addTabButton)
   workspace.appendChild(tabs)
 
@@ -5408,11 +5513,204 @@ function renderCreateWorkspace(){
   const tabId = document.createElement('code')
   tabId.className = 'create-workspace-id'
   tabId.textContent = `Tab ID: ${activeTab.id}`
-  const placeholder = document.createElement('p')
-  placeholder.textContent = 'This tab is ready for its own layout and behavior.'
-  content.append(tabId, placeholder)
+  content.appendChild(tabId)
+  if(activeTab.kind==='film'){
+    renderCreateFilmTab(content, activeTab)
+  }else{
+    const placeholder = document.createElement('p')
+    placeholder.textContent = 'This tab is ready for its own layout and behavior.'
+    content.appendChild(placeholder)
+  }
   workspace.appendChild(content)
   sections.appendChild(workspace)
+}
+
+function formatFilmTimestamp(seconds){
+  const wholeSeconds = Math.max(0, Math.floor(Number(seconds) || 0))
+  const hours = Math.floor(wholeSeconds / 3600)
+  const minutes = Math.floor((wholeSeconds % 3600) / 60)
+  const remainder = wholeSeconds % 60
+  return hours
+    ? `${hours}:${String(minutes).padStart(2, '0')}:${String(remainder).padStart(2, '0')}`
+    : `${minutes}:${String(remainder).padStart(2, '0')}`
+}
+function captureFilmThumbnail(video){
+  if(!video.videoWidth || !video.videoHeight) return ''
+  try{
+    const canvas = document.createElement('canvas')
+    const scale = Math.min(1, 240 / video.videoWidth, 135 / video.videoHeight)
+    canvas.width = Math.max(1, Math.round(video.videoWidth * scale))
+    canvas.height = Math.max(1, Math.round(video.videoHeight * scale))
+    canvas.getContext('2d').drawImage(video, 0, 0, canvas.width, canvas.height)
+    return canvas.toDataURL('image/jpeg', 0.55)
+  }catch(error){
+    console.info('Could not save a film bookmark thumbnail; the timestamp will still be saved', error)
+    return ''
+  }
+}
+function renderCreateFilmBookmarks(list, tab, video){
+  list.replaceChildren()
+  if(!tab.bookmarks.length){
+    const empty = document.createElement('p')
+    empty.className = 'film-bookmarks-empty'
+    empty.textContent = 'No bookmarks yet. Play the film and use + to save a moment.'
+    list.appendChild(empty)
+    return
+  }
+  tab.bookmarks.forEach(bookmark=>{
+    const card = document.createElement('div')
+    card.className = 'film-bookmark'
+    if(bookmark.thumbnail){
+      const thumbnail = document.createElement('img')
+      thumbnail.className = 'film-bookmark-thumbnail'
+      thumbnail.src = bookmark.thumbnail
+      thumbnail.alt = `Frame at ${formatFilmTimestamp(bookmark.time)}`
+      card.appendChild(thumbnail)
+    }else{
+      const placeholder = document.createElement('div')
+      placeholder.className = 'film-bookmark-thumbnail film-bookmark-placeholder'
+      placeholder.textContent = formatFilmTimestamp(bookmark.time)
+      card.appendChild(placeholder)
+    }
+    const actions = document.createElement('div')
+    actions.className = 'film-bookmark-actions'
+    const jump = document.createElement('button')
+    jump.type = 'button'
+    jump.className = 'film-bookmark-time'
+    jump.textContent = formatFilmTimestamp(bookmark.time)
+    jump.title = `Go to ${formatFilmTimestamp(bookmark.time)}`
+    jump.addEventListener('click', ()=>{
+      video.currentTime = bookmark.time
+      video.play().catch(error=>console.info('Film playback did not start automatically', error))
+    })
+    const remove = document.createElement('button')
+    remove.type = 'button'
+    remove.className = 'film-bookmark-delete'
+    remove.textContent = '×'
+    remove.title = 'Delete bookmark'
+    remove.setAttribute('aria-label', `Delete bookmark at ${formatFilmTimestamp(bookmark.time)}`)
+    remove.addEventListener('click', ()=>{
+      const previousBookmarks = tab.bookmarks
+      tab.bookmarks = tab.bookmarks.filter(item=>item.id!==bookmark.id)
+      try{
+        saveCreatePages()
+        renderCreateFilmBookmarks(list, tab, video)
+      }catch(error){
+        tab.bookmarks = previousBookmarks
+        console.error('Failed to delete film bookmark from browser storage', error)
+        playerStatus.textContent = 'This bookmark could not be deleted from browser storage.'
+      }
+    })
+    actions.append(jump, remove)
+    card.appendChild(actions)
+    list.appendChild(card)
+  })
+}
+function renderCreateFilmTab(content, tab){
+  const form = document.createElement('form')
+  form.className = 'film-source-form'
+  const titleLabel = document.createElement('label')
+  titleLabel.className = 'create-dialog-field'
+  const titleCaption = document.createElement('span')
+  titleCaption.textContent = 'Film name'
+  const titleInput = document.createElement('input')
+  titleInput.type = 'text'
+  titleInput.maxLength = 120
+  titleInput.value = tab.filmTitle || ''
+  titleInput.placeholder = 'e.g. The Lord of the Rings'
+  titleLabel.append(titleCaption, titleInput)
+  const sourceLabel = document.createElement('label')
+  sourceLabel.className = 'create-dialog-field'
+  const sourceCaption = document.createElement('span')
+  sourceCaption.textContent = 'MP4 URL'
+  const sourceInput = document.createElement('input')
+  sourceInput.type = 'text'
+  sourceInput.inputMode = 'url'
+  sourceInput.value = tab.filmUrl || ''
+  sourceInput.placeholder = 'Paste a public MP4 URL'
+  sourceInput.autocomplete = 'url'
+  sourceLabel.append(sourceCaption, sourceInput)
+  const sourceNotice = document.createElement('p')
+  sourceNotice.className = 'film-source-notice'
+  sourceNotice.textContent = 'Changing the MP4 URL clears this tab’s bookmarks.'
+  sourceNotice.hidden = !tab.bookmarks.length
+  sourceInput.addEventListener('input', ()=>{
+    sourceNotice.hidden = !tab.bookmarks.length || sourceInput.value.trim()===tab.filmUrl
+  })
+  const saveButton = document.createElement('button')
+  saveButton.type = 'submit'
+  saveButton.className = 'film-source-save'
+  saveButton.textContent = 'Load film'
+  form.append(titleLabel, sourceLabel, sourceNotice, saveButton)
+
+  const video = document.createElement('video')
+  video.className = 'film-player'
+  video.controls = true
+  video.preload = 'metadata'
+  video.playsInline = true
+  const filmHeading = document.createElement('h2')
+  filmHeading.className = 'film-title'
+  filmHeading.textContent = tab.filmTitle || tab.title
+  const playerStatus = document.createElement('div')
+  playerStatus.className = 'film-player-status'
+  playerStatus.setAttribute('aria-live', 'polite')
+  playerStatus.textContent = tab.filmUrl ? '' : 'Add a public MP4 URL to load a film.'
+  video.addEventListener('error', ()=>{
+    playerStatus.textContent = 'The film could not be loaded. Check that the URL is public and points to a playable MP4.'
+  })
+  const bookmarkBar = document.createElement('div')
+  bookmarkBar.className = 'film-bookmark-bar'
+  const bookmarkHeading = document.createElement('h2')
+  bookmarkHeading.textContent = 'Bookmarks'
+  const addBookmark = document.createElement('button')
+  addBookmark.type = 'button'
+  addBookmark.className = 'film-add-bookmark'
+  addBookmark.textContent = '+ Bookmark current time'
+  addBookmark.disabled = true
+  video.addEventListener('loadedmetadata', ()=>{ addBookmark.disabled = false })
+  if(tab.filmUrl) video.src = tab.filmUrl
+  addBookmark.addEventListener('click', ()=>{
+    const time = Number(video.currentTime)
+    const bookmark = {id:uid(), time, thumbnail:captureFilmThumbnail(video)}
+    tab.bookmarks.push(bookmark)
+    try{
+      saveCreatePages()
+      renderCreateFilmBookmarks(bookmarkList, tab, video)
+    }catch(error){
+      tab.bookmarks.pop()
+      console.error('Failed to save film bookmark in browser storage', error)
+      playerStatus.textContent = 'This bookmark could not be saved. Browser storage may be full.'
+    }
+  })
+  bookmarkBar.append(bookmarkHeading, addBookmark)
+  const bookmarkList = document.createElement('div')
+  bookmarkList.className = 'film-bookmarks'
+  renderCreateFilmBookmarks(bookmarkList, tab, video)
+  form.addEventListener('submit', event=>{
+    event.preventDefault()
+    const urlValue = sourceInput.value.trim()
+    if(urlValue){
+      try{
+        const parsed = new URL(urlValue)
+        if(parsed.protocol!=='https:' && parsed.protocol!=='http:') throw new Error('Unsupported protocol')
+      }catch(error){
+        playerStatus.textContent = 'Enter a valid public HTTP or HTTPS MP4 URL.'
+        sourceInput.focus()
+        return
+      }
+    }
+    tab.filmTitle = titleInput.value.trim()
+    if(urlValue!==tab.filmUrl) tab.bookmarks = []
+    tab.filmUrl = urlValue
+    try{
+      saveCreatePages()
+      render()
+    }catch(error){
+      console.error('Failed to save film settings in browser storage', error)
+      playerStatus.textContent = 'Film settings could not be saved. Browser storage may be full.'
+    }
+  })
+  content.append(filmHeading, form, video, playerStatus, bookmarkBar, bookmarkList)
 }
 
 function renderLeftNav(){
@@ -5588,9 +5886,9 @@ function renderTabBar(pageId){
   add.title = 'Add tab'
   add.textContent = '+'
   add.addEventListener('click', ()=>{
-    const title = prompt('Tab title')
-    if(!title) return
-    addTabToPage(pid, title)
+    openCreateForm('Add tab', [
+      {label:'Tab title', placeholder:'Tab title', required:true}
+    ], 'Add tab', title=>addTabToPage(pid, title))
   })
   row.appendChild(add)
 
@@ -6116,25 +6414,33 @@ function renderSection(title, list, showHomeControls = false, hideGrid = false){
 }
 
 addPageBtn.addEventListener('click', ()=>{
-  const label = prompt(createMode ? 'Create page title' : 'Page title')
-  if(!label) return
-  if(createMode) addCreatePage(label)
-  else addPage(label)
+  if(createMode){
+    openCreateForm('Create page', [
+      {label:'Page title', placeholder:'e.g. The Lord of the Rings', required:true}
+    ], 'Create page', addCreatePage)
+    return
+  }
+  openCreateForm('Add page', [
+    {label:'Page title', placeholder:'Page title', required:true}
+  ], 'Add page', addPage)
 })
 
 if(addLinkBtn){
   addLinkBtn.addEventListener('click', ()=>{
-    const urlInput = prompt('Paste link URL')
-    if(!urlInput) return
-    const url = normalizeUrl(urlInput)
-    try{ new URL(url) }catch(e){ alert('Please enter a valid URL'); return }
-
-    const titleInput = prompt('Link title')
-    if(!titleInput) return
-    const title = titleInput.trim()
-    if(!title) return
-
-    addHeaderLink({title, url})
+    const showForm = (titleValue='', urlValue='')=>openCreateForm('Add link', [
+      {label:'Link title', placeholder:'Title', value:titleValue, required:true},
+      {label:'Link URL', type:'url', placeholder:'https://example.com', value:urlValue, required:true, autocomplete:'url'}
+    ], 'Add link', (title, urlValue)=>{
+      const url = normalizeUrl(urlValue)
+      try{
+        new URL(url)
+      }catch(error){
+        showForm(title, urlValue)
+        return
+      }
+      addHeaderLink({title, url})
+    })
+    showForm()
   })
 }
 
@@ -6158,6 +6464,14 @@ if(sections){
 
 if(holdDialogBackdropEl) holdDialogBackdropEl.addEventListener('click', closeHoldDialog)
 if(holdExitBtn) holdExitBtn.addEventListener('click', closeHoldDialog)
+if(createDialogCloseBtn) createDialogCloseBtn.addEventListener('click', closeCreateDialog)
+if(createDialogEl){
+  const backdrop = createDialogEl.querySelector('.create-dialog-backdrop')
+  if(backdrop) backdrop.addEventListener('click', closeCreateDialog)
+}
+document.addEventListener('keydown', event=>{
+  if(event.key==='Escape' && createDialogEl && !createDialogEl.classList.contains('hidden')) closeCreateDialog()
+})
 if(musicItemDialogEl){
   const backdrop = musicItemDialogEl.querySelector('.hold-dialog-backdrop')
   if(backdrop) backdrop.addEventListener('click', closeMusicItemDialog)
