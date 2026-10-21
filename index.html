@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width,initial-scale=1" />
   <title>YouTube Queue</title>
   <meta name="build" content="staged-push-20260831" />
-  <link rel="stylesheet" href="styles.css?v=20261019a">
+  <link rel="stylesheet" href="styles.css?v=20261021a">
 </head>
 <body>
   <header>
@@ -30,6 +30,7 @@
       </div>
     </aside>
     <section class="content-area">
+      <button id="sky-toggle-btn" class="sky-toggle-btn" type="button" title="Show sunrise, moonrise, and sky positions" aria-label="Open sky information" aria-haspopup="dialog" aria-expanded="false"></button>
       <div id="note-panel" class="note-panel hidden" aria-hidden="true">
         <button id="note-close-btn" class="note-close-btn" type="button" title="Close notepad" aria-label="Close notepad">×</button>
         <textarea id="note-textarea" class="note-textarea" spellcheck="false" placeholder="Write something..."></textarea>
@@ -45,6 +46,52 @@
       </div>
     </aside>
   </main>
+
+  <section id="sky-overlay" class="sky-overlay hidden" aria-hidden="true">
+    <button id="sky-backdrop" class="sky-backdrop" type="button" aria-label="Close sky information"></button>
+    <div class="sky-panel" role="dialog" aria-modal="true" aria-labelledby="sky-title">
+      <button id="sky-close-btn" class="sky-close-btn" type="button" aria-label="Close sky information">×</button>
+      <h2 id="sky-title" class="sky-title">Maple Ridge sky</h2>
+      <div class="sky-date-controls">
+        <button id="sky-previous-day" type="button" aria-label="Previous day">‹</button>
+        <input id="sky-date" type="date" aria-label="Choose a date">
+        <button id="sky-next-day" type="button" aria-label="Next day">›</button>
+      </div>
+      <div id="sky-status" class="sky-status" role="status" aria-live="polite"></div>
+      <div class="sky-events">
+        <section class="sky-event-column" aria-labelledby="sky-moon-heading">
+          <h3 id="sky-moon-heading">Moon</h3>
+          <dl>
+            <div class="sky-event">
+              <dt>Rise</dt>
+              <dd id="sky-moonrise">—</dd>
+            </div>
+            <div class="sky-event">
+              <dt>Highest point</dt>
+              <dd id="sky-moon-transit">—</dd>
+            </div>
+            <div class="sky-event">
+              <dt>Set</dt>
+              <dd id="sky-moonset">—</dd>
+            </div>
+          </dl>
+        </section>
+        <section class="sky-event-column" aria-labelledby="sky-sun-heading">
+          <h3 id="sky-sun-heading">Sun</h3>
+          <dl>
+            <div class="sky-event">
+              <dt>Sunrise</dt>
+              <dd id="sky-sunrise">—</dd>
+            </div>
+            <div class="sky-event">
+              <dt>Sunset</dt>
+              <dd id="sky-sunset">—</dd>
+            </div>
+          </dl>
+        </section>
+      </div>
+    </div>
+  </section>
 
   <template id="item-template">
     <div class="item">
@@ -203,6 +250,8 @@
     </section>
   </div>
 
-  <script src="app.js?v=20261019a"></script>
+  <script src="https://cdn.jsdelivr.net/npm/astronomy-engine@2.1.19/astronomy.browser.min.js" defer></script>
+  <script src="astronomy-widget.js?v=20261021a" defer></script>
+  <script src="app.js?v=20261021a" defer></script>
 </body>
 </html>

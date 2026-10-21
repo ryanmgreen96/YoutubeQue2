@@ -5648,6 +5648,7 @@ function renderCreateFilmTab(content, tab){
   video.controls = true
   video.preload = 'metadata'
   video.playsInline = true
+  video.crossOrigin = 'anonymous'
   const filmHeading = document.createElement('h2')
   filmHeading.className = 'film-title'
   filmHeading.textContent = tab.filmTitle || tab.title
