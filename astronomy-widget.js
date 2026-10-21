@@ -145,6 +145,7 @@
     const backdrop = document.getElementById('sky-backdrop')
     const previousButton = document.getElementById('sky-previous-day')
     const nextButton = document.getElementById('sky-next-day')
+    const currentTime = document.getElementById('sky-current-time')
     if(!toggle || !overlay || !panel || !dateInput || !status) return
 
     const output = {
@@ -155,6 +156,19 @@
       sunset:document.getElementById('sky-sunset')
     }
     let lastToday = isoDateInZone(new Date())
+    let clockInterval = null
+
+    function updateClock(){
+      if(!currentTime) return
+      const now = new Date()
+      currentTime.dateTime = now.toISOString()
+      currentTime.textContent = new Intl.DateTimeFormat(undefined, {
+        timeZone:TIME_ZONE,
+        hour:'numeric',
+        minute:'2-digit',
+        second:'2-digit'
+      }).format(now)
+    }
 
     function showEvent(element, date, details, noEventText){
       if(!element) return
@@ -174,7 +188,7 @@
       try{
         const info = getDayInfo(dateString)
         const dayStart = localDateToUtc(dateString)
-        overlay.querySelector('.sky-title').textContent = `Maple Ridge · ${dateInZone(dayStart)}`
+        overlay.querySelector('.sky-title').textContent = dateInZone(dayStart)
         showEvent(output.moonrise, info.moonrise && info.moonrise.date, info.moonrise && `${info.moonrise.direction} · azimuth ${info.moonrise.azimuth}°`, 'No moonrise this day')
         const transitAltitude = info.moonTransit && info.moonTransit.altitude
         const transitHeight = transitAltitude == null
@@ -184,7 +198,7 @@
         showEvent(output.moonset, info.moonset && info.moonset.date, info.moonset && `${info.moonset.direction} · azimuth ${info.moonset.azimuth}°`, 'No moonset this day')
         showEvent(output.sunrise, info.sunrise, null, 'No sunrise this day')
         showEvent(output.sunset, info.sunset, null, 'No sunset this day')
-        status.textContent = 'Times shown in Maple Ridge local time.'
+        status.textContent = 'Times shown in local time.'
         status.classList.remove('error')
       }catch(error){
         console.error('Unable to calculate the selected day’s sky events.', error)
@@ -201,6 +215,8 @@
       overlay.setAttribute('aria-hidden', 'false')
       toggle.setAttribute('aria-expanded', 'true')
       render()
+      updateClock()
+      if(clockInterval === null) clockInterval = window.setInterval(updateClock, 1000)
       closeButton.focus()
     }
 
@@ -208,6 +224,10 @@
       overlay.classList.add('hidden')
       overlay.setAttribute('aria-hidden', 'true')
       toggle.setAttribute('aria-expanded', 'false')
+      if(clockInterval !== null){
+        window.clearInterval(clockInterval)
+        clockInterval = null
+      }
       toggle.focus()
     }
 

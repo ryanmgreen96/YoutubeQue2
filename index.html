@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width,initial-scale=1" />
   <title>YouTube Queue</title>
   <meta name="build" content="staged-push-20260831" />
-  <link rel="stylesheet" href="styles.css?v=20261021a">
+  <link rel="stylesheet" href="styles.css?v=20261021b">
 </head>
 <body>
   <header>
@@ -51,7 +51,8 @@
     <button id="sky-backdrop" class="sky-backdrop" type="button" aria-label="Close sky information"></button>
     <div class="sky-panel" role="dialog" aria-modal="true" aria-labelledby="sky-title">
       <button id="sky-close-btn" class="sky-close-btn" type="button" aria-label="Close sky information">×</button>
-      <h2 id="sky-title" class="sky-title">Maple Ridge sky</h2>
+      <h2 id="sky-title" class="sky-title"></h2>
+      <time id="sky-current-time" class="sky-current-time"></time>
       <div class="sky-date-controls">
         <button id="sky-previous-day" type="button" aria-label="Previous day">‹</button>
         <input id="sky-date" type="date" aria-label="Choose a date">
@@ -251,7 +252,7 @@
   </div>
 
   <script src="https://cdn.jsdelivr.net/npm/astronomy-engine@2.1.19/astronomy.browser.min.js" defer></script>
-  <script src="astronomy-widget.js?v=20261021a" defer></script>
+  <script src="astronomy-widget.js?v=20261021b" defer></script>
   <script src="app.js?v=20261021a" defer></script>
 </body>
 </html>
