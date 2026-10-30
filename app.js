@@ -1986,8 +1986,8 @@ function createFeatureShortcutButton(shortcut){
   })
   button.addEventListener('click', ()=>{
     if(hold.consume()) return
-    if(shortcut.id==='gym' && editMode && selectedItemIds.size){
-      moveSelectedItemsToPage(GYM_PAGE_ID)
+    if((shortcut.id==='gym' || shortcut.id==='music') && editMode && selectedItemIds.size){
+      moveSelectedItemsToPage(shortcut.pageId)
       return
     }
     setCurrentPage(shortcut.pageId)
