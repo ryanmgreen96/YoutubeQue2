@@ -808,6 +808,7 @@ async function renderPdfPage(pageNumber){
     pdfRenderTask = null
   }
   updatePdfControls()
+  setPdfStatus(`Rendering page ${pageNumber}…`)
   try{
     const page = await pdfDocument.getPage(pageNumber)
     if(version!==pdfRenderVersion) return
@@ -878,7 +879,15 @@ async function openPdfSource(source, file=null){
   try{
     if(file) documentSource = new Uint8Array(await file.arrayBuffer())
     window.pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/build/pdf.worker.min.js'
-    const loadedDocument = await window.pdfjsLib.getDocument(file ? {data:documentSource} : {url:documentSource}).promise
+    const loadingTask = window.pdfjsLib.getDocument(file ? {data:documentSource} : {url:documentSource})
+    let downloadComplete = false
+    loadingTask.onProgress = ({loaded, total})=>{
+      if(loadVersion!==pdfLoadVersion || downloadComplete) return
+      const progress = total ? ` ${Math.min(100, Math.floor(loaded / total * 100))}%` : ''
+      setPdfStatus(`Downloading PDF…${progress}`)
+    }
+    const loadedDocument = await loadingTask.promise
+    downloadComplete = true
     if(loadVersion!==pdfLoadVersion){
       await loadedDocument.destroy()
       return
