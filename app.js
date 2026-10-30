@@ -55,6 +55,9 @@ const FEATURE_SHORTCUTS = [
   {id:'audio', title:AUDIO_PAGE_TITLE, glyph:'✚', pageId:AUDIO_PAGE_ID},
   {id:'pdf', title:'PDF Reader', glyph:'📄', pageId:PDF_PAGE_ID}
 ]
+function isPdfErrorText(value){
+  return typeof value==='string' && /^(?:the pdf could not be loaded|missing pdf)\b/i.test(value.trim())
+}
 const JOURNAL_TABS = [
   {id:'food', title:'Food'},
   {id:'cash', title:'Cash'},
@@ -218,6 +221,11 @@ let pdfRenderVersion = 0
 let pdfLoadVersion = 0
 let pdfBookmarks = loadPdfBookmarks()
 let pdfSavedSource = localStorage.getItem(PDF_SOURCE_KEY) || ''
+if(isPdfErrorText(pdfSavedSource)){
+  console.warn('Discarding an error message that was saved as the PDF source')
+  localStorage.removeItem(PDF_SOURCE_KEY)
+  pdfSavedSource = ''
+}
 let currentPageId = loadCurrentPageId()
 let editMode = false
 let deleteMode = false
@@ -847,6 +855,10 @@ async function openPdfSource(source, file=null){
   if(file){
     identity = `local-file:${file.name}:${file.size}:${file.lastModified}`
   }else{
+    if(isPdfErrorText(source)){
+      setPdfStatus('That looks like a previous error message, not a PDF address. Enter the actual PDF URL or choose a file.', true)
+      return
+    }
     try{
       const parsed = new URL(source.trim(), location.href)
       if(parsed.protocol!=='http:' && parsed.protocol!=='https:') throw new Error('Only HTTP and HTTPS PDF paths are supported')
@@ -918,6 +930,10 @@ async function openPdfSource(source, file=null){
     pdfDocumentIdentity = ''
     updatePdfControls()
     renderPdfBookmarks()
+    if(!file && new URL(normalizedSource).origin!==location.origin && /failed to fetch|network request failed|cors/i.test(error.message || '')){
+      setPdfStatus('This PDF host is not allowing the website to fetch the file (CORS). Download the PDF and use Choose file, or host it in this website’s pdfs/ folder.', true)
+      return
+    }
     setPdfStatus(`The PDF could not be loaded. Check the path, access permissions, and online host CORS settings. ${error.message || ''}`.trim(), true)
   }
 }
