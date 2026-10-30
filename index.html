@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width,initial-scale=1" />
   <title>YouTube Queue</title>
   <meta name="build" content="staged-push-20260831" />
-  <link rel="stylesheet" href="styles.css?v=20261021b">
+  <link rel="stylesheet" href="styles.css?v=20261030a">
 </head>
 <body>
   <header>
@@ -35,6 +35,46 @@
         <button id="note-close-btn" class="note-close-btn" type="button" title="Close notepad" aria-label="Close notepad">×</button>
         <textarea id="note-textarea" class="note-textarea" spellcheck="false" placeholder="Write something..."></textarea>
       </div>
+      <section id="pdf-viewer" class="pdf-viewer" aria-label="PDF reader">
+        <form id="pdf-source-form" class="pdf-source-form">
+          <label class="pdf-source-field">
+            <span>PDF path or public URL</span>
+            <input id="pdf-source-input" type="text" autocomplete="url" placeholder="pdfs/document.pdf or https://example.com/document.pdf">
+          </label>
+          <button type="submit">Load PDF</button>
+          <label class="pdf-file-button">
+            <span>Choose file</span>
+            <input id="pdf-file-input" type="file" accept="application/pdf,.pdf">
+          </label>
+        </form>
+        <div class="pdf-toolbar">
+          <div class="pdf-page-controls">
+            <button id="pdf-previous-btn" type="button" aria-label="Previous page" disabled>‹</button>
+            <label>Page <input id="pdf-page-input" type="number" min="1" value="1" disabled></label>
+            <span>of <span id="pdf-page-count">—</span></span>
+            <button id="pdf-next-btn" type="button" aria-label="Next page" disabled>›</button>
+          </div>
+          <div class="pdf-zoom-controls">
+            <button id="pdf-zoom-out-btn" type="button" aria-label="Zoom out" disabled>−</button>
+            <span id="pdf-zoom-label">100%</span>
+            <button id="pdf-zoom-in-btn" type="button" aria-label="Zoom in" disabled>+</button>
+          </div>
+          <div class="pdf-bookmark-entry">
+            <input id="pdf-bookmark-note" type="text" maxlength="120" placeholder="Bookmark note (optional)" aria-label="Bookmark note">
+            <button id="pdf-add-bookmark-btn" type="button" disabled>Bookmark page</button>
+          </div>
+        </div>
+        <div id="pdf-status" class="pdf-status" role="status" aria-live="polite">Choose a PDF file or enter a path/URL to begin.</div>
+        <div class="pdf-reader-content">
+          <div class="pdf-canvas-scroll">
+            <canvas id="pdf-canvas" aria-label="PDF page"></canvas>
+          </div>
+          <aside class="pdf-bookmarks-panel" aria-label="PDF bookmarks">
+            <h2>Bookmarks</h2>
+            <div id="pdf-bookmarks-list" class="pdf-bookmarks-list"></div>
+          </aside>
+        </div>
+      </section>
       <div id="sections"></div>
       <div id="theme-switcher" class="theme-switcher"></div>
     </section>
@@ -252,7 +292,8 @@
   </div>
 
   <script src="https://cdn.jsdelivr.net/npm/astronomy-engine@2.1.19/astronomy.browser.min.js" defer></script>
+  <script src="https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/build/pdf.min.js" defer></script>
   <script src="astronomy-widget.js?v=20261021b" defer></script>
-  <script src="app.js?v=20261021a" defer></script>
+  <script src="app.js?v=20261030a" defer></script>
 </body>
 </html>

@@ -41,6 +41,9 @@ const MUSIC_PAGE_ID = 'music'
 const MUSIC_PAGE_TITLE = 'Music'
 const AUDIO_PAGE_ID = 'audio'
 const AUDIO_PAGE_TITLE = 'Audio'
+const PDF_BOOKMARKS_KEY = 'ytPdfBookmarks_v1'
+const PDF_SOURCE_KEY = 'ytPdfSource_v1'
+const PDF_PAGE_ID = 'pdf'
 const AUDIO_FILES_API_URL = 'https://api.github.com/repos/ryanmgreen96/YoutubeQue2/contents/audio?ref=main'
 const FEATURE_SHORTCUTS_KEY = 'ytFeatureShortcuts_v1'
 const FEATURE_SHORTCUTS = [
@@ -49,7 +52,8 @@ const FEATURE_SHORTCUTS = [
   {id:'journal', title:JOURNAL_PAGE_TITLE, glyph:'📓', pageId:JOURNAL_PAGE_ID},
   {id:'carbs', title:CARBS_PAGE_TITLE, glyph:'🍞', pageId:CARBS_PAGE_ID},
   {id:'music', title:MUSIC_PAGE_TITLE, glyph:'♫', pageId:MUSIC_PAGE_ID},
-  {id:'audio', title:AUDIO_PAGE_TITLE, glyph:'✚', pageId:AUDIO_PAGE_ID}
+  {id:'audio', title:AUDIO_PAGE_TITLE, glyph:'✚', pageId:AUDIO_PAGE_ID},
+  {id:'pdf', title:'PDF Reader', glyph:'📄', pageId:PDF_PAGE_ID}
 ]
 const JOURNAL_TABS = [
   {id:'food', title:'Food'},
@@ -94,6 +98,21 @@ const shelfAddBtn = document.getElementById('shelf-add-btn')
 const notePanelEl = document.getElementById('note-panel')
 const noteCloseBtn = document.getElementById('note-close-btn')
 const noteTextareaEl = document.getElementById('note-textarea')
+const pdfSourceFormEl = document.getElementById('pdf-source-form')
+const pdfSourceInputEl = document.getElementById('pdf-source-input')
+const pdfFileInputEl = document.getElementById('pdf-file-input')
+const pdfPreviousBtn = document.getElementById('pdf-previous-btn')
+const pdfNextBtn = document.getElementById('pdf-next-btn')
+const pdfPageInputEl = document.getElementById('pdf-page-input')
+const pdfPageCountEl = document.getElementById('pdf-page-count')
+const pdfZoomOutBtn = document.getElementById('pdf-zoom-out-btn')
+const pdfZoomInBtn = document.getElementById('pdf-zoom-in-btn')
+const pdfZoomLabelEl = document.getElementById('pdf-zoom-label')
+const pdfAddBookmarkBtn = document.getElementById('pdf-add-bookmark-btn')
+const pdfBookmarkNoteEl = document.getElementById('pdf-bookmark-note')
+const pdfBookmarksListEl = document.getElementById('pdf-bookmarks-list')
+const pdfStatusEl = document.getElementById('pdf-status')
+const pdfCanvasEl = document.getElementById('pdf-canvas')
 const gymNoteDialogEl = document.getElementById('gym-note-dialog')
 const gymNoteTextareaEl = document.getElementById('gym-note-textarea')
 const gymNoteSaveBtn = document.getElementById('gym-note-save-btn')
@@ -189,6 +208,16 @@ let topbarManageOpen = false
 const topbarHoldState = {timer: null, linkId: '', rowId: '', startX: 0, startY: 0, suppressClickLinkId: '', suppressClickUntil: 0}
 let featureShortcuts = loadFeatureShortcuts()
 let featureShortcutEditId = ''
+let pdfModeOpen = false
+let pdfDocument = null
+let pdfCurrentPage = 1
+let pdfScale = 1
+let pdfDocumentIdentity = ''
+let pdfRenderTask = null
+let pdfRenderVersion = 0
+let pdfLoadVersion = 0
+let pdfBookmarks = loadPdfBookmarks()
+let pdfSavedSource = localStorage.getItem(PDF_SOURCE_KEY) || ''
 let currentPageId = loadCurrentPageId()
 let editMode = false
 let deleteMode = false
@@ -682,6 +711,212 @@ function saveFeatureShortcuts(){
       iconUrl: shortcut.iconUrl || ''
     }]))
   }))
+}
+function loadPdfBookmarks(){
+  try{
+    const stored = JSON.parse(localStorage.getItem(PDF_BOOKMARKS_KEY) || '{}')
+    if(!stored || typeof stored!=='object' || Array.isArray(stored)) throw new Error('Saved PDF bookmarks are not in the expected format')
+    return Object.fromEntries(Object.entries(stored).map(([identity, bookmarks])=>[
+      identity,
+      Array.isArray(bookmarks)
+        ? bookmarks.filter((bookmark)=>bookmark && Number.isInteger(bookmark.page) && bookmark.page>0).map((bookmark)=>({
+          id: typeof bookmark.id==='string' && bookmark.id ? bookmark.id : uid(),
+          page: bookmark.page,
+          note: typeof bookmark.note==='string' ? bookmark.note.slice(0, 120) : ''
+        }))
+        : []
+    ]))
+  }catch(error){
+    console.error('Failed to load PDF bookmarks', error)
+    return {}
+  }
+}
+function setPdfStatus(message, isError=false){
+  if(!pdfStatusEl) return
+  pdfStatusEl.textContent = message
+  pdfStatusEl.classList.toggle('error', isError)
+}
+function savePdfBookmarks(){
+  localStorage.setItem(PDF_BOOKMARKS_KEY, JSON.stringify(pdfBookmarks))
+}
+function getCurrentPdfBookmarks(){
+  return pdfDocumentIdentity ? (pdfBookmarks[pdfDocumentIdentity] || []) : []
+}
+function renderPdfBookmarks(){
+  if(!pdfBookmarksListEl) return
+  pdfBookmarksListEl.innerHTML = ''
+  const bookmarks = getCurrentPdfBookmarks()
+  if(!bookmarks.length){
+    const empty = document.createElement('p')
+    empty.className = 'pdf-bookmarks-empty'
+    empty.textContent = pdfDocument ? 'No bookmarks for this PDF yet.' : 'Load a PDF to see its bookmarks.'
+    pdfBookmarksListEl.appendChild(empty)
+    return
+  }
+  bookmarks.forEach((bookmark)=>{
+    const row = document.createElement('div')
+    row.className = 'pdf-bookmark-row'
+    const jump = document.createElement('button')
+    jump.type = 'button'
+    jump.className = 'pdf-bookmark-jump'
+    jump.textContent = bookmark.note ? `Page ${bookmark.page} · ${bookmark.note}` : `Page ${bookmark.page}`
+    jump.title = jump.textContent
+    jump.addEventListener('click', ()=>{ void renderPdfPage(bookmark.page) })
+    const remove = document.createElement('button')
+    remove.type = 'button'
+    remove.className = 'pdf-bookmark-remove'
+    remove.textContent = '×'
+    remove.title = `Remove bookmark for page ${bookmark.page}`
+    remove.setAttribute('aria-label', remove.title)
+    remove.addEventListener('click', ()=>{
+      const current = getCurrentPdfBookmarks()
+      pdfBookmarks[pdfDocumentIdentity] = current.filter((entry)=>entry.id!==bookmark.id)
+      try{
+        savePdfBookmarks()
+        renderPdfBookmarks()
+      }catch(error){
+        pdfBookmarks[pdfDocumentIdentity] = current
+        console.error('Failed to remove PDF bookmark from browser storage', error)
+        setPdfStatus('This bookmark could not be removed from browser storage.', true)
+      }
+    })
+    row.append(jump, remove)
+    pdfBookmarksListEl.appendChild(row)
+  })
+}
+function updatePdfControls(){
+  const loaded = Boolean(pdfDocument)
+  if(pdfPreviousBtn) pdfPreviousBtn.disabled = !loaded || pdfCurrentPage<=1
+  if(pdfNextBtn) pdfNextBtn.disabled = !loaded || pdfCurrentPage>=pdfDocument.numPages
+  if(pdfPageInputEl){
+    pdfPageInputEl.disabled = !loaded
+    pdfPageInputEl.value = String(pdfCurrentPage)
+    pdfPageInputEl.max = loaded ? String(pdfDocument.numPages) : '1'
+  }
+  if(pdfPageCountEl) pdfPageCountEl.textContent = loaded ? String(pdfDocument.numPages) : '—'
+  if(pdfZoomOutBtn) pdfZoomOutBtn.disabled = !loaded || pdfScale<=0.5
+  if(pdfZoomInBtn) pdfZoomInBtn.disabled = !loaded || pdfScale>=2.5
+  if(pdfZoomLabelEl) pdfZoomLabelEl.textContent = `${Math.round(pdfScale * 100)}%`
+  if(pdfAddBookmarkBtn) pdfAddBookmarkBtn.disabled = !loaded
+}
+async function renderPdfPage(pageNumber){
+  if(!pdfDocument || !Number.isInteger(pageNumber) || pageNumber<1 || pageNumber>pdfDocument.numPages) return
+  pdfCurrentPage = pageNumber
+  const version = ++pdfRenderVersion
+  if(pdfRenderTask){
+    pdfRenderTask.cancel()
+    pdfRenderTask = null
+  }
+  updatePdfControls()
+  try{
+    const page = await pdfDocument.getPage(pageNumber)
+    if(version!==pdfRenderVersion) return
+    const viewport = page.getViewport({scale:pdfScale})
+    const outputScale = Math.min(window.devicePixelRatio || 1, 2)
+    pdfCanvasEl.width = Math.floor(viewport.width * outputScale)
+    pdfCanvasEl.height = Math.floor(viewport.height * outputScale)
+    pdfCanvasEl.style.width = `${Math.floor(viewport.width)}px`
+    pdfCanvasEl.style.height = `${Math.floor(viewport.height)}px`
+    const context = pdfCanvasEl.getContext('2d')
+    if(!context) throw new Error('Canvas 2D context is unavailable')
+    pdfRenderTask = page.render({
+      canvasContext:context,
+      viewport,
+      transform:outputScale===1 ? null : [outputScale, 0, 0, outputScale, 0, 0]
+    })
+    await pdfRenderTask.promise
+    if(version===pdfRenderVersion) setPdfStatus(`Page ${pageNumber} of ${pdfDocument.numPages}`)
+  }catch(error){
+    if(error && error.name==='RenderingCancelledException') return
+    if(version!==pdfRenderVersion) return
+    console.error('Failed to render PDF page', error)
+    setPdfStatus('This PDF page could not be rendered.', true)
+  }finally{
+    if(version===pdfRenderVersion) pdfRenderTask = null
+  }
+}
+async function openPdfSource(source, file=null){
+  if(!window.pdfjsLib){
+    setPdfStatus('The PDF reader library did not load. Check your connection and reload the page.', true)
+    return
+  }
+  let documentSource
+  let identity
+  let normalizedSource = ''
+  if(file){
+    identity = `local-file:${file.name}:${file.size}:${file.lastModified}`
+  }else{
+    try{
+      const parsed = new URL(source.trim(), location.href)
+      if(parsed.protocol!=='http:' && parsed.protocol!=='https:') throw new Error('Only HTTP and HTTPS PDF paths are supported')
+      normalizedSource = parsed.href
+    }catch(error){
+      setPdfStatus('Enter a valid HTTP(S) PDF URL or a path served by this website.', true)
+      return
+    }
+    documentSource = normalizedSource
+    identity = normalizedSource
+  }
+  const loadVersion = ++pdfLoadVersion
+  if(pdfRenderTask){
+    pdfRenderTask.cancel()
+    pdfRenderTask = null
+  }
+  pdfRenderVersion++
+  if(pdfDocument){
+    void pdfDocument.destroy().catch((error)=>console.error('Failed to release the previous PDF document', error))
+  }
+  pdfDocument = null
+  pdfDocumentIdentity = ''
+  pdfCurrentPage = 1
+  pdfScale = 1
+  pdfCanvasEl.width = 0
+  pdfCanvasEl.height = 0
+  updatePdfControls()
+  renderPdfBookmarks()
+  setPdfStatus('Loading PDF…')
+  try{
+    if(file) documentSource = new Uint8Array(await file.arrayBuffer())
+    window.pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/build/pdf.worker.min.js'
+    const loadedDocument = await window.pdfjsLib.getDocument(file ? {data:documentSource} : {url:documentSource}).promise
+    if(loadVersion!==pdfLoadVersion){
+      await loadedDocument.destroy()
+      return
+    }
+    pdfDocument = loadedDocument
+    pdfDocumentIdentity = identity
+    let sourceSaveError = false
+    if(file){
+      pdfSourceInputEl.value = ''
+    }else{
+      pdfSourceInputEl.value = source.trim()
+      pdfSavedSource = normalizedSource
+      try{
+        localStorage.setItem(PDF_SOURCE_KEY, pdfSavedSource)
+      }catch(error){
+        sourceSaveError = true
+        console.error('Failed to save the PDF source in browser storage', error)
+      }
+    }
+    updatePdfControls()
+    renderPdfBookmarks()
+    await renderPdfPage(1)
+    if(sourceSaveError) setPdfStatus('PDF loaded, but its source could not be saved in browser storage.', true)
+  }catch(error){
+    if(loadVersion!==pdfLoadVersion) return
+    console.error('Failed to load PDF', error)
+    pdfDocument = null
+    pdfDocumentIdentity = ''
+    updatePdfControls()
+    renderPdfBookmarks()
+    setPdfStatus(`The PDF could not be loaded. Check the path, access permissions, and online host CORS settings. ${error.message || ''}`.trim(), true)
+  }
+}
+function togglePdfMode(){
+  pdfModeOpen = !pdfModeOpen
+  document.body.classList.toggle('pdf-mode', pdfModeOpen)
+  if(pdfModeOpen && !pdfDocument && pdfSavedSource) void openPdfSource(pdfSavedSource)
+  renderThemeSwitcher()
 }
 let carbsPickingEntryId = null
 let carbsSchedulingEntryId = null
@@ -1963,7 +2198,8 @@ function markLastViewedItem(itemId){
 function createFeatureShortcutButton(shortcut){
   const button = document.createElement('button')
   button.type = 'button'
-  button.className = `theme-cycle-btn ${shortcut.id}-btn${normalizePageId(currentPageId)===shortcut.pageId ? ' selected' : ''}`
+  const isSelected = shortcut.id==='pdf' ? pdfModeOpen : normalizePageId(currentPageId)===shortcut.pageId
+  button.className = `theme-cycle-btn ${shortcut.id}-btn${isSelected ? ' selected' : ''}`
   button.title = `Open ${shortcut.title} page. Hold to change its icon or position.`
   button.setAttribute('aria-label', shortcut.title)
   if(shortcut.iconUrl){
@@ -1988,6 +2224,10 @@ function createFeatureShortcutButton(shortcut){
     if(hold.consume()) return
     if((shortcut.id==='gym' || shortcut.id==='music') && editMode && selectedItemIds.size){
       moveSelectedItemsToPage(shortcut.pageId)
+      return
+    }
+    if(shortcut.id==='pdf'){
+      togglePdfMode()
       return
     }
     setCurrentPage(shortcut.pageId)
@@ -6502,6 +6742,82 @@ if(noteToggleBtn){
 }
 if(shelfAddBtn){
   shelfAddBtn.addEventListener('click', ()=>{ createSavedShelf() })
+}
+if(pdfSourceFormEl){
+  pdfSourceFormEl.addEventListener('submit', (event)=>{
+    event.preventDefault()
+    const source = pdfSourceInputEl.value.trim()
+    if(!source){
+      setPdfStatus('Enter a PDF path or URL, or choose a file.', true)
+      pdfSourceInputEl.focus()
+      return
+    }
+    void openPdfSource(source)
+  })
+}
+if(pdfFileInputEl){
+  pdfFileInputEl.addEventListener('change', ()=>{
+    const file = pdfFileInputEl.files && pdfFileInputEl.files[0]
+    if(!file) return
+    if(!/\.pdf$/i.test(file.name) && file.type!=='application/pdf'){
+      setPdfStatus('Choose a PDF file.', true)
+      pdfFileInputEl.value = ''
+      return
+    }
+    try{
+      localStorage.removeItem(PDF_SOURCE_KEY)
+      pdfSavedSource = ''
+    }catch(error){
+      console.error('Failed to clear the saved PDF source', error)
+      setPdfStatus('The PDF can be opened, but the previous saved source could not be cleared.', true)
+    }
+    void openPdfSource('', file)
+    pdfFileInputEl.value = ''
+  })
+}
+if(pdfPreviousBtn) pdfPreviousBtn.addEventListener('click', ()=>{ void renderPdfPage(pdfCurrentPage - 1) })
+if(pdfNextBtn) pdfNextBtn.addEventListener('click', ()=>{ void renderPdfPage(pdfCurrentPage + 1) })
+if(pdfPageInputEl){
+  pdfPageInputEl.addEventListener('change', ()=>{
+    const page = Number(pdfPageInputEl.value)
+    if(!Number.isInteger(page) || !pdfDocument || page<1 || page>pdfDocument.numPages){
+      updatePdfControls()
+      return
+    }
+    void renderPdfPage(page)
+  })
+}
+if(pdfZoomOutBtn){
+  pdfZoomOutBtn.addEventListener('click', ()=>{
+    pdfScale = Math.max(0.5, Math.round((pdfScale - 0.25) * 100) / 100)
+    updatePdfControls()
+    void renderPdfPage(pdfCurrentPage)
+  })
+}
+if(pdfZoomInBtn){
+  pdfZoomInBtn.addEventListener('click', ()=>{
+    pdfScale = Math.min(2.5, Math.round((pdfScale + 0.25) * 100) / 100)
+    updatePdfControls()
+    void renderPdfPage(pdfCurrentPage)
+  })
+}
+if(pdfAddBookmarkBtn){
+  pdfAddBookmarkBtn.addEventListener('click', ()=>{
+    if(!pdfDocument || !pdfDocumentIdentity) return
+    const bookmarks = getCurrentPdfBookmarks()
+    const bookmark = {id:uid(), page:pdfCurrentPage, note:pdfBookmarkNoteEl.value.trim()}
+    pdfBookmarks[pdfDocumentIdentity] = [...bookmarks, bookmark]
+    try{
+      savePdfBookmarks()
+      pdfBookmarkNoteEl.value = ''
+      renderPdfBookmarks()
+      setPdfStatus(`Bookmarked page ${pdfCurrentPage}.`)
+    }catch(error){
+      pdfBookmarks[pdfDocumentIdentity] = bookmarks
+      console.error('Failed to save PDF bookmark in browser storage', error)
+      setPdfStatus('This bookmark could not be saved. Browser storage may be full.', true)
+    }
+  })
 }
 if(noteCloseBtn){
   noteCloseBtn.addEventListener('click', closeNotebook)
