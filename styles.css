@@ -70,7 +70,7 @@ main{display:grid;grid-template-columns:10% 75% 15%;height:100vh;overflow:hidden
 .saved-pages-btn.selected{background:color-mix(in srgb, var(--accent) 30%, rgba(255,255,255,0.1));color:#1c1206;border-color:color-mix(in srgb, var(--accent) 55%, rgba(255,255,255,0.2))}
 .saved-pages-btn.assigning{background:rgba(176, 82, 69, 0.34);color:#ffd8cf;border-color:rgba(208,108,91,0.7)}
 .shelf-add-btn{font-size:18px;font-weight:700;color:#ffe6b7;border-color:color-mix(in srgb, var(--accent) 42%, rgba(255,255,255,0.14));background:color-mix(in srgb, var(--accent) 16%, rgba(255,255,255,0.05))}
-.note-panel{position:relative;z-index:2;width:min(360px, calc(100% - 24px));margin:12px 12px 0 12px;padding:12px;border-radius:10px;background:#e6e3dc;color:#70561b;box-shadow:0 8px 24px rgba(0,0,0,0.18)}
+.note-panel{position:absolute;top:50%;left:50%;z-index:20;width:min(560px, calc(100% - 32px));max-height:calc(100% - 32px);margin:0;padding:12px;transform:translate(-50%, -50%);border-radius:10px;background:#e6e3dc;color:#70561b;box-shadow:0 8px 24px rgba(0,0,0,0.28)}
 .note-panel.hidden{display:none}
 .note-close-btn{position:absolute;top:8px;right:8px;width:24px;height:24px;padding:0;border:none;border-radius:999px;background:rgba(0,0,0,0.08);color:#222;font-size:16px;line-height:1;display:flex;align-items:center;justify-content:center}
 .note-close-btn:hover{background:rgba(0,0,0,0.14)}
