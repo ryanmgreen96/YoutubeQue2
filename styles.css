@@ -70,13 +70,13 @@ main{display:grid;grid-template-columns:10% 75% 15%;height:100vh;overflow:hidden
 .saved-pages-btn.selected{background:color-mix(in srgb, var(--accent) 30%, rgba(255,255,255,0.1));color:#1c1206;border-color:color-mix(in srgb, var(--accent) 55%, rgba(255,255,255,0.2))}
 .saved-pages-btn.assigning{background:rgba(176, 82, 69, 0.34);color:#ffd8cf;border-color:rgba(208,108,91,0.7)}
 .shelf-add-btn{font-size:18px;font-weight:700;color:#ffe6b7;border-color:color-mix(in srgb, var(--accent) 42%, rgba(255,255,255,0.14));background:color-mix(in srgb, var(--accent) 16%, rgba(255,255,255,0.05))}
-.note-panel{position:relative;z-index:2;margin:12px 12px 0 12px;padding:12px;border-radius:10px;background:#d8d8d8;color:#151515;box-shadow:0 8px 24px rgba(0,0,0,0.18)}
+.note-panel{position:relative;z-index:2;width:min(360px, calc(100% - 24px));margin:12px 12px 0 12px;padding:12px;border-radius:10px;background:#e6e3dc;color:#70561b;box-shadow:0 8px 24px rgba(0,0,0,0.18)}
 .note-panel.hidden{display:none}
 .note-close-btn{position:absolute;top:8px;right:8px;width:24px;height:24px;padding:0;border:none;border-radius:999px;background:rgba(0,0,0,0.08);color:#222;font-size:16px;line-height:1;display:flex;align-items:center;justify-content:center}
 .note-close-btn:hover{background:rgba(0,0,0,0.14)}
-.note-textarea{width:100%;min-height:220px;max-height:min(48vh, 420px);margin:0;padding:28px 12px 12px 12px;border:none;outline:none;resize:vertical;background:transparent;color:#151515;font:15px/1.45 system-ui,-apple-system,Segoe UI,Roboto,sans-serif;overflow:auto;-ms-overflow-style:none;scrollbar-width:none}
+.note-textarea{width:100%;min-height:220px;max-height:min(48vh, 420px);margin:0;padding:28px 12px 12px 12px;border:none;outline:none;resize:vertical;background:transparent;color:inherit;font:15px/1.45 system-ui,-apple-system,Segoe UI,Roboto,sans-serif;overflow:auto;-ms-overflow-style:none;scrollbar-width:none}
 .note-textarea::-webkit-scrollbar{display:none}
-.note-textarea::placeholder{color:#676767}
+.note-textarea::placeholder{color:#887b5c}
 .page-link-row{display:flex;align-items:center;gap:6px}
 .page-link{font-size:13px;line-height:1.2;text-align:left;padding:6px 4px;border-radius:0;border:none;color:var(--text);background:transparent;white-space:normal}
 .page-link.side-link{color:#f0d4a2}
