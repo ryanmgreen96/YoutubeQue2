@@ -2077,9 +2077,20 @@ function saveNotebookState(){
   localStorage.setItem(NOTEBOOK_SCROLL_KEY, String(noteTextareaEl.scrollTop || 0))
   localStorage.setItem(NOTEBOOK_CURSOR_KEY, String(cursorPos))
 }
+function resizeNotebook(){
+  if(!noteTextareaEl || !notePanelEl || notePanelEl.classList.contains('hidden')) return
+  const lineHeight = parseFloat(window.getComputedStyle(noteTextareaEl).lineHeight) || 22
+  noteTextareaEl.style.height = '0px'
+  noteTextareaEl.style.minHeight = '0px'
+  const contentHeight = noteTextareaEl.scrollHeight
+  noteTextareaEl.style.minHeight = ''
+  const minHeight = parseFloat(window.getComputedStyle(noteTextareaEl).minHeight) || 0
+  noteTextareaEl.style.height = `${Math.max(minHeight, contentHeight + lineHeight * 3)}px`
+}
 function loadNotebookState(){
   if(!noteTextareaEl) return
   noteTextareaEl.value = localStorage.getItem(NOTEBOOK_TEXT_KEY) || ''
+  resizeNotebook()
   const savedScroll = Number(localStorage.getItem(NOTEBOOK_SCROLL_KEY) || '0')
   const savedCursor = Number(localStorage.getItem(NOTEBOOK_CURSOR_KEY) || '0')
   const safeCursor = Number.isFinite(savedCursor) ? Math.max(0, Math.min(savedCursor, noteTextareaEl.value.length)) : noteTextareaEl.value.length
@@ -6765,6 +6776,11 @@ if(noteToggleBtn){
     }
   })
 }
+document.addEventListener('click', (event)=>{
+  if(!notePanelEl || notePanelEl.classList.contains('hidden') || notePanelEl.contains(event.target)) return
+  closeNotebook()
+})
+window.addEventListener('resize', resizeNotebook)
 if(shelfAddBtn){
   shelfAddBtn.addEventListener('click', ()=>{ createSavedShelf() })
 }
@@ -6848,7 +6864,10 @@ if(noteCloseBtn){
   noteCloseBtn.addEventListener('click', closeNotebook)
 }
 if(noteTextareaEl){
-  noteTextareaEl.addEventListener('input', saveNotebookState)
+  noteTextareaEl.addEventListener('input', ()=>{
+    resizeNotebook()
+    saveNotebookState()
+  })
   noteTextareaEl.addEventListener('scroll', saveNotebookState, {passive:true})
 }
 
