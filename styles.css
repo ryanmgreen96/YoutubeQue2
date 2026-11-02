@@ -53,7 +53,7 @@ button{background:transparent;border:1px solid rgba(255,255,255,0.06);color:var(
 button.selected{background:var(--accent);color:#000;border-color:transparent}
 main{display:grid;grid-template-columns:10% 75% 15%;height:100vh;overflow:hidden}
 .side-bar{min-height:100%;background:rgba(255,255,255,0.02)}
-.left-bar{padding:12px}
+.left-bar{position:relative;padding:12px}
 .left-bar-panel{position:relative;display:flex;flex-direction:column;gap:10px;height:100%}
 .left-bar-header{display:flex;align-items:center;justify-content:flex-start;gap:8px}
 .left-bar-actions{display:flex;align-items:center;gap:6px}
@@ -64,6 +64,8 @@ main{display:grid;grid-template-columns:10% 75% 15%;height:100vh;overflow:hidden
 .right-bar-footer{margin-top:auto;display:flex;justify-content:flex-end;align-items:center;gap:8px;padding:12px 12px 12px 0}
 .left-note-btn{width:28px;height:28px;padding:0;border-radius:999px;font-size:15px;line-height:1;display:flex;align-items:center;justify-content:center;color:#f2f2f2;border:1px solid rgba(255,255,255,0.14);background:rgba(255,255,255,0.06)}
 .left-note-btn:hover{background:rgba(255,255,255,0.12)}
+.note-toggle-btn{position:absolute;top:50%;right:-11px;z-index:5;width:22px;height:36px;padding:0;transform:translateY(-50%);border-radius:0 8px 8px 0;font-size:19px;color:#ffe7c2;border-color:color-mix(in srgb, var(--accent) 42%, rgba(255,255,255,0.18));background:color-mix(in srgb, var(--bg) 88%, var(--accent))}
+.note-toggle-btn:hover{background:color-mix(in srgb, var(--bg) 72%, var(--accent))}
 .saved-pages-btn{font-size:14px;color:#ffe7c2;border-color:color-mix(in srgb, var(--accent) 40%, rgba(255,255,255,0.14));background:color-mix(in srgb, var(--accent) 14%, rgba(255,255,255,0.05))}
 .saved-pages-btn.selected{background:color-mix(in srgb, var(--accent) 30%, rgba(255,255,255,0.1));color:#1c1206;border-color:color-mix(in srgb, var(--accent) 55%, rgba(255,255,255,0.2))}
 .saved-pages-btn.assigning{background:rgba(176, 82, 69, 0.34);color:#ffd8cf;border-color:rgba(208,108,91,0.7)}
