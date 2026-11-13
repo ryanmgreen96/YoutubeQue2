@@ -61,7 +61,19 @@ function isPdfErrorText(value){
 const JOURNAL_TABS = [
   {id:'food', title:'Food'},
   {id:'cash', title:'Cash'},
-  {id:'training', title:'Training'}
+  {id:'training', title:'Training'},
+  {id:'finances', title:'Finances'}
+]
+const FINANCE_PAYDAY_ANCHOR = '2026-11-12'
+const FINANCE_FIRST_MONTH = '2026-11-01'
+const FINANCE_STARTING_BALANCE = 2500
+const FINANCE_HOURLY_RATE = 17
+const FINANCE_STAT_HOURS = 4
+const FINANCE_EXPENSE_CATEGORIES = [
+  {id:'misc', label:'Misc', color:'red'},
+  {id:'living', label:'Living', color:'black'},
+  {id:'grocery', label:'Grocery', color:'green'},
+  {id:'amazon', label:'Amazon', color:'yellow'}
 ]
 const CARBS_POINT_PX = 34
 const CARBS_BASE_PX = 62
@@ -484,6 +496,12 @@ function ensureJournalPageExists(){
       activeTabs[JOURNAL_PAGE_ID] = JOURNAL_TABS[0].id
       savePageTabs()
       saveActiveTabs()
+    }else if(!pageTabs[JOURNAL_PAGE_ID].some((tab)=>tab && tab.id==='finances')){
+      const tabs = pageTabs[JOURNAL_PAGE_ID]
+      const trainingIndex = tabs.findIndex((tab)=>tab && tab.id==='training')
+      const cashIndex = tabs.findIndex((tab)=>tab && tab.id==='cash')
+      tabs.splice(trainingIndex >= 0 ? trainingIndex + 1 : cashIndex >= 0 ? cashIndex + 1 : tabs.length, 0, {id:'finances', title:'Finances'})
+      savePageTabs()
     }
     if(changed) savePages()
     return
@@ -579,7 +597,8 @@ function createJournalData(){
   return {
     food: {essentials: [], buy: []},
     cash: {amazon: [], store: []},
-    training: []
+    training: [],
+    finances: {startingBalance: FINANCE_STARTING_BALANCE, workEntries: [], expenses: []}
   }
 }
 function loadJournalData(){
@@ -608,7 +627,32 @@ function loadJournalData(){
         amazon: cleanList(parsed.cash && parsed.cash.amazon, true),
         store: cleanList(parsed.cash && parsed.cash.store, true)
       },
-      training: cleanList(parsed.training)
+      training: cleanList(parsed.training),
+      finances: {
+        startingBalance: Number.isFinite(parsed.finances && parsed.finances.startingBalance) && parsed.finances.startingBalance >= 0
+          ? parsed.finances.startingBalance
+          : FINANCE_STARTING_BALANCE,
+        workEntries: Array.isArray(parsed.finances && parsed.finances.workEntries)
+          ? parsed.finances.workEntries.filter((entry)=>entry && isFinanceDate(entry.date) && Number.isFinite(entry.hours) && entry.hours > 0 && entry.hours <= 24).map((entry)=>({
+              id: entry.id || uid(),
+              date: entry.date,
+              hours: entry.hours,
+              stats: entry.stats === true,
+              holiday: entry.holiday === true
+            }))
+          : [],
+        expenses: Array.isArray(parsed.finances && parsed.finances.expenses)
+          ? parsed.finances.expenses.filter((entry)=>entry && isFinanceDate(entry.date) && FINANCE_EXPENSE_CATEGORIES.some((category)=>category.id===entry.category) && Number.isFinite(entry.amount) && entry.amount > 0).map((entry)=>({
+              id: entry.id || uid(),
+              date: entry.date,
+              category: entry.category,
+              amount: entry.amount,
+              text: typeof entry.text==='string' ? entry.text.trim() : '',
+              returned: entry.returned === true,
+              paid: entry.paid === true
+            }))
+          : []
+      }
     }
 
     const isCashReversed = localStorage.getItem(JOURNAL_CASH_REVERSED_KEY) === 'true'
@@ -1194,8 +1238,377 @@ function renderJournal(tabId){
     view.appendChild(renderJournalList(journalData.cash.store, 'Store', {addFirst:true, includeDate:true, inputPlaceholder:'What did you buy?', prepend:true}))
   }else if(tabId==='training'){
     view.appendChild(renderJournalList(journalData.training, 'Training', {addFirst:true, includeDate:true, inputPlaceholder:'Add training'}))
+  }else if(tabId==='finances'){
+    renderFinances(view)
   }
   sections.appendChild(view)
+}
+
+function financeDateString(date){
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`
+}
+function parseFinanceDate(value){
+  const [year, month, day] = value.split('-').map(Number)
+  return new Date(year, month - 1, day, 12)
+}
+function isFinanceDate(value){
+  return typeof value==='string' && /^\d{4}-\d{2}-\d{2}$/.test(value) && financeDateString(parseFinanceDate(value))===value
+}
+function addFinanceDays(value, days){
+  const date = parseFinanceDate(value)
+  date.setDate(date.getDate() + days)
+  return financeDateString(date)
+}
+function addFinanceMonths(value, months){
+  const date = parseFinanceDate(value)
+  date.setMonth(date.getMonth() + months)
+  return financeDateString(date)
+}
+function formatFinanceDate(value, options = {month:'short', day:'numeric'}){
+  return parseFinanceDate(value).toLocaleDateString(undefined, options)
+}
+function formatFinanceMoney(value){
+  return new Intl.NumberFormat(undefined, {style:'currency', currency:'USD'}).format(value)
+}
+function getFinanceMonths(){
+  const today = parseFinanceDate(financeDateString(new Date()))
+  const currentMonth = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-01`
+  const months = []
+  let start = FINANCE_FIRST_MONTH
+  while(start <= currentMonth){
+    const end = addFinanceDays(addFinanceMonths(start, 1), -1)
+    const paychecks = []
+    let payday = FINANCE_PAYDAY_ANCHOR
+    while(payday < start) payday = addFinanceDays(payday, 14)
+    while(payday <= end){
+      paychecks.push({
+        payday,
+        start:addFinanceDays(payday, -18),
+        end:addFinanceDays(payday, -5)
+      })
+      payday = addFinanceDays(payday, 14)
+    }
+    months.push({start, end, paychecks})
+    start = addFinanceMonths(start, 1)
+  }
+  if(!months.length){
+    const end = addFinanceDays(addFinanceMonths(start, 1), -1)
+    months.push({start, end, paychecks:[]})
+  }
+  return months
+}
+function financeEntryEarnings(entry){
+  const paidHours = entry.hours + (entry.stats ? FINANCE_STAT_HOURS : 0)
+  return paidHours * FINANCE_HOURLY_RATE * (entry.holiday ? 2 : 1)
+}
+function renderFinanceWorkForm(period){
+  const form = document.createElement('form')
+  form.className = 'finance-entry-form'
+  const date = document.createElement('input')
+  date.type = 'date'
+  date.required = true
+  date.min = period.start
+  date.max = period.end
+  const today = financeDateString(new Date())
+  date.value = today >= period.start && today <= period.end ? today : period.start
+  date.setAttribute('aria-label', 'Work date')
+  const hours = document.createElement('input')
+  hours.type = 'number'
+  hours.min = '0.25'
+  hours.max = '24'
+  hours.step = '0.25'
+  hours.placeholder = 'Hours'
+  hours.required = true
+  hours.setAttribute('aria-label', 'Hours worked')
+  const statsLabel = document.createElement('label')
+  const stats = document.createElement('input')
+  stats.type = 'checkbox'
+  statsLabel.append(stats, document.createTextNode(`Stats (+${FINANCE_STAT_HOURS}h)`))
+  const holidayLabel = document.createElement('label')
+  const holiday = document.createElement('input')
+  holiday.type = 'checkbox'
+  holidayLabel.append(holiday, document.createTextNode('Holiday (double time)'))
+  const submit = document.createElement('button')
+  submit.type = 'submit'
+  submit.textContent = 'Add day'
+  form.append(date, hours, statsLabel, holidayLabel, submit)
+  form.addEventListener('submit', (event)=>{
+    event.preventDefault()
+    if(!form.reportValidity()) return
+    journalData.finances.workEntries.push({
+      id: uid(),
+      date: date.value,
+      hours: Number(hours.value),
+      stats: stats.checked,
+      holiday: holiday.checked
+    })
+    saveJournalData()
+    render()
+  })
+  return form
+}
+function renderFinanceExpenseForm(category, period){
+  const form = document.createElement('form')
+  form.className = 'finance-entry-form finance-expense-form'
+  const date = document.createElement('input')
+  date.type = 'date'
+  date.required = true
+  date.min = period.start
+  date.max = period.end
+  const today = financeDateString(new Date())
+  date.value = today >= period.start && today <= period.end ? today : period.start
+  date.setAttribute('aria-label', 'Purchase date')
+  const amount = document.createElement('input')
+  amount.type = 'number'
+  amount.min = '0.01'
+  amount.step = '0.01'
+  amount.required = true
+  amount.placeholder = 'Amount'
+  amount.setAttribute('aria-label', 'Purchase amount')
+  const description = document.createElement('input')
+  description.type = 'text'
+  description.maxLength = 100
+  description.placeholder = 'Note (optional)'
+  description.setAttribute('aria-label', 'Purchase note')
+  const submit = document.createElement('button')
+  submit.type = 'submit'
+  submit.textContent = 'Add'
+  const cancel = document.createElement('button')
+  cancel.type = 'button'
+  cancel.textContent = 'Cancel'
+  cancel.addEventListener('click', ()=>form.remove())
+  form.append(date, amount, description, submit, cancel)
+  form.addEventListener('submit', (event)=>{
+    event.preventDefault()
+    if(!form.reportValidity()) return
+    journalData.finances.expenses.push({
+      id: uid(),
+      date: date.value,
+      category: category.id,
+      amount: Number(amount.value),
+      text: description.value.trim(),
+      returned: false,
+      paid: false
+    })
+    saveJournalData()
+    render()
+  })
+  return form
+}
+function renderFinances(view){
+  view.classList.add('finance-view')
+  const data = journalData.finances
+  let runningBalance = data.startingBalance
+  const months = getFinanceMonths()
+  const summaries = months.map((month)=>{
+    const paychecks = month.paychecks.map((paycheck)=>{
+      const workEntries = data.workEntries.filter((entry)=>entry.date >= paycheck.start && entry.date <= paycheck.end)
+      return {...paycheck, workEntries, income:workEntries.reduce((sum, entry)=>sum + financeEntryEarnings(entry), 0)}
+    })
+    const expenses = data.expenses.filter((entry)=>entry.date >= month.start && entry.date <= month.end)
+    const income = paychecks.reduce((sum, paycheck)=>sum + paycheck.income, 0)
+    const spending = expenses.reduce((sum, entry)=>sum + (entry.category === 'amazon' && entry.returned ? 0 : entry.amount), 0)
+    const summary = {month, paychecks, expenses, income, spending, startBalance:runningBalance, endBalance:runningBalance + income - spending}
+    runningBalance = summary.endBalance
+    return summary
+  })
+
+  const overview = document.createElement('section')
+  overview.className = 'finance-overview'
+  const startingField = document.createElement('label')
+  startingField.className = 'finance-starting-field'
+  const firstMonthLabel = parseFinanceDate(FINANCE_FIRST_MONTH).toLocaleDateString(undefined, {month:'long', year:'numeric'})
+  startingField.appendChild(document.createTextNode(`Starting balance before ${firstMonthLabel}`))
+  const startingInput = document.createElement('input')
+  startingInput.type = 'number'
+  startingInput.min = '0'
+  startingInput.step = '0.01'
+  startingInput.required = true
+  startingInput.value = String(data.startingBalance)
+  startingInput.setAttribute('aria-label', 'Starting balance')
+  startingInput.addEventListener('change', ()=>{
+    if(!startingInput.validity.valid || startingInput.value === ''){
+      startingInput.reportValidity()
+      startingInput.value = String(data.startingBalance)
+      return
+    }
+    data.startingBalance = Number(startingInput.value)
+    saveJournalData()
+    render()
+  })
+  startingField.appendChild(startingInput)
+  overview.appendChild(startingField)
+  const current = summaries[summaries.length - 1]
+  const balance = document.createElement('div')
+  balance.className = 'finance-current-balance'
+  const balanceLabel = document.createElement('span')
+  balanceLabel.textContent = 'Projected balance'
+  const balanceValue = document.createElement('strong')
+  balanceValue.textContent = formatFinanceMoney(current.endBalance)
+  balance.append(balanceLabel, balanceValue)
+  overview.appendChild(balance)
+  const schedule = document.createElement('p')
+  schedule.className = 'finance-schedule'
+  schedule.textContent = `Calendar-month blocks. Paydays are every other Thursday, anchored to Nov 12, 2026; each paycheck covers the 14 days ending the Saturday before payday. Shifts are paid at ${formatFinanceMoney(FINANCE_HOURLY_RATE)}/hour.`
+  overview.appendChild(schedule)
+  view.appendChild(overview)
+
+  summaries.forEach((summary)=>{
+    const block = document.createElement('section')
+    block.className = 'finance-period'
+    const heading = document.createElement('header')
+    heading.className = 'finance-period-heading'
+    const title = document.createElement('h2')
+    title.textContent = parseFinanceDate(summary.month.start).toLocaleDateString(undefined, {month:'long', year:'numeric'})
+    heading.appendChild(title)
+    block.appendChild(heading)
+
+    const columns = document.createElement('div')
+    columns.className = 'finance-columns'
+    const incomeColumn = document.createElement('section')
+    incomeColumn.className = 'finance-column'
+    const incomeHeading = document.createElement('h3')
+    incomeHeading.textContent = 'Income'
+    incomeColumn.appendChild(incomeHeading)
+    const incomeTotal = document.createElement('div')
+    incomeTotal.className = 'finance-column-total'
+    const incomeLabel = document.createElement('span')
+    incomeLabel.textContent = 'Earned'
+    const incomeValue = document.createElement('strong')
+    incomeValue.textContent = formatFinanceMoney(summary.income)
+    incomeTotal.append(incomeLabel, incomeValue)
+    incomeColumn.appendChild(incomeTotal)
+    summary.paychecks.forEach((paycheck)=>{
+      const paycheckSection = document.createElement('section')
+      paycheckSection.className = 'finance-paycheck'
+      const paycheckHeading = document.createElement('div')
+      paycheckHeading.className = 'finance-paycheck-heading'
+      const paydayLabel = document.createElement('strong')
+      paydayLabel.textContent = `Payday ${formatFinanceDate(paycheck.payday, {weekday:'short', month:'short', day:'numeric'})}`
+      const shiftRange = document.createElement('span')
+      shiftRange.textContent = `Shifts ${formatFinanceDate(paycheck.start)} – ${formatFinanceDate(paycheck.end)}`
+      paycheckHeading.append(paydayLabel, shiftRange)
+      paycheckSection.appendChild(paycheckHeading)
+      const paycheckTotal = document.createElement('div')
+      paycheckTotal.className = 'finance-paycheck-total'
+      paycheckTotal.textContent = `Paycheck total: ${formatFinanceMoney(paycheck.income)}`
+      paycheckSection.appendChild(paycheckTotal)
+      paycheckSection.appendChild(renderFinanceWorkForm(paycheck))
+      const workList = document.createElement('div')
+      workList.className = 'finance-entries'
+      paycheck.workEntries.slice().sort((a, b)=>a.date.localeCompare(b.date)).forEach((entry)=>{
+        const row = document.createElement('div')
+        row.className = 'finance-entry'
+        const details = document.createElement('span')
+        details.className = 'finance-entry-description'
+        const extras = [entry.stats ? `stats +${FINANCE_STAT_HOURS}h` : '', entry.holiday ? 'holiday ×2' : ''].filter(Boolean)
+        details.textContent = `${formatFinanceDate(entry.date)} · ${entry.hours}h${extras.length ? ` · ${extras.join(' · ')}` : ''}`
+        const earned = document.createElement('strong')
+        earned.textContent = formatFinanceMoney(financeEntryEarnings(entry))
+        const remove = document.createElement('button')
+        remove.type = 'button'
+        remove.className = 'finance-remove'
+        remove.textContent = '×'
+        remove.title = 'Delete work day'
+        remove.setAttribute('aria-label', 'Delete work day')
+        remove.addEventListener('click', ()=>{
+          data.workEntries = data.workEntries.filter((item)=>item.id!==entry.id)
+          saveJournalData()
+          render()
+        })
+        row.append(details, earned, remove)
+        workList.appendChild(row)
+      })
+      paycheckSection.appendChild(workList)
+      incomeColumn.appendChild(paycheckSection)
+    })
+
+    const spendingColumn = document.createElement('section')
+    spendingColumn.className = 'finance-column'
+    const spendingHeading = document.createElement('h3')
+    spendingHeading.textContent = 'Spending'
+    spendingColumn.appendChild(spendingHeading)
+    const spendingTotal = document.createElement('div')
+    spendingTotal.className = 'finance-column-total'
+    const spendingLabel = document.createElement('span')
+    spendingLabel.textContent = 'Debits'
+    const spendingValue = document.createElement('strong')
+    spendingValue.textContent = formatFinanceMoney(summary.spending)
+    spendingTotal.append(spendingLabel, spendingValue)
+    spendingColumn.appendChild(spendingTotal)
+    const categoryButtons = document.createElement('div')
+    categoryButtons.className = 'finance-category-buttons'
+    const expenseForm = document.createElement('div')
+    expenseForm.className = 'finance-expense-form-container'
+    FINANCE_EXPENSE_CATEGORIES.forEach((category)=>{
+      const button = document.createElement('button')
+      button.type = 'button'
+      button.className = `finance-category-button finance-category-${category.color}`
+      button.textContent = category.label
+      button.addEventListener('click', ()=>{
+        expenseForm.replaceChildren(renderFinanceExpenseForm(category, summary.month))
+      })
+      categoryButtons.appendChild(button)
+    })
+    spendingColumn.append(categoryButtons, expenseForm)
+    const expenseList = document.createElement('div')
+    expenseList.className = 'finance-entries'
+    summary.expenses.slice().sort((a, b)=>a.date.localeCompare(b.date)).forEach((entry)=>{
+      const category = FINANCE_EXPENSE_CATEGORIES.find((item)=>item.id===entry.category)
+      const row = document.createElement('div')
+      row.className = `finance-entry finance-expense-row finance-expense-${category.color}${entry.category==='amazon' && entry.returned ? ' finance-returned' : ''}`
+      const details = document.createElement('span')
+      details.className = 'finance-entry-description'
+      details.textContent = `${formatFinanceDate(entry.date)} · ${entry.text || category.label}${entry.category==='amazon' && entry.returned ? ' · returned' : ''}`
+      row.appendChild(details)
+      if(entry.category==='amazon' || entry.category==='living'){
+        const checkLabel = document.createElement('label')
+        checkLabel.className = 'finance-expense-check'
+        const checkbox = document.createElement('input')
+        checkbox.type = 'checkbox'
+        checkbox.checked = entry.category==='amazon' ? entry.returned : entry.paid
+        checkbox.setAttribute('aria-label', entry.category==='amazon' ? 'Amazon purchase returned' : 'Living expense paid')
+        const checkText = document.createElement('span')
+        checkText.textContent = entry.category==='amazon' ? 'Returned' : 'Paid'
+        checkbox.addEventListener('change', ()=>{
+          if(entry.category==='amazon') entry.returned = checkbox.checked
+          else entry.paid = checkbox.checked
+          saveJournalData()
+          render()
+        })
+        checkLabel.append(checkbox, checkText)
+        row.appendChild(checkLabel)
+      }
+      const amount = document.createElement('strong')
+      amount.textContent = formatFinanceMoney(entry.amount)
+      row.appendChild(amount)
+      const remove = document.createElement('button')
+      remove.type = 'button'
+      remove.className = 'finance-remove'
+      remove.textContent = '×'
+      remove.title = 'Delete expense'
+      remove.setAttribute('aria-label', 'Delete expense')
+      remove.addEventListener('click', ()=>{
+        data.expenses = data.expenses.filter((item)=>item.id!==entry.id)
+        saveJournalData()
+        render()
+      })
+      row.appendChild(remove)
+      expenseList.appendChild(row)
+    })
+    spendingColumn.appendChild(expenseList)
+    columns.append(incomeColumn, spendingColumn)
+    block.appendChild(columns)
+    const endingBalance = document.createElement('div')
+    endingBalance.className = 'finance-period-balance'
+    const endingLabel = document.createElement('span')
+    endingLabel.textContent = 'Balance after month'
+    const endingValue = document.createElement('strong')
+    endingValue.textContent = formatFinanceMoney(summary.endBalance)
+    endingBalance.append(endingLabel, endingValue)
+    block.appendChild(endingBalance)
+    view.appendChild(block)
+  })
 }
 
 function makeCarbsItemBar(item, options = {}){
