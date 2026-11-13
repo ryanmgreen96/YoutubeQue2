@@ -1306,8 +1306,9 @@ function getFinanceMonths(){
   return months
 }
 function financeEntryEarnings(entry){
-  const paidHours = entry.hours + (entry.stats ? FINANCE_STAT_HOURS : 0)
-  return paidHours * FINANCE_HOURLY_RATE * (entry.holiday ? 2 : 1)
+  const shiftRate = FINANCE_HOURLY_RATE * (entry.holiday ? 2 : 1)
+  const statsPay = entry.stats ? FINANCE_STAT_HOURS * FINANCE_HOURLY_RATE : 0
+  return entry.hours * shiftRate + statsPay
 }
 function renderFinanceWorkForm(period){
   const form = document.createElement('form')
