@@ -638,7 +638,9 @@ function loadJournalData(){
               date: entry.date,
               hours: entry.hours,
               stats: entry.stats === true,
-              holiday: entry.holiday === true
+              holiday: entry.holiday === true,
+              startTime: isFinanceTime(entry.startTime) ? entry.startTime : '',
+              endTime: isFinanceTime(entry.endTime) ? entry.endTime : ''
             }))
           : [],
         expenses: Array.isArray(parsed.finances && parsed.finances.expenses)
@@ -648,8 +650,7 @@ function loadJournalData(){
               category: entry.category,
               amount: entry.amount,
               text: typeof entry.text==='string' ? entry.text.trim() : '',
-              returned: entry.returned === true,
-              paid: entry.paid === true
+              voided: entry.voided === true || entry.returned === true || entry.paid === true
             }))
           : []
       }
@@ -1254,6 +1255,9 @@ function parseFinanceDate(value){
 function isFinanceDate(value){
   return typeof value==='string' && /^\d{4}-\d{2}-\d{2}$/.test(value) && financeDateString(parseFinanceDate(value))===value
 }
+function isFinanceTime(value){
+  return typeof value==='string' && /^([01]\d|2[0-3]):[0-5]\d$/.test(value)
+}
 function addFinanceDays(value, days){
   const date = parseFinanceDate(value)
   date.setDate(date.getDate() + days)
@@ -1269,6 +1273,10 @@ function formatFinanceDate(value, options = {month:'short', day:'numeric'}){
 }
 function formatFinanceMoney(value){
   return new Intl.NumberFormat(undefined, {style:'currency', currency:'USD'}).format(value)
+}
+function formatFinanceTime(value){
+  const [hour, minute] = value.split(':').map(Number)
+  return `${hour % 12 || 12}:${String(minute).padStart(2, '0')} ${hour < 12 ? 'AM' : 'PM'}`
 }
 function getFinanceMonths(){
   const today = parseFinanceDate(financeDateString(new Date()))
@@ -1303,23 +1311,82 @@ function financeEntryEarnings(entry){
 }
 function renderFinanceWorkForm(period){
   const form = document.createElement('form')
-  form.className = 'finance-entry-form'
-  const date = document.createElement('input')
-  date.type = 'date'
-  date.required = true
-  date.min = period.start
-  date.max = period.end
-  const today = financeDateString(new Date())
-  date.value = today >= period.start && today <= period.end ? today : period.start
-  date.setAttribute('aria-label', 'Work date')
-  const hours = document.createElement('input')
-  hours.type = 'number'
-  hours.min = '0.25'
-  hours.max = '24'
-  hours.step = '0.25'
-  hours.placeholder = 'Hours'
-  hours.required = true
-  hours.setAttribute('aria-label', 'Hours worked')
+  form.className = 'finance-work-form'
+  const selectedDates = new Set()
+  const loggedDates = new Set(journalData.finances.workEntries
+    .filter((entry)=>entry.date >= period.start && entry.date <= period.end)
+    .map((entry)=>entry.date))
+  const calendarLabel = document.createElement('div')
+  calendarLabel.className = 'finance-work-calendar-label'
+  calendarLabel.textContent = 'Select work days'
+  const calendar = document.createElement('div')
+  calendar.className = 'finance-work-calendar'
+  const weekdayRow = document.createElement('div')
+  weekdayRow.className = 'finance-work-weekdays'
+  for(let day=0; day<7; day += 1){
+    const weekday = document.createElement('span')
+    weekday.textContent = formatFinanceDate(addFinanceDays(period.start, day), {weekday:'short'})
+    weekdayRow.appendChild(weekday)
+  }
+  calendar.appendChild(weekdayRow)
+  const dayGrid = document.createElement('div')
+  dayGrid.className = 'finance-work-day-grid'
+  const selectedSummary = document.createElement('div')
+  selectedSummary.className = 'finance-work-selection-summary'
+  const updateSelectionSummary = ()=>{
+    selectedSummary.textContent = selectedDates.size
+      ? `${selectedDates.size} day${selectedDates.size===1 ? '' : 's'} selected`
+      : 'No days selected'
+    submit.disabled = selectedDates.size === 0
+  }
+  for(let offset=0; offset<14; offset += 1){
+    const date = addFinanceDays(period.start, offset)
+    const dayButton = document.createElement('button')
+    dayButton.type = 'button'
+    dayButton.className = 'finance-work-day'
+    dayButton.textContent = `${formatFinanceDate(date, {weekday:'short'})} ${parseFinanceDate(date).getDate()}`
+    dayButton.title = formatFinanceDate(date, {weekday:'long', month:'long', day:'numeric', year:'numeric'})
+    dayButton.setAttribute('aria-pressed', 'false')
+    if(loggedDates.has(date)){
+      dayButton.disabled = true
+      dayButton.classList.add('finance-work-day-logged')
+      dayButton.title += ' · Already logged'
+    }else{
+      dayButton.addEventListener('click', ()=>{
+        if(selectedDates.has(date)){
+          selectedDates.delete(date)
+          dayButton.classList.remove('selected')
+          dayButton.setAttribute('aria-pressed', 'false')
+        }else{
+          selectedDates.add(date)
+          dayButton.classList.add('selected')
+          dayButton.setAttribute('aria-pressed', 'true')
+        }
+        updateSelectionSummary()
+      })
+    }
+    dayGrid.appendChild(dayButton)
+  }
+  calendar.appendChild(dayGrid)
+  const timeFields = document.createElement('div')
+  timeFields.className = 'finance-work-time-fields'
+  const startLabel = document.createElement('label')
+  startLabel.textContent = 'Start'
+  const startTime = document.createElement('input')
+  startTime.type = 'time'
+  startTime.value = '06:00'
+  startTime.required = true
+  startTime.setAttribute('aria-label', 'Shift start time')
+  startLabel.appendChild(startTime)
+  const endLabel = document.createElement('label')
+  endLabel.textContent = 'End'
+  const endTime = document.createElement('input')
+  endTime.type = 'time'
+  endTime.value = '11:00'
+  endTime.required = true
+  endTime.setAttribute('aria-label', 'Shift end time')
+  endLabel.appendChild(endTime)
+  timeFields.append(startLabel, endLabel)
   const statsLabel = document.createElement('label')
   const stats = document.createElement('input')
   stats.type = 'checkbox'
@@ -1330,18 +1397,32 @@ function renderFinanceWorkForm(period){
   holidayLabel.append(holiday, document.createTextNode('Holiday (double time)'))
   const submit = document.createElement('button')
   submit.type = 'submit'
-  submit.textContent = 'Add day'
-  form.append(date, hours, statsLabel, holidayLabel, submit)
+  submit.textContent = 'Add selected days'
+  submit.disabled = true
+  form.append(calendarLabel, calendar, selectedSummary, timeFields, statsLabel, holidayLabel, submit)
+  startTime.addEventListener('input', ()=>endTime.setCustomValidity(''))
+  endTime.addEventListener('input', ()=>endTime.setCustomValidity(''))
   form.addEventListener('submit', (event)=>{
     event.preventDefault()
     if(!form.reportValidity()) return
-    journalData.finances.workEntries.push({
+    const startMinutes = Number(startTime.value.slice(0, 2)) * 60 + Number(startTime.value.slice(3))
+    const endMinutes = Number(endTime.value.slice(0, 2)) * 60 + Number(endTime.value.slice(3))
+    if(endMinutes <= startMinutes){
+      endTime.setCustomValidity('End time must be later than start time.')
+      endTime.reportValidity()
+      return
+    }
+    const hours = (endMinutes - startMinutes) / 60
+    const entries = Array.from(selectedDates).map((date)=>({
       id: uid(),
-      date: date.value,
-      hours: Number(hours.value),
+      date,
+      hours,
       stats: stats.checked,
-      holiday: holiday.checked
-    })
+      holiday: holiday.checked,
+      startTime: startTime.value,
+      endTime: endTime.value
+    }))
+    journalData.finances.workEntries.push(...entries)
     saveJournalData()
     render()
   })
@@ -1387,8 +1468,7 @@ function renderFinanceExpenseForm(category, period){
       category: category.id,
       amount: Number(amount.value),
       text: description.value.trim(),
-      returned: false,
-      paid: false
+      voided: false
     })
     saveJournalData()
     render()
@@ -1407,7 +1487,7 @@ function renderFinances(view){
     })
     const expenses = data.expenses.filter((entry)=>entry.date >= month.start && entry.date <= month.end)
     const income = paychecks.reduce((sum, paycheck)=>sum + paycheck.income, 0)
-    const spending = expenses.reduce((sum, entry)=>sum + (entry.category === 'amazon' && entry.returned ? 0 : entry.amount), 0)
+    const spending = expenses.reduce((sum, entry)=>sum + (entry.voided ? 0 : entry.amount), 0)
     const summary = {month, paychecks, expenses, income, spending, startBalance:runningBalance, endBalance:runningBalance + income - spending}
     runningBalance = summary.endBalance
     return summary
@@ -1502,7 +1582,8 @@ function renderFinances(view){
         const details = document.createElement('span')
         details.className = 'finance-entry-description'
         const extras = [entry.stats ? `stats +${FINANCE_STAT_HOURS}h` : '', entry.holiday ? 'holiday ×2' : ''].filter(Boolean)
-        details.textContent = `${formatFinanceDate(entry.date)} · ${entry.hours}h${extras.length ? ` · ${extras.join(' · ')}` : ''}`
+        const timeRange = entry.startTime && entry.endTime ? ` · ${formatFinanceTime(entry.startTime)}–${formatFinanceTime(entry.endTime)}` : ''
+        details.textContent = `${formatFinanceDate(entry.date)} · ${entry.hours}h${timeRange}${extras.length ? ` · ${extras.join(' · ')}` : ''}`
         const earned = document.createElement('strong')
         earned.textContent = formatFinanceMoney(financeEntryEarnings(entry))
         const remove = document.createElement('button')
@@ -1556,23 +1637,22 @@ function renderFinances(view){
     summary.expenses.slice().sort((a, b)=>a.date.localeCompare(b.date)).forEach((entry)=>{
       const category = FINANCE_EXPENSE_CATEGORIES.find((item)=>item.id===entry.category)
       const row = document.createElement('div')
-      row.className = `finance-entry finance-expense-row finance-expense-${category.color}${entry.category==='amazon' && entry.returned ? ' finance-returned' : ''}`
+      row.className = `finance-entry finance-expense-row finance-expense-${category.color}${entry.voided ? ' finance-voided' : ''}`
       const details = document.createElement('span')
       details.className = 'finance-entry-description'
-      details.textContent = `${formatFinanceDate(entry.date)} · ${entry.text || category.label}${entry.category==='amazon' && entry.returned ? ' · returned' : ''}`
+      details.textContent = `${formatFinanceDate(entry.date)} · ${entry.text || category.label}${entry.voided ? ' · voided' : ''}`
       row.appendChild(details)
       if(entry.category==='amazon' || entry.category==='living'){
         const checkLabel = document.createElement('label')
         checkLabel.className = 'finance-expense-check'
         const checkbox = document.createElement('input')
         checkbox.type = 'checkbox'
-        checkbox.checked = entry.category==='amazon' ? entry.returned : entry.paid
-        checkbox.setAttribute('aria-label', entry.category==='amazon' ? 'Amazon purchase returned' : 'Living expense paid')
+        checkbox.checked = entry.voided
+        checkbox.setAttribute('aria-label', `Void ${category.label.toLowerCase()} expense`)
         const checkText = document.createElement('span')
-        checkText.textContent = entry.category==='amazon' ? 'Returned' : 'Paid'
+        checkText.textContent = 'Void'
         checkbox.addEventListener('change', ()=>{
-          if(entry.category==='amazon') entry.returned = checkbox.checked
-          else entry.paid = checkbox.checked
+          entry.voided = checkbox.checked
           saveJournalData()
           render()
         })
@@ -6022,6 +6102,9 @@ function renderHeaderLinks(){
     const rowWrap = document.createElement('div')
     rowWrap.className = `topbar-row-wrap${rowIndex===0 ? ' main' : ' secondary'}`
     rowWrap.title = row.name
+    const rowLabel = document.createElement('span')
+    rowLabel.className = 'topbar-row-label'
+    rowLabel.textContent = rowIndex===0 ? 'Favorites' : row.name
     const linkTrack = document.createElement('div')
     linkTrack.className = 'topbar-link-track'
     if(rowIndex===1){
@@ -6085,7 +6168,7 @@ function renderHeaderLinks(){
       addTopbarLink()
     })
     linkTrack.appendChild(addLinkBtn)
-    rowWrap.appendChild(linkTrack)
+    rowWrap.append(rowLabel, linkTrack)
     topbarLinksEl.appendChild(rowWrap)
   })
 
