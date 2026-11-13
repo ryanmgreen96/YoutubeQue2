@@ -1537,7 +1537,7 @@ function renderFinances(view){
   summaries.forEach((summary)=>{
     const block = document.createElement('section')
     block.className = 'finance-period'
-    const heading = document.createElement('header')
+    const heading = document.createElement('div')
     heading.className = 'finance-period-heading'
     const title = document.createElement('h2')
     title.textContent = parseFinanceDate(summary.month.start).toLocaleDateString(undefined, {month:'long', year:'numeric'})
