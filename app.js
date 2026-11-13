@@ -6103,9 +6103,6 @@ function renderHeaderLinks(){
     const rowWrap = document.createElement('div')
     rowWrap.className = `topbar-row-wrap${rowIndex===0 ? ' main' : ' secondary'}`
     rowWrap.title = row.name
-    const rowLabel = document.createElement('span')
-    rowLabel.className = 'topbar-row-label'
-    rowLabel.textContent = rowIndex===0 ? 'Favorites' : row.name
     const linkTrack = document.createElement('div')
     linkTrack.className = 'topbar-link-track'
     if(rowIndex===1){
@@ -6169,7 +6166,7 @@ function renderHeaderLinks(){
       addTopbarLink()
     })
     linkTrack.appendChild(addLinkBtn)
-    rowWrap.append(rowLabel, linkTrack)
+    rowWrap.appendChild(linkTrack)
     topbarLinksEl.appendChild(rowWrap)
   })
 
