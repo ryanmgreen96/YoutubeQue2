@@ -198,6 +198,7 @@ let gymOldHidden = loadGymOldHidden()
 let gymNoteItemId = null
 let musicDialogItemId = null
 let musicPlayerItemId = null
+const musicFavoriteModeTabs = new Set()
 let items = load()
 let pages = loadPages()
 let createPages = loadCreatePages()
@@ -5183,6 +5184,18 @@ function setActiveTab(pageId, tabId){
   render()
   requestAnimationFrame(restoreScrollPositionForCurrentView)
 }
+function getMusicFavoriteModeKey(pageId, tabId){
+  return JSON.stringify([normalizePageId(pageId), normalizeTabId(tabId)])
+}
+function isMusicFavoriteModeEnabled(pageId, tabId){
+  return musicFavoriteModeTabs.has(getMusicFavoriteModeKey(pageId, tabId))
+}
+function toggleMusicFavoriteMode(pageId, tabId){
+  const key = getMusicFavoriteModeKey(pageId, tabId)
+  if(musicFavoriteModeTabs.has(key)) musicFavoriteModeTabs.delete(key)
+  else musicFavoriteModeTabs.add(key)
+  render()
+}
 function addTabToPage(pageId, title){
   const tabTitle = (title || '').trim()
   if(!tabTitle) return
@@ -5924,6 +5937,29 @@ function deleteSelectedItems(){
   save()
   renderPreservingSectionScroll()
   return true
+}
+
+function moveItemToTopWithinPageTab(list, itemId, pageId, tabId){
+  const item = list.find((entry)=>entry.id===itemId)
+  if(!item) return list.slice()
+  const matchesTab = (entry)=>normalizePageId(entry.pageId)===normalizePageId(pageId)
+    && normalizeTabId(entry.tabId)===normalizeTabId(tabId)
+  const remaining = list.filter((entry)=>entry.id!==itemId)
+  const firstTabItemIndex = remaining.findIndex(matchesTab)
+  remaining.splice(firstTabItemIndex < 0 ? remaining.length : firstTabItemIndex, 0, item)
+  return remaining
+}
+
+function promoteMusicItemToTop(item){
+  if(!item) return
+  item.favorite = true
+  items = moveItemToTopWithinPageTab(items, item.id, item.pageId, item.tabId)
+  save()
+  render()
+  if(sections){
+    sections.scrollTop = 0
+    requestAnimationFrame(()=>{ sections.scrollTop = 0 })
+  }
 }
 
 function handleDeleteButtonClick(){
@@ -6726,6 +6762,21 @@ function renderTabBar(pageId){
   })
   row.appendChild(add)
 
+  if(isMusicPage(pid)){
+    const favoriteModeEnabled = isMusicFavoriteModeEnabled(pid, activeTabId)
+    const favoriteModeToggle = document.createElement('button')
+    favoriteModeToggle.type = 'button'
+    favoriteModeToggle.className = `main-tab title-filter-toggle${favoriteModeEnabled ? ' selected' : ''}`
+    favoriteModeToggle.textContent = '★'
+    favoriteModeToggle.title = favoriteModeEnabled
+      ? 'Favorite mode ON: right-click a video to move it to the top'
+      : 'Favorite mode: right-click a video to favorite it and move it to the top'
+    favoriteModeToggle.setAttribute('aria-label', favoriteModeToggle.title)
+    favoriteModeToggle.setAttribute('aria-pressed', String(favoriteModeEnabled))
+    favoriteModeToggle.addEventListener('click', ()=>toggleMusicFavoriteMode(pid, activeTabId))
+    row.appendChild(favoriteModeToggle)
+  }
+
   if(pid!=='home'){
     const dividerToggle = document.createElement('button')
     dividerToggle.type = 'button'
@@ -7208,12 +7259,17 @@ function renderSection(title, list, showHomeControls = false, hideGrid = false){
     })
 
     if(isMusicPage(currentPageId)){
+      const favoriteModeEnabled = isMusicFavoriteModeEnabled(currentPageId, getActiveTabId(currentPageId))
       let rightPressTimer = null
       let rightPressHandled = false
       el.addEventListener('mousedown', (event)=>{
         if(event.button !== 2 || editMode) return
         suppressAudioMusicContextMenuUntil = Date.now() + 5000
         rightPressHandled = false
+        if(favoriteModeEnabled){
+          rightPressHandled = true
+          return
+        }
         rightPressTimer = setTimeout(()=>{
           rightPressHandled = true
           openMusicItemDialog(it)
@@ -7223,6 +7279,10 @@ function renderSection(title, list, showHomeControls = false, hideGrid = false){
         if(event.button !== 2) return
         clearTimeout(rightPressTimer)
         suppressAudioMusicContextMenuUntil = Date.now() + 1500
+        if(favoriteModeEnabled && !editMode){
+          promoteMusicItemToTop(it)
+          return
+        }
         if(!rightPressHandled && !editMode){
           markLastViewedItem(it.id)
           openMusicPlayer(it, true)
