@@ -5955,11 +5955,7 @@ function promoteMusicItemToTop(item){
   item.favorite = true
   items = moveItemToTopWithinPageTab(items, item.id, item.pageId, item.tabId)
   save()
-  render()
-  if(sections){
-    sections.scrollTop = 0
-    requestAnimationFrame(()=>{ sections.scrollTop = 0 })
-  }
+  renderPreservingSectionScroll()
 }
 
 function handleDeleteButtonClick(){
