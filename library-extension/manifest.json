@@ -1,0 +1,24 @@
+{
+  "manifest_version": 3,
+  "name": "Save",
+  "version": "0.1.0",
+  "description": "Save pages and videos to a personal library from any website.",
+  "icons": {
+    "16": "icons/save-16.png",
+    "32": "icons/save-32.png",
+    "48": "icons/save-48.png",
+    "128": "icons/save-128.png"
+  },
+  "permissions": ["contextMenus", "tabs", "storage"],
+  "action": {
+    "default_title": "Open your Library",
+    "default_icon": {
+      "16": "icons/save-16.png",
+      "32": "icons/save-32.png"
+    },
+    "default_popup": "popup.html"
+  },
+  "background": {
+    "service_worker": "background.js"
+  }
+}

@@ -5,18 +5,20 @@ A simple queue app and browser extension for YouTube videos and saved links.
 ## Files
 
 - `index.html`, `styles.css`, `app.js`: web app
-- `manifest.json`, `background.js`, `contentScript.js`: extension files
+- `manifest.json`, `background.js`, `contentScript.js`: existing YouTube queue extension
+- `library-extension/`: separate **Save** browser extension and Library popup
 
 ## Quick setup
 
 1. Push this repository to GitHub.
 2. Enable GitHub Pages (Settings -> Pages, source: `main` branch, `/root`).
-3. Load the extension as unpacked in your browser.
+3. Load the root folder as an unpacked extension to use the existing YouTube queue extension.
+4. To install **Save** separately, load the `library-extension/` folder as another unpacked extension.
 
 ## Usage
 
-- Click the extension button to save the current YouTube video or the current page into the saved-for-later list.
-- Right-click a video and choose the queue action.
+- Click the **Save** extension button to open its Library popup from any website. Use **Save this page** to add the current page, search saved pages, open an item, or remove it. Right-click a page or link and choose **Save to Library** to add it without leaving the current tab.
+- The **Save** extension stores its Library independently from the existing YouTube queue extension and website. The browser controls the address/search bar width, so the toolbar popup is used instead.
 - The web app reads URL parameters and adds items to local storage.
 - In the web app, hold an icon in the top bar to open its controls. Use the arrows to reorder it, choose another row to move it, or enter an icon URL/domain and select **Save icon**.
 - Hold one of the feature buttons in the lower-left icon bar (Library, Gym, Journal, Carbs, Music, Audio, or PDF Reader) to change its emoji/label or move it up and down. These settings are saved in the browser.

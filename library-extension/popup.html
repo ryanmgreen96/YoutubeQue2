@@ -1,0 +1,26 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Save Library</title>
+  <link rel="stylesheet" href="popup.css">
+</head>
+<body>
+  <header class="header">
+    <div>
+      <h1>Library</h1>
+      <p>Saved from anywhere on the web</p>
+    </div>
+    <span class="brand-mark" aria-hidden="true">S</span>
+  </header>
+  <button id="save-current" class="save-current" type="button">Save this page</button>
+  <p id="status" class="status" role="status" aria-live="polite"></p>
+  <label class="search-label" for="search">Search your library</label>
+  <input id="search" class="search" type="search" placeholder="Search saved pages">
+  <section class="library-section" aria-label="Saved pages">
+    <div id="library-list" class="library-list"></div>
+  </section>
+  <script src="popup.js"></script>
+</body>
+</html>
