@@ -250,8 +250,12 @@ body.pdf-mode .theme-switcher{max-width:calc(100% - 12px)}
 .finance-current-balance{display:flex;align-items:center;justify-content:flex-end;gap:12px;color:var(--text-soft);font-size:13px}
 .finance-current-balance strong{color:#ffe3a5;font-size:20px;font-variant-numeric:tabular-nums}
 .finance-schedule{grid-column:1/-1;margin:2px 0 0;color:var(--text-soft);font-size:11px}
-.finance-period-heading{display:flex;align-items:baseline;justify-content:space-between;gap:10px;margin-bottom:12px}
-.finance-period-heading h2{margin:0;color:var(--text);font-size:15px}
+.finance-period-heading{display:flex;align-items:baseline;justify-content:space-between;gap:10px;margin-bottom:12px;cursor:pointer;list-style:none}
+.finance-period-heading::-webkit-details-marker{display:none}
+.finance-period-heading::before{content:'+';color:#ffe3a5;font-size:15px}
+.finance-period[open]>.finance-period-heading::before{content:'−'}
+.finance-month-title{margin:0;color:var(--text);font-size:15px;font-weight:600}
+.finance-period-heading .finance-month-title{color:var(--text);font-size:15px}
 .finance-period-heading span{color:#bd9d55;font-size:12px}
 .finance-columns{display:grid;grid-template-columns:1fr 1fr;gap:18px}
 .finance-column{min-width:0;padding:10px;border-radius:8px;background:rgba(0,0,0,0.13)}
@@ -259,12 +263,18 @@ body.pdf-mode .theme-switcher{max-width:calc(100% - 12px)}
 .finance-column-total{display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;padding-bottom:7px;border-bottom:1px solid rgba(255,255,255,0.1);color:var(--text-soft);font-size:12px}
 .finance-column-total strong{color:var(--text);font-size:14px;font-variant-numeric:tabular-nums}
 .finance-paycheck{margin:8px 0;padding:8px;border:1px solid rgba(255,255,255,0.09);border-radius:7px;background:rgba(255,255,255,0.025)}
+.finance-paycheck-summary{display:block;padding-left:14px;position:relative;cursor:pointer;list-style:none}
+.finance-paycheck-summary::-webkit-details-marker{display:none}
+.finance-paycheck-summary::before{content:'+';position:absolute;left:0;color:#ffe3a5}
+.finance-paycheck[open]>.finance-paycheck-summary::before{content:'−'}
 .finance-paycheck-heading{display:flex;justify-content:space-between;flex-wrap:wrap;gap:4px 10px;color:#ffe3a5;font-size:11px}
 .finance-paycheck-heading span{color:var(--text-soft)}
-.finance-paycheck-total{margin-top:5px;color:var(--text);font-size:11px;font-weight:600}
+.finance-paycheck-total{display:block;margin-top:5px;color:var(--text);font-size:11px;font-weight:600}
 .finance-work-form{display:flex;flex-direction:column;align-items:stretch;gap:6px;margin:8px 0}
-.finance-work-calendar-label{color:var(--text-soft);font-size:10px}
-.finance-work-weekdays,.finance-work-day-grid{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:3px}
+.finance-work-details>summary{color:var(--text-soft);font-size:10px;cursor:pointer}
+.finance-work-weekdays,.finance-work-week{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:3px}
+.finance-work-day-grid{display:flex;flex-direction:column;gap:6px}
+.finance-work-week+.finance-work-week{padding-top:6px;border-top:1px solid rgba(255,255,255,0.12)}
 .finance-work-weekdays span{color:var(--text-soft);font-size:9px;text-align:center}
 .finance-work-day{min-width:0;padding:4px 1px;border-radius:4px;font-size:9px;white-space:nowrap}
 .finance-work-day.selected{background:#ffe3a5;color:#19130a}
@@ -302,9 +312,12 @@ body.pdf-mode .theme-switcher{max-width:calc(100% - 12px)}
 .finance-expense-yellow .finance-entry-description{color:#f0d56f}
 .finance-expense-black .finance-entry-description{color:#c3c6ce}
 .finance-voided .finance-entry-description{text-decoration:line-through;opacity:0.65}
+.finance-expense-living.finance-voided .finance-entry-description{text-decoration:none;opacity:1}
 .finance-expense-check{display:flex;align-items:center;gap:3px;color:var(--text-soft);font-size:9px;white-space:nowrap}
 .finance-expense-check input{width:14px;height:14px;margin:0;accent-color:#72c879}
 .finance-remove{width:22px;height:22px;padding:0;border-color:rgba(255,255,255,0.1);color:var(--text-soft);font-size:16px;line-height:1}
+.finance-next-block{grid-column:1/-1;justify-self:start;padding:6px 9px;border-color:rgba(255,227,165,0.3);color:#ffe3a5;font-size:11px}
+.finance-next-block:hover{background:rgba(255,227,165,0.08)}
 .finance-period-balance{display:flex;justify-content:flex-end;gap:10px;margin-top:10px;color:var(--text-soft);font-size:11px}
 .finance-period-balance strong{color:#ffe3a5;font-variant-numeric:tabular-nums}
 @media (max-width:700px){.finance-columns{grid-template-columns:1fr}.finance-overview{grid-template-columns:1fr}.finance-current-balance{justify-content:space-between}.finance-schedule{grid-column:auto}.finance-period-heading{align-items:flex-start;flex-direction:column;gap:4px}.finance-period{padding:10px}}

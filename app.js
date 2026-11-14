@@ -598,7 +598,14 @@ function createJournalData(){
     food: {essentials: [], buy: []},
     cash: {amazon: [], store: []},
     training: [],
-    finances: {startingBalance: FINANCE_STARTING_BALANCE, workEntries: [], expenses: []}
+    finances: {
+      startingBalance: FINANCE_STARTING_BALANCE,
+      workEntries: [],
+      expenses: [],
+      futureThroughMonth: '',
+      collapsedMonths: [],
+      collapsedPayPeriods: []
+    }
   }
 }
 function loadJournalData(){
@@ -632,6 +639,15 @@ function loadJournalData(){
         startingBalance: Number.isFinite(parsed.finances && parsed.finances.startingBalance) && parsed.finances.startingBalance >= 0
           ? parsed.finances.startingBalance
           : FINANCE_STARTING_BALANCE,
+        futureThroughMonth: isFinanceDate(parsed.finances && parsed.finances.futureThroughMonth) && parsed.finances.futureThroughMonth.endsWith('-01')
+          ? parsed.finances.futureThroughMonth
+          : '',
+        collapsedMonths: Array.isArray(parsed.finances && parsed.finances.collapsedMonths)
+          ? parsed.finances.collapsedMonths.filter((month)=>isFinanceDate(month) && month.endsWith('-01'))
+          : [],
+        collapsedPayPeriods: Array.isArray(parsed.finances && parsed.finances.collapsedPayPeriods)
+          ? parsed.finances.collapsedPayPeriods.filter((payday)=>isFinanceDate(payday))
+          : [],
         workEntries: Array.isArray(parsed.finances && parsed.finances.workEntries)
           ? parsed.finances.workEntries.filter((entry)=>entry && isFinanceDate(entry.date) && Number.isFinite(entry.hours) && entry.hours > 0 && entry.hours <= 24).map((entry)=>({
               id: entry.id || uid(),
@@ -1281,9 +1297,13 @@ function formatFinanceTime(value){
 function getFinanceMonths(){
   const today = parseFinanceDate(financeDateString(new Date()))
   const currentMonth = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-01`
+  const futureThroughMonth = journalData.finances.futureThroughMonth
+  const lastMonth = isFinanceDate(futureThroughMonth) && futureThroughMonth.endsWith('-01') && futureThroughMonth > currentMonth
+    ? futureThroughMonth
+    : currentMonth
   const months = []
   let start = FINANCE_FIRST_MONTH
-  while(start <= currentMonth){
+  while(start <= lastMonth){
     const end = addFinanceDays(addFinanceMonths(start, 1), -1)
     const paychecks = []
     let payday = FINANCE_PAYDAY_ANCHOR
@@ -1310,16 +1330,21 @@ function financeEntryEarnings(entry){
   const statsPay = entry.stats ? FINANCE_STAT_HOURS * FINANCE_HOURLY_RATE : 0
   return entry.hours * shiftRate + statsPay
 }
+function sortFinanceEntriesNewestFirst(entries){
+  return entries.slice().sort((a, b)=>b.date.localeCompare(a.date))
+}
 function renderFinanceWorkForm(period){
+  const details = document.createElement('details')
+  details.className = 'finance-work-details'
+  const summary = document.createElement('summary')
+  summary.textContent = 'Select work days'
+  details.appendChild(summary)
   const form = document.createElement('form')
   form.className = 'finance-work-form'
   const selectedDates = new Set()
   const loggedDates = new Set(journalData.finances.workEntries
     .filter((entry)=>entry.date >= period.start && entry.date <= period.end)
     .map((entry)=>entry.date))
-  const calendarLabel = document.createElement('div')
-  calendarLabel.className = 'finance-work-calendar-label'
-  calendarLabel.textContent = 'Select work days'
   const calendar = document.createElement('div')
   calendar.className = 'finance-work-calendar'
   const weekdayRow = document.createElement('div')
@@ -1332,6 +1357,7 @@ function renderFinanceWorkForm(period){
   calendar.appendChild(weekdayRow)
   const dayGrid = document.createElement('div')
   dayGrid.className = 'finance-work-day-grid'
+  let weekGrid = null
   const selectedSummary = document.createElement('div')
   selectedSummary.className = 'finance-work-selection-summary'
   const updateSelectionSummary = ()=>{
@@ -1341,6 +1367,11 @@ function renderFinanceWorkForm(period){
     submit.disabled = selectedDates.size === 0
   }
   for(let offset=0; offset<14; offset += 1){
+    if(offset % 7 === 0){
+      weekGrid = document.createElement('div')
+      weekGrid.className = 'finance-work-week'
+      dayGrid.appendChild(weekGrid)
+    }
     const date = addFinanceDays(period.start, offset)
     const dayButton = document.createElement('button')
     dayButton.type = 'button'
@@ -1366,7 +1397,7 @@ function renderFinanceWorkForm(period){
         updateSelectionSummary()
       })
     }
-    dayGrid.appendChild(dayButton)
+    weekGrid.appendChild(dayButton)
   }
   calendar.appendChild(dayGrid)
   const timeFields = document.createElement('div')
@@ -1400,7 +1431,7 @@ function renderFinanceWorkForm(period){
   submit.type = 'submit'
   submit.textContent = 'Add selected days'
   submit.disabled = true
-  form.append(calendarLabel, calendar, selectedSummary, timeFields, statsLabel, holidayLabel, submit)
+  form.append(calendar, selectedSummary, timeFields, statsLabel, holidayLabel, submit)
   startTime.addEventListener('input', ()=>endTime.setCustomValidity(''))
   endTime.addEventListener('input', ()=>endTime.setCustomValidity(''))
   form.addEventListener('submit', (event)=>{
@@ -1427,7 +1458,8 @@ function renderFinanceWorkForm(period){
     saveJournalData()
     render()
   })
-  return form
+  details.appendChild(form)
+  return details
 }
 function renderFinanceExpenseForm(category, period){
   const form = document.createElement('form')
@@ -1532,16 +1564,37 @@ function renderFinances(view){
   schedule.className = 'finance-schedule'
   schedule.textContent = `Calendar-month blocks. Paydays are every other Thursday, anchored to Nov 12, 2026; each paycheck covers the 14 days ending the Saturday before payday. Shifts are paid at ${formatFinanceMoney(FINANCE_HOURLY_RATE)}/hour.`
   overview.appendChild(schedule)
+  const nextBlockButton = document.createElement('button')
+  nextBlockButton.type = 'button'
+  nextBlockButton.className = 'finance-next-block'
+  nextBlockButton.textContent = 'Add next month block'
+  nextBlockButton.addEventListener('click', ()=>{
+    data.futureThroughMonth = addFinanceMonths(months[months.length - 1].start, 1)
+    saveJournalData()
+    render()
+  })
+  overview.appendChild(nextBlockButton)
   view.appendChild(overview)
 
-  summaries.forEach((summary)=>{
-    const block = document.createElement('section')
+  summaries.slice().reverse().forEach((summary)=>{
+    const block = document.createElement('details')
     block.className = 'finance-period'
-    const heading = document.createElement('div')
+    block.open = !data.collapsedMonths.includes(summary.month.start)
+    block.addEventListener('toggle', ()=>{
+      const collapsedMonths = new Set(data.collapsedMonths)
+      if(block.open) collapsedMonths.delete(summary.month.start)
+      else collapsedMonths.add(summary.month.start)
+      data.collapsedMonths = Array.from(collapsedMonths)
+      saveJournalData()
+    })
+    const heading = document.createElement('summary')
     heading.className = 'finance-period-heading'
-    const title = document.createElement('h2')
+    const title = document.createElement('span')
+    title.className = 'finance-month-title'
     title.textContent = parseFinanceDate(summary.month.start).toLocaleDateString(undefined, {month:'long', year:'numeric'})
-    heading.appendChild(title)
+    const monthRange = document.createElement('span')
+    monthRange.textContent = `${formatFinanceDate(summary.month.start)} – ${formatFinanceDate(summary.month.end)}`
+    heading.append(title, monthRange)
     block.appendChild(heading)
 
     const columns = document.createElement('div')
@@ -1559,25 +1612,35 @@ function renderFinances(view){
     incomeValue.textContent = formatFinanceMoney(summary.income)
     incomeTotal.append(incomeLabel, incomeValue)
     incomeColumn.appendChild(incomeTotal)
-    summary.paychecks.forEach((paycheck)=>{
-      const paycheckSection = document.createElement('section')
+    summary.paychecks.slice().reverse().forEach((paycheck)=>{
+      const paycheckSection = document.createElement('details')
       paycheckSection.className = 'finance-paycheck'
-      const paycheckHeading = document.createElement('div')
+      paycheckSection.open = !data.collapsedPayPeriods.includes(paycheck.payday)
+      paycheckSection.addEventListener('toggle', ()=>{
+        const collapsedPayPeriods = new Set(data.collapsedPayPeriods)
+        if(paycheckSection.open) collapsedPayPeriods.delete(paycheck.payday)
+        else collapsedPayPeriods.add(paycheck.payday)
+        data.collapsedPayPeriods = Array.from(collapsedPayPeriods)
+        saveJournalData()
+      })
+      const paycheckHeading = document.createElement('span')
       paycheckHeading.className = 'finance-paycheck-heading'
       const paydayLabel = document.createElement('strong')
       paydayLabel.textContent = `Payday ${formatFinanceDate(paycheck.payday, {weekday:'short', month:'short', day:'numeric'})}`
       const shiftRange = document.createElement('span')
       shiftRange.textContent = `Shifts ${formatFinanceDate(paycheck.start)} – ${formatFinanceDate(paycheck.end)}`
       paycheckHeading.append(paydayLabel, shiftRange)
-      paycheckSection.appendChild(paycheckHeading)
-      const paycheckTotal = document.createElement('div')
+      const paycheckTotal = document.createElement('span')
       paycheckTotal.className = 'finance-paycheck-total'
       paycheckTotal.textContent = `Paycheck total: ${formatFinanceMoney(paycheck.income)}`
-      paycheckSection.appendChild(paycheckTotal)
+      const paycheckSummary = document.createElement('summary')
+      paycheckSummary.className = 'finance-paycheck-summary'
+      paycheckSummary.append(paycheckHeading, paycheckTotal)
+      paycheckSection.appendChild(paycheckSummary)
       paycheckSection.appendChild(renderFinanceWorkForm(paycheck))
       const workList = document.createElement('div')
       workList.className = 'finance-entries'
-      paycheck.workEntries.slice().sort((a, b)=>a.date.localeCompare(b.date)).forEach((entry)=>{
+      sortFinanceEntriesNewestFirst(paycheck.workEntries).forEach((entry)=>{
         const row = document.createElement('div')
         row.className = 'finance-entry'
         const details = document.createElement('span')
@@ -1635,7 +1698,7 @@ function renderFinances(view){
     spendingColumn.append(categoryButtons, expenseForm)
     const expenseList = document.createElement('div')
     expenseList.className = 'finance-entries'
-    summary.expenses.slice().sort((a, b)=>a.date.localeCompare(b.date)).forEach((entry)=>{
+    sortFinanceEntriesNewestFirst(summary.expenses).forEach((entry)=>{
       const category = FINANCE_EXPENSE_CATEGORIES.find((item)=>item.id===entry.category)
       const row = document.createElement('div')
       row.className = `finance-entry finance-expense-row finance-expense-${category.color}${entry.voided ? ' finance-voided' : ''}`
