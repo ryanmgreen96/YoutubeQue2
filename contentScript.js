@@ -747,6 +747,22 @@
         return
       }
 
+      if(data.action === 'fetch-video-durations'){
+        chrome.runtime.sendMessage({type:'fetch-video-durations', items: data.payload && data.payload.items}, (response)=>{
+          if(chrome.runtime.lastError){
+            respond({ok:false, error: chrome.runtime.lastError.message || 'Extension unavailable'})
+            return
+          }
+
+          respond({
+            ok: !!(response && response.ok),
+            payload: {durations: response && Array.isArray(response.durations) ? response.durations : []},
+            error: response && response.error ? response.error : ''
+          })
+        })
+        return
+      }
+
       if(data.action === 'open-url'){
         chrome.runtime.sendMessage({type:'open-url', url: data.payload && data.payload.url}, (response)=>{
           if(chrome.runtime.lastError){

@@ -232,12 +232,18 @@ async function fetchVideoDurationSeconds(url){
     const txt = await res.text()
     let doc
     try{ doc = new DOMParser().parseFromString(txt, 'text/html') }catch(e){ doc = null }
-    if(!doc) return 0
-
-    const metaCandidates = [
-      doc.querySelector('meta[itemprop="duration"]')?.getAttribute('content'),
-      doc.querySelector('meta[property="og:video:duration"]')?.getAttribute('content')
-    ].filter(Boolean)
+    const metaCandidates = doc
+      ? [
+          doc.querySelector('meta[itemprop="duration"]')?.getAttribute('content'),
+          doc.querySelector('meta[property="og:video:duration"]')?.getAttribute('content')
+        ].filter(Boolean)
+      : (txt.match(/<meta\b[^>]*>/gi) || []).reduce((candidates, tag)=>{
+          const itemprop = tag.match(/\bitemprop\s*=\s*["']duration["']/i)
+          const property = tag.match(/\bproperty\s*=\s*["']og:video:duration["']/i)
+          const content = tag.match(/\bcontent\s*=\s*["']([^"']+)["']/i)
+          if((itemprop || property) && content) candidates.push(content[1])
+          return candidates
+        }, [])
 
     for(const candidate of metaCandidates){
       const numeric = Number(candidate)
@@ -246,7 +252,9 @@ async function fetchVideoDurationSeconds(url){
       if(parsed > 0) return parsed
     }
 
-    const jsonLdBlocks = Array.from(doc.querySelectorAll('script[type="application/ld+json"]')).map(node=>node.textContent || '')
+    const jsonLdBlocks = doc
+      ? Array.from(doc.querySelectorAll('script[type="application/ld+json"]')).map(node=>node.textContent || '')
+      : Array.from(txt.matchAll(/<script\b[^>]*type\s*=\s*["']application\/ld\+json["'][^>]*>([\s\S]*?)<\/script>/gi), (match)=>match[1])
     for(const block of jsonLdBlocks){
       try{
         const data = JSON.parse(block)
@@ -1394,6 +1402,20 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse)=>{
       }
       sendResponse({ok:true})
     })
+    return true
+  }
+
+  if(message.type === 'fetch-video-durations'){
+    const incoming = Array.isArray(message.items) ? message.items.slice(0, 25) : []
+    Promise.all(incoming.map(async (item)=>{
+      const url = item && typeof item.url === 'string' ? extractVideoUrlFromTab(item.url) : ''
+      if(!url) return {id: safeText(item && item.id), durationSeconds: 0}
+      return {
+        id: safeText(item && item.id),
+        durationSeconds: await fetchVideoDurationSeconds(url)
+      }
+    })).then((durations)=>sendResponse({ok:true, durations}))
+      .catch(()=>sendResponse({ok:false, durations:[], error:'Could not fetch video durations'}))
     return true
   }
 

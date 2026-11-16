@@ -67,6 +67,29 @@ function loadDateHelpersForHtmlExtraction() {
   return loadDateHelpers('function parseYouTubeRelativeDate', 'async function fetchPagePublishedAt')
 }
 
+function loadDurationHelpers(html) {
+  const context = buildContext()
+  context.fetch = async () => ({text: async () => html})
+  const start = backgroundSource.indexOf('function parseIsoDurationToSeconds')
+  const end = backgroundSource.indexOf('async function extractSavedLinkFromTabWithDuration', start)
+  assert.notEqual(start, -1)
+  assert.notEqual(end, -1)
+  vm.runInContext(backgroundSource.slice(start, end), context)
+  return context
+}
+
+test('fetchVideoDurationSeconds reads duration metadata without DOMParser', async () => {
+  const context = loadDurationHelpers('<meta itemprop="duration" content="PT1M26S">')
+
+  assert.equal(await context.fetchVideoDurationSeconds('https://www.youtube.com/watch?v=abc'), 86)
+})
+
+test('fetchVideoDurationSeconds reads JSON-LD durations without DOMParser', async () => {
+  const context = loadDurationHelpers('<script type="application/ld+json">{"duration":"PT2M3S"}</script>')
+
+  assert.equal(await context.fetchVideoDurationSeconds('https://www.youtube.com/watch?v=abc'), 123)
+})
+
 test('findPublishDateInValue extracts nested publish dates', () => {
   const context = loadDateHelpersForFeed()
   const payload = {

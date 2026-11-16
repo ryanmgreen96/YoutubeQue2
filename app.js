@@ -15,6 +15,7 @@ const SCROLL_POSITIONS_KEY = 'ytScrollPositions_v1'
 const LAST_VIEWED_KEY = 'ytLastViewedItem_v1'
 const CURRENT_PAGE_KEY = 'ytCurrentPage_v1'
 const RANDOM_PLAYLISTS_KEY = 'ytRandomPlaylists_v1'
+const MUSIC_QUEUE_KEY = 'ytMusicQueue_v1'
 const NOTEBOOK_TEXT_KEY = 'ytNotebookText_v1'
 const NOTEBOOK_SCROLL_KEY = 'ytNotebookScroll_v1'
 const NOTEBOOK_CURSOR_KEY = 'ytNotebookCursor_v1'
@@ -165,6 +166,10 @@ const musicPlayerCloseBtn = document.getElementById('music-player-close-btn')
 const musicPlayerFavoriteBtn = document.getElementById('music-player-favorite-btn')
 const musicPlayerTimeInputEl = document.getElementById('music-player-time-input')
 const musicPlayerStartBtn = document.getElementById('music-player-start-btn')
+const musicQueuePreviewEl = document.getElementById('music-queue-preview')
+const musicQueueItemsEl = document.getElementById('music-queue-items')
+const musicQueueStatusEl = document.getElementById('music-queue-status')
+const musicQueuePlayBtn = document.getElementById('music-queue-play-btn')
 const audioScriptOverlayEl = document.getElementById('audio-script-overlay')
 const audioScriptTitleEl = document.getElementById('audio-script-title')
 const audioItemTitleInputEl = document.getElementById('audio-item-title-input')
@@ -198,6 +203,15 @@ let gymOldHidden = loadGymOldHidden()
 let gymNoteItemId = null
 let musicDialogItemId = null
 let musicPlayerItemId = null
+let musicQueueMode = false
+let musicQueueIds = loadMusicQueue()
+let musicQueuePlaybackItems = []
+let musicQueuePlaybackIndex = -1
+let musicYouTubePlayer = null
+let musicYouTubePlayerReady = false
+let musicYouTubeApiPromise = null
+const musicDurationLookups = new Set()
+const musicDurationPending = new Set()
 const musicFavoriteModeTabs = new Set()
 let items = load()
 let pages = loadPages()
@@ -4243,6 +4257,34 @@ function requestExtensionAction(action, payload){
     window.postMessage({source:'ytqueue-app', requestId, action, payload: payload || {}}, targetOrigin)
   })
 }
+function requestMusicItemDurations(musicItems){
+  const missingItems = musicItems.filter((item)=>{
+    if(!item || !item.id || !item.url || Number(item.durationSeconds) > 0 || musicDurationLookups.has(item.id)) return false
+    musicDurationLookups.add(item.id)
+    musicDurationPending.add(item.id)
+    return true
+  })
+  for(let offset = 0; offset < missingItems.length; offset += 25){
+    const batch = missingItems.slice(offset, offset + 25)
+    requestExtensionAction('fetch-video-durations', {
+      items:batch.map((item)=>({id:item.id, url:item.url}))
+    }).then((payload)=>{
+      batch.forEach((item)=>musicDurationPending.delete(item.id))
+      const durations = Array.isArray(payload && payload.durations) ? payload.durations : []
+      durations.forEach((result)=>{
+        const item = items.find((entry)=>entry.id===result.id)
+        const seconds = Number(result.durationSeconds)
+        if(item && Number.isFinite(seconds) && seconds > 0) item.durationSeconds = Math.round(seconds)
+      })
+      if(durations.some((result)=>Number(result.durationSeconds) > 0)) save()
+      if(currentPageId === MUSIC_PAGE_ID) renderPreservingSectionScroll()
+    }).catch((error)=>{
+      batch.forEach((item)=>musicDurationPending.delete(item.id))
+      console.error('Could not load music video durations:', error)
+      if(currentPageId === MUSIC_PAGE_ID) renderPreservingSectionScroll()
+    })
+  }
+}
 async function fetchPlaylistVideos(playlistUrl){
   const normalizedUrl = normalizePlaylistUrl(playlistUrl)
   if(!normalizedUrl) throw new Error('Please enter a valid YouTube playlist URL')
@@ -5924,6 +5966,8 @@ function renderPreservingSectionScroll(){
 
 function removeItem(id){
   items = items.filter(i=>i.id!==id)
+  musicQueueIds = musicQueueIds.filter((itemId)=>itemId!==id)
+  saveMusicQueue()
   selectedItemIds.delete(id)
   save()
   renderPreservingSectionScroll()
@@ -5933,10 +5977,49 @@ function deleteSelectedItems(){
   if(!selectedItemIds.size) return false
   const selectedIds = Array.from(selectedItemIds)
   items = items.filter((item)=>!selectedIds.includes(item.id))
+  musicQueueIds = musicQueueIds.filter((itemId)=>!selectedIds.includes(itemId))
+  saveMusicQueue()
   selectedItemIds.clear()
   save()
   renderPreservingSectionScroll()
   return true
+}
+
+function loadMusicQueue(){
+  try{
+    const parsed = JSON.parse(localStorage.getItem(MUSIC_QUEUE_KEY) || '[]')
+    return Array.isArray(parsed)
+      ? Array.from(new Set(parsed.filter((itemId)=>typeof itemId === 'string' && itemId)))
+      : []
+  }catch(e){
+    return []
+  }
+}
+
+function saveMusicQueue(){
+  localStorage.setItem(MUSIC_QUEUE_KEY, JSON.stringify(musicQueueIds))
+}
+
+function getMusicQueueItems(){
+  return musicQueueIds
+    .map((itemId)=>items.find((item)=>item.id===itemId))
+    .filter((item)=>item && isMusicPage(item.pageId))
+}
+
+function moveMusicQueueItem(queueIds, itemId, direction){
+  const currentIndex = queueIds.indexOf(itemId)
+  const nextIndex = currentIndex + (direction === -1 ? -1 : 1)
+  if(currentIndex < 0 || nextIndex < 0 || nextIndex >= queueIds.length) return queueIds.slice()
+  const moved = queueIds.slice()
+  ;[moved[currentIndex], moved[nextIndex]] = [moved[nextIndex], moved[currentIndex]]
+  return moved
+}
+
+function addMusicItemToQueue(item){
+  if(!item || !isMusicPage(item.pageId) || musicQueueIds.includes(item.id)) return
+  musicQueueIds.push(item.id)
+  saveMusicQueue()
+  renderPreservingSectionScroll()
 }
 
 function moveItemToTopWithinPageTab(list, itemId, pageId, tabId){
@@ -5990,6 +6073,11 @@ function formatMusicStartTime(seconds){
   return `${minutes}:${String(remainingSeconds).padStart(2, '0')}`
 }
 
+function formatMusicDuration(seconds){
+  const safe = Math.max(0, Math.floor(Number(seconds) || 0))
+  return `${Math.floor(safe / 60)}:${String(safe % 60).padStart(2, '0')}`
+}
+
 function openMusicItemDialog(item){
   if(!musicItemDialogEl || !item) return
   musicDialogItemId = item.id
@@ -6038,8 +6126,204 @@ function getMusicEmbedUrl(item, seconds=0){
   return `https://www.youtube-nocookie.com/embed/${encodeURIComponent(videoId)}?${params.toString()}`
 }
 
+function loadMusicYouTubeApi(){
+  if(window.YT && window.YT.Player) return Promise.resolve()
+  if(musicYouTubeApiPromise) return musicYouTubeApiPromise
+  musicYouTubeApiPromise = new Promise((resolve, reject)=>{
+    const previousCallback = window.onYouTubeIframeAPIReady
+    const resetCallback = ()=>{
+      if(window.onYouTubeIframeAPIReady === handleReady) window.onYouTubeIframeAPIReady = previousCallback
+    }
+    const fail = (error)=>{
+      clearTimeout(timeoutHandle)
+      resetCallback()
+      musicYouTubeApiPromise = null
+      reject(error)
+    }
+    const timeoutHandle = setTimeout(()=>{
+      fail(new Error('YouTube player API timed out'))
+    }, 15000)
+    const handleReady = ()=>{
+      clearTimeout(timeoutHandle)
+      resetCallback()
+      try{
+        if(typeof previousCallback === 'function') previousCallback()
+      }finally{
+        resolve()
+      }
+    }
+    window.onYouTubeIframeAPIReady = handleReady
+
+    let script = document.querySelector('script[data-music-youtube-api]')
+    if(!script){
+      script = document.createElement('script')
+      script.src = 'https://www.youtube.com/iframe_api'
+      script.dataset.musicYoutubeApi = 'true'
+      script.onerror = ()=>{
+        script.remove()
+        fail(new Error('Could not load the YouTube player API'))
+      }
+      document.head.appendChild(script)
+    }
+  })
+  return musicYouTubeApiPromise
+}
+
+async function prepareMusicQueuePlayer(){
+  if(!musicQueueStatusEl || !musicQueuePlayBtn) return
+  musicQueueStatusEl.textContent = 'Preparing the YouTube player…'
+  musicQueuePlayBtn.disabled = true
+  try{
+    await loadMusicYouTubeApi()
+    if(!musicYouTubePlayer){
+      await new Promise((resolve, reject)=>{
+        musicYouTubePlayer = new window.YT.Player('music-player-frame', {
+          playerVars:{autoplay:0, enablejsapi:1, origin:window.location.origin},
+          events:{
+            onReady:()=>{
+              musicYouTubePlayerReady = true
+              resolve()
+            },
+            onStateChange:(event)=>{
+              if(event.data === window.YT.PlayerState.ENDED) playNextMusicQueueItem()
+            },
+            onError:()=>{
+              if(musicQueuePlaybackIndex >= 0) playNextMusicQueueItem()
+            }
+          }
+        })
+      })
+    }
+    const queueItems = getMusicQueueItems()
+    musicQueueStatusEl.textContent = musicQueuePlaybackIndex >= 0
+      ? `Playing ${musicQueuePlaybackIndex + 1} of ${musicQueuePlaybackItems.length}`
+      : (queueItems.length
+        ? 'Click a video to move it up; right-click to move it down.'
+        : 'Your queue is empty. Turn on queue mode and click music videos to add them.')
+    musicQueuePlayBtn.disabled = !queueItems.length || musicQueuePlaybackIndex >= 0
+  }catch(error){
+    console.error('Could not prepare the music queue player:', error)
+    musicQueueStatusEl.textContent = 'The YouTube player could not be loaded. Close and reopen the queue to retry.'
+    musicQueuePlayBtn.disabled = true
+  }
+}
+
+function renderMusicQueuePreview(){
+  if(!musicQueueItemsEl || !musicQueueStatusEl || !musicQueuePlayBtn) return
+  const queueItems = getMusicQueueItems()
+  const validIds = queueItems.map((item)=>item.id)
+  if(validIds.length !== musicQueueIds.length || validIds.some((itemId, index)=>itemId !== musicQueueIds[index])){
+    musicQueueIds = validIds
+    saveMusicQueue()
+  }
+  musicQueueItemsEl.replaceChildren()
+  queueItems.forEach((item, index)=>{
+    const row = document.createElement('button')
+    row.type = 'button'
+    row.className = 'music-queue-item'
+    row.disabled = musicQueuePlaybackIndex >= 0
+    const duration = Number(item.durationSeconds) > 0
+      ? formatMusicDuration(item.durationSeconds)
+      : 'Duration unavailable'
+    row.textContent = `${index + 1}. ${item.title || item.url} · ${duration}`
+    row.title = 'Left-click to move up; right-click to move down'
+    row.setAttribute('aria-label', `${item.title || item.url}, position ${index + 1} of ${queueItems.length}, ${duration}`)
+    row.addEventListener('click', ()=>{
+      musicQueueIds = moveMusicQueueItem(musicQueueIds, item.id, -1)
+      saveMusicQueue()
+      renderMusicQueuePreview()
+    })
+    row.addEventListener('contextmenu', (event)=>{
+      event.preventDefault()
+      musicQueueIds = moveMusicQueueItem(musicQueueIds, item.id, 1)
+      saveMusicQueue()
+      renderMusicQueuePreview()
+    })
+    musicQueueItemsEl.appendChild(row)
+  })
+  musicQueuePlayBtn.disabled = !queueItems.length || !musicYouTubePlayerReady || musicQueuePlaybackIndex >= 0
+  if(musicQueuePlaybackIndex < 0){
+    musicQueueStatusEl.textContent = queueItems.length
+      ? 'Click a video to move it up; right-click to move it down.'
+      : 'Your queue is empty. Turn on queue mode and click music videos to add them.'
+  }
+}
+
+function toggleMusicQueueMode(){
+  if(musicQueueMode){
+    musicQueueMode = false
+    render()
+    openMusicQueuePreview()
+    return
+  }
+  musicQueueMode = true
+  render()
+}
+
+function openMusicQueuePreview(){
+  if(!musicPlayerOverlayEl || !musicQueuePreviewEl) return
+  musicQueueMode = false
+  musicQueuePlaybackItems = []
+  musicQueuePlaybackIndex = -1
+  musicPlayerItemId = null
+  musicQueuePlayBtn.textContent = 'Play queue'
+  musicPlayerTitleEl.textContent = `Music queue (${getMusicQueueItems().length})`
+  musicPlayerTimeInputEl.value = ''
+  if(!musicYouTubePlayerReady) musicPlayerFrameEl.src = ''
+  musicQueuePreviewEl.classList.remove('hidden')
+  musicPlayerOverlayEl.classList.add('queue-previewing')
+  musicPlayerOverlayEl.classList.remove('hidden')
+  musicPlayerOverlayEl.setAttribute('aria-hidden', 'false')
+  renderMusicQueuePreview()
+  prepareMusicQueuePlayer()
+}
+
+function startMusicQueue(){
+  musicQueuePlaybackItems = getMusicQueueItems()
+  if(!musicQueuePlaybackItems.length || !musicYouTubePlayerReady || !musicYouTubePlayer) return
+  musicQueuePlaybackIndex = 0
+  playMusicQueueItem(musicQueuePlaybackIndex)
+}
+
+function playMusicQueueItem(index){
+  if(index < 0 || index >= musicQueuePlaybackItems.length){
+    musicQueuePlaybackIndex = -1
+    musicQueuePlaybackItems = []
+    musicQueuePlayBtn.textContent = 'Play queue'
+    renderMusicQueuePreview()
+    musicQueueStatusEl.textContent = 'Queue finished.'
+    return
+  }
+  const item = musicQueuePlaybackItems[index]
+  const videoId = item.videoId || extractVideoId(item.url)
+  if(!videoId){
+    playNextMusicQueueItem()
+    return
+  }
+  musicQueuePlaybackIndex = index
+  musicPlayerItemId = item.id
+  musicPlayerTitleEl.textContent = `Music queue — ${index + 1} of ${musicQueuePlaybackItems.length}: ${item.title || item.url}`
+  musicQueueStatusEl.textContent = `Playing ${index + 1} of ${musicQueuePlaybackItems.length}`
+  musicQueuePlayBtn.disabled = true
+  musicQueuePlayBtn.textContent = 'Playing…'
+  renderMusicQueuePreview()
+  musicYouTubePlayer.loadVideoById({
+    videoId,
+    startSeconds:Math.max(0, Number(item.startSeconds) || 0)
+  })
+}
+
+function playNextMusicQueueItem(){
+  if(musicQueuePlaybackIndex < 0) return
+  playMusicQueueItem(musicQueuePlaybackIndex + 1)
+}
+
 function openMusicPlayer(item, useSavedStart=false){
   if(!musicPlayerOverlayEl || !item) return
+  musicQueuePlaybackItems = []
+  musicQueuePlaybackIndex = -1
+  musicQueuePreviewEl.classList.add('hidden')
+  musicPlayerOverlayEl.classList.remove('queue-previewing')
   const startSeconds = useSavedStart ? Number(item.startSeconds) || 0 : 0
   const embedUrl = getMusicEmbedUrl(item, startSeconds)
   if(!embedUrl){
@@ -6049,7 +6333,14 @@ function openMusicPlayer(item, useSavedStart=false){
   musicPlayerItemId = item.id
   musicPlayerTitleEl.textContent = item.title || item.url || 'Music video'
   musicPlayerTimeInputEl.value = item.startSeconds ? formatMusicStartTime(item.startSeconds) : ''
-  musicPlayerFrameEl.src = embedUrl
+  if(musicYouTubePlayerReady && musicYouTubePlayer){
+    musicYouTubePlayer.loadVideoById({
+      videoId:item.videoId || extractVideoId(item.url),
+      startSeconds
+    })
+  }else{
+    musicPlayerFrameEl.src = embedUrl
+  }
   syncMusicPlayerFavoriteButton(item)
   musicPlayerOverlayEl.classList.remove('hidden')
   musicPlayerOverlayEl.setAttribute('aria-hidden', 'false')
@@ -6058,7 +6349,17 @@ function openMusicPlayer(item, useSavedStart=false){
 function closeMusicPlayer(){
   if(!musicPlayerOverlayEl) return
   musicPlayerItemId = null
-  musicPlayerFrameEl.src = ''
+  musicQueuePlaybackItems = []
+  musicQueuePlaybackIndex = -1
+  musicQueueMode = false
+  musicQueuePlayBtn.textContent = 'Play queue'
+  musicPlayerOverlayEl.classList.remove('queue-previewing')
+  musicQueuePreviewEl.classList.add('hidden')
+  if(musicYouTubePlayerReady && musicYouTubePlayer){
+    musicYouTubePlayer.stopVideo()
+  }else{
+    musicPlayerFrameEl.src = ''
+  }
   musicPlayerOverlayEl.classList.add('hidden')
   musicPlayerOverlayEl.setAttribute('aria-hidden', 'true')
 }
@@ -6092,7 +6393,14 @@ function startMusicPlayerAtEnteredTime(){
   musicPlayerTimeInputEl.setCustomValidity('')
   item.startSeconds = startSeconds
   save()
-  musicPlayerFrameEl.src = getMusicEmbedUrl(item, startSeconds)
+  if(musicYouTubePlayerReady && musicYouTubePlayer){
+    musicYouTubePlayer.loadVideoById({
+      videoId:item.videoId || extractVideoId(item.url),
+      startSeconds
+    })
+  }else{
+    musicPlayerFrameEl.src = getMusicEmbedUrl(item, startSeconds)
+  }
   render()
 }
 
@@ -6771,6 +7079,18 @@ function renderTabBar(pageId){
     favoriteModeToggle.setAttribute('aria-pressed', String(favoriteModeEnabled))
     favoriteModeToggle.addEventListener('click', ()=>toggleMusicFavoriteMode(pid, activeTabId))
     row.appendChild(favoriteModeToggle)
+
+    const queueToggle = document.createElement('button')
+    queueToggle.type = 'button'
+    queueToggle.className = `main-tab title-filter-toggle music-queue-toggle${musicQueueMode ? ' selected' : ''}`
+    queueToggle.textContent = '▶'
+    queueToggle.title = musicQueueMode
+      ? 'Queue mode ON: click to preview the queue'
+      : `Build music queue (${getMusicQueueItems().length} items)`
+    queueToggle.setAttribute('aria-label', queueToggle.title)
+    queueToggle.setAttribute('aria-pressed', String(musicQueueMode))
+    queueToggle.addEventListener('click', toggleMusicQueueMode)
+    row.appendChild(queueToggle)
   }
 
   if(pid!=='home'){
@@ -7161,6 +7481,7 @@ function renderSection(title, list, showHomeControls = false, hideGrid = false){
     return
   }
   const g = document.createElement('div'); g.className=`grid${currentPageId!=='home' && !isMusicPage(currentPageId) && areTabThumbnailsHidden(currentPageId, getActiveTabId(currentPageId)) ? ' thumbnails-hidden' : ''}`
+  const musicDurationItems = []
   list.forEach(it=>{
     if(isDividerItem(it)){
       const dividerItem = document.createElement('div')
@@ -7185,6 +7506,23 @@ function renderSection(title, list, showHomeControls = false, hideGrid = false){
     }else{
       img.style.display = ''
       img.src = it.videoId ? makeThumbUrl(it.videoId) : ''
+      if(isMusicPage(currentPageId)){
+        const thumbWrap = document.createElement('div')
+        thumbWrap.className = 'music-thumb-wrap'
+        el.insertBefore(thumbWrap, img)
+        thumbWrap.appendChild(img)
+        const durationBadge = document.createElement('span')
+        durationBadge.className = 'music-duration-badge'
+        durationBadge.textContent = Number(it.durationSeconds) > 0
+          ? formatMusicDuration(it.durationSeconds)
+          : (musicDurationPending.has(it.id) ? '…' : '--:--')
+        durationBadge.title = Number(it.durationSeconds) > 0
+          ? 'Video duration'
+          : (musicDurationPending.has(it.id) ? 'Loading video duration' : 'Duration unavailable')
+        thumbWrap.appendChild(durationBadge)
+        el.classList.toggle('is-music-queued', musicQueueIds.includes(it.id))
+        musicDurationItems.push(it)
+      }
     }
     const rawTitle = it.title || it.url
     ttl.textContent = currentPageId==='home' ? rawTitle : applyPageTitleFilters(rawTitle, currentPageId)
@@ -7243,6 +7581,10 @@ function renderSection(title, list, showHomeControls = false, hideGrid = false){
         return
       }
       if(editMode){ selectItem(it.id, list); return }
+      if(isMusicPage(currentPageId) && musicQueueMode && event.button===0){
+        addMusicItemToQueue(it)
+        return
+      }
       if(isMusicPage(currentPageId) && event.button !== 0) return
       if(isMusicPage(currentPageId)){
         markLastViewedItem(it.id)
@@ -7299,6 +7641,7 @@ function renderSection(title, list, showHomeControls = false, hideGrid = false){
 
     g.appendChild(node)
   })
+  if(isMusicPage(currentPageId)) requestMusicItemDurations(musicDurationItems)
   s.appendChild(g)
   sections.appendChild(s)
 }
@@ -7371,6 +7714,7 @@ if(musicItemCancelBtn) musicItemCancelBtn.addEventListener('click', closeMusicIt
 if(musicPlayerCloseBtn) musicPlayerCloseBtn.addEventListener('click', closeMusicPlayer)
 if(musicPlayerFavoriteBtn) musicPlayerFavoriteBtn.addEventListener('click', toggleMusicPlayerFavorite)
 if(musicPlayerStartBtn) musicPlayerStartBtn.addEventListener('click', startMusicPlayerAtEnteredTime)
+if(musicQueuePlayBtn) musicQueuePlayBtn.addEventListener('click', startMusicQueue)
 if(musicPlayerOverlayEl){
   const backdrop = musicPlayerOverlayEl.querySelector('.music-player-backdrop')
   if(backdrop) backdrop.addEventListener('click', closeMusicPlayer)
