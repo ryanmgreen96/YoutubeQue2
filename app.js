@@ -207,6 +207,8 @@ let musicQueueMode = false
 let musicQueueIds = loadMusicQueue()
 let musicQueuePlaybackItems = []
 let musicQueuePlaybackIndex = -1
+let musicQueueAdvanceTimer = null
+let musicQueueUsingIframeFallback = false
 let musicYouTubePlayer = null
 let musicYouTubePlayerReady = false
 let musicYouTubeApiPromise = null
@@ -4277,6 +4279,10 @@ function requestMusicItemDurations(musicItems){
         if(item && Number.isFinite(seconds) && seconds > 0) item.durationSeconds = Math.round(seconds)
       })
       if(durations.some((result)=>Number(result.durationSeconds) > 0)) save()
+      if(musicQueueUsingIframeFallback && musicQueuePlaybackIndex >= 0){
+        const playingItem = musicQueuePlaybackItems[musicQueuePlaybackIndex]
+        if(playingItem) scheduleMusicQueueFallbackAdvance(playingItem)
+      }
       if(currentPageId === MUSIC_PAGE_ID) renderPreservingSectionScroll()
     }).catch((error)=>{
       batch.forEach((item)=>musicDurationPending.delete(item.id))
@@ -6172,13 +6178,16 @@ function loadMusicYouTubeApi(){
 async function prepareMusicQueuePlayer(){
   if(!musicQueueStatusEl || !musicQueuePlayBtn) return
   musicQueueStatusEl.textContent = 'Preparing the YouTube player…'
-  musicQueuePlayBtn.disabled = true
+  musicQueuePlayBtn.disabled = !getMusicQueueItems().length || musicQueuePlaybackIndex >= 0
   try{
     await loadMusicYouTubeApi()
+    if(musicQueuePlaybackIndex >= 0 && musicQueueUsingIframeFallback) return
     if(!musicYouTubePlayer){
       await new Promise((resolve, reject)=>{
+        const playerVars = {autoplay:0, enablejsapi:1}
+        if(window.location.origin && window.location.origin !== 'null') playerVars.origin = window.location.origin
         musicYouTubePlayer = new window.YT.Player('music-player-frame', {
-          playerVars:{autoplay:0, enablejsapi:1, origin:window.location.origin},
+          playerVars,
           events:{
             onReady:()=>{
               musicYouTubePlayerReady = true
@@ -6203,8 +6212,10 @@ async function prepareMusicQueuePlayer(){
     musicQueuePlayBtn.disabled = !queueItems.length || musicQueuePlaybackIndex >= 0
   }catch(error){
     console.error('Could not prepare the music queue player:', error)
-    musicQueueStatusEl.textContent = 'The YouTube player could not be loaded. Close and reopen the queue to retry.'
-    musicQueuePlayBtn.disabled = true
+    musicQueueStatusEl.textContent = getMusicQueueItems().length
+      ? 'YouTube’s player is unavailable; Play queue will use duration-based playback.'
+      : 'The YouTube player could not be loaded. Close and reopen the queue to retry.'
+    musicQueuePlayBtn.disabled = !getMusicQueueItems().length || musicQueuePlaybackIndex >= 0
   }
 }
 
@@ -6241,7 +6252,7 @@ function renderMusicQueuePreview(){
     })
     musicQueueItemsEl.appendChild(row)
   })
-  musicQueuePlayBtn.disabled = !queueItems.length || !musicYouTubePlayerReady || musicQueuePlaybackIndex >= 0
+  musicQueuePlayBtn.disabled = !queueItems.length || musicQueuePlaybackIndex >= 0
   if(musicQueuePlaybackIndex < 0){
     musicQueueStatusEl.textContent = queueItems.length
       ? 'Click a video to move it up; right-click to move it down.'
@@ -6265,6 +6276,9 @@ function openMusicQueuePreview(){
   musicQueueMode = false
   musicQueuePlaybackItems = []
   musicQueuePlaybackIndex = -1
+  musicQueueUsingIframeFallback = false
+  clearTimeout(musicQueueAdvanceTimer)
+  musicQueueAdvanceTimer = null
   musicPlayerItemId = null
   musicQueuePlayBtn.textContent = 'Play queue'
   musicPlayerTitleEl.textContent = `Music queue (${getMusicQueueItems().length})`
@@ -6280,15 +6294,33 @@ function openMusicQueuePreview(){
 
 function startMusicQueue(){
   musicQueuePlaybackItems = getMusicQueueItems()
-  if(!musicQueuePlaybackItems.length || !musicYouTubePlayerReady || !musicYouTubePlayer) return
+  if(!musicQueuePlaybackItems.length) return
+  musicQueueUsingIframeFallback = !musicYouTubePlayerReady || !musicYouTubePlayer
   musicQueuePlaybackIndex = 0
   playMusicQueueItem(musicQueuePlaybackIndex)
+}
+
+function scheduleMusicQueueFallbackAdvance(item){
+  clearTimeout(musicQueueAdvanceTimer)
+  musicQueueAdvanceTimer = null
+  if(!musicQueueUsingIframeFallback || musicQueuePlaybackIndex < 0) return
+  const durationSeconds = Number(item && item.durationSeconds)
+  const startSeconds = Math.max(0, Number(item && item.startSeconds) || 0)
+  if(!Number.isFinite(durationSeconds) || durationSeconds <= startSeconds){
+    musicQueueStatusEl.textContent = `Playing ${musicQueuePlaybackIndex + 1} of ${musicQueuePlaybackItems.length}; waiting for video duration.`
+    return
+  }
+  musicQueueStatusEl.textContent = `Playing ${musicQueuePlaybackIndex + 1} of ${musicQueuePlaybackItems.length}`
+  musicQueueAdvanceTimer = setTimeout(playNextMusicQueueItem, (durationSeconds - startSeconds) * 1000)
 }
 
 function playMusicQueueItem(index){
   if(index < 0 || index >= musicQueuePlaybackItems.length){
     musicQueuePlaybackIndex = -1
     musicQueuePlaybackItems = []
+    musicQueueUsingIframeFallback = false
+    clearTimeout(musicQueueAdvanceTimer)
+    musicQueueAdvanceTimer = null
     musicQueuePlayBtn.textContent = 'Play queue'
     renderMusicQueuePreview()
     musicQueueStatusEl.textContent = 'Queue finished.'
@@ -6307,14 +6339,21 @@ function playMusicQueueItem(index){
   musicQueuePlayBtn.disabled = true
   musicQueuePlayBtn.textContent = 'Playing…'
   renderMusicQueuePreview()
-  musicYouTubePlayer.loadVideoById({
-    videoId,
-    startSeconds:Math.max(0, Number(item.startSeconds) || 0)
-  })
+  if(musicYouTubePlayerReady && musicYouTubePlayer && !musicQueueUsingIframeFallback){
+    musicYouTubePlayer.loadVideoById({
+      videoId,
+      startSeconds:Math.max(0, Number(item.startSeconds) || 0)
+    })
+  }else{
+    musicPlayerFrameEl.src = getMusicEmbedUrl(item, item.startSeconds)
+    scheduleMusicQueueFallbackAdvance(item)
+  }
 }
 
 function playNextMusicQueueItem(){
   if(musicQueuePlaybackIndex < 0) return
+  clearTimeout(musicQueueAdvanceTimer)
+  musicQueueAdvanceTimer = null
   playMusicQueueItem(musicQueuePlaybackIndex + 1)
 }
 
@@ -6322,6 +6361,9 @@ function openMusicPlayer(item, useSavedStart=false){
   if(!musicPlayerOverlayEl || !item) return
   musicQueuePlaybackItems = []
   musicQueuePlaybackIndex = -1
+  musicQueueUsingIframeFallback = false
+  clearTimeout(musicQueueAdvanceTimer)
+  musicQueueAdvanceTimer = null
   musicQueuePreviewEl.classList.add('hidden')
   musicPlayerOverlayEl.classList.remove('queue-previewing')
   const startSeconds = useSavedStart ? Number(item.startSeconds) || 0 : 0
@@ -6352,6 +6394,9 @@ function closeMusicPlayer(){
   musicQueuePlaybackItems = []
   musicQueuePlaybackIndex = -1
   musicQueueMode = false
+  musicQueueUsingIframeFallback = false
+  clearTimeout(musicQueueAdvanceTimer)
+  musicQueueAdvanceTimer = null
   musicQueuePlayBtn.textContent = 'Play queue'
   musicPlayerOverlayEl.classList.remove('queue-previewing')
   musicQueuePreviewEl.classList.add('hidden')

@@ -13,6 +13,7 @@ A simple queue app and browser extension for YouTube videos and saved links.
 1. Push this repository to GitHub.
 2. Enable GitHub Pages (Settings -> Pages, source: `main` branch, `/root`).
 3. Load the root folder as an unpacked extension to use the existing YouTube queue extension.
+   When opening `index.html` from a `file://` URL, enable the extension's **Allow access to file URLs** setting so Music duration lookup can use the extension.
 4. To install **Save** separately, load the `library-extension/` folder as another unpacked extension.
 
 ## Usage

@@ -11,7 +11,8 @@
   }
 
   function isAppHost(){
-    return host === 'ryanmgreen96.github.io' || host === 'localhost'
+    if(host === 'ryanmgreen96.github.io' || host === 'localhost' || host === '127.0.0.1') return true
+    return location.protocol === 'file:' && document.title === 'YouTube Queue' && !!document.getElementById('sections')
   }
 
   async function getQueueMode(){
