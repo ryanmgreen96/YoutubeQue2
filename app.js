@@ -209,6 +209,7 @@ let musicQueueIds = loadMusicQueue()
 let musicQueuePlaybackItems = []
 let musicQueuePlaybackIndex = -1
 let musicQueueCurrentItemId = null
+let musicQueueAwaitingStartIndex = false
 let musicQueueUsingIframeFallback = false
 let musicYouTubePlayer = null
 let musicYouTubePlayerReady = false
@@ -6326,6 +6327,7 @@ function openMusicQueuePreview(){
   musicQueueMode = false
   musicQueuePlaybackItems = []
   musicQueuePlaybackIndex = -1
+  musicQueueAwaitingStartIndex = false
   musicQueueUsingIframeFallback = false
   musicPlayerItemId = null
   musicQueuePlayBtn.textContent = 'Continue from current'
@@ -6354,10 +6356,12 @@ function startMusicQueue(startIndex=0){
   musicPlayerItemId = currentItem.id
   renderMusicQueuePreview()
   if(musicQueueUsingIframeFallback){
+    musicQueueAwaitingStartIndex = false
     musicPlayerTitleEl.textContent = `Music queue (${musicQueuePlaybackItems.length} videos)`
     musicQueueStatusEl.textContent = 'Playing queue; YouTube advances automatically, but the current item cannot be tracked here.'
     musicPlayerFrameEl.src = getMusicQueueEmbedUrl(musicQueuePlaybackItems, startAt)
   }else{
+    musicQueueAwaitingStartIndex = true
     musicPlayerTitleEl.textContent = `Music queue — ${startAt + 1} of ${musicQueuePlaybackItems.length}: ${currentItem.title || currentItem.url}`
     musicQueueStatusEl.textContent = `Playing ${startAt + 1} of ${musicQueuePlaybackItems.length}`
     musicYouTubePlayer.setShuffle(false)
@@ -6386,6 +6390,7 @@ function continueMusicQueue(){
 function finishMusicQueuePlayback(){
   musicQueuePlaybackIndex = -1
   musicQueuePlaybackItems = []
+  musicQueueAwaitingStartIndex = false
   musicQueueUsingIframeFallback = false
   musicQueuePlayBtn.textContent = 'Continue from current'
   renderMusicQueuePreview()
@@ -6401,7 +6406,17 @@ function handleMusicQueuePlayerStateChange(event){
   }
   if(event.data !== window.YT.PlayerState.PLAYING) return
   const index = musicYouTubePlayer.getPlaylistIndex()
-  if(index < 0 || index >= musicQueuePlaybackItems.length || index === musicQueuePlaybackIndex) return
+  if(index < 0 || index >= musicQueuePlaybackItems.length) return
+  if(musicQueueAwaitingStartIndex){
+    musicQueueAwaitingStartIndex = false
+    if(index !== musicQueuePlaybackIndex){
+      musicYouTubePlayer.playVideoAt(musicQueuePlaybackIndex)
+      const startSeconds = Math.max(0, Number(musicQueuePlaybackItems[musicQueuePlaybackIndex].startSeconds) || 0)
+      if(startSeconds > 0) musicYouTubePlayer.seekTo(startSeconds, true)
+      return
+    }
+  }
+  if(index === musicQueuePlaybackIndex) return
   musicQueuePlaybackIndex = index
   const item = musicQueuePlaybackItems[index]
   musicQueueCurrentItemId = item.id
@@ -6413,21 +6428,29 @@ function handleMusicQueuePlayerStateChange(event){
   if(startSeconds > 0) musicYouTubePlayer.seekTo(startSeconds, true)
 }
 
-function handleMusicQueuePlayerError(){
+function handleMusicQueuePlayerError(event){
   if(musicQueuePlaybackIndex < 0) return
   const currentIndex = musicYouTubePlayer.getPlaylistIndex()
-  const nextIndex = (currentIndex >= 0 ? currentIndex : musicQueuePlaybackIndex) + 1
-  if(nextIndex >= musicQueuePlaybackItems.length){
-    finishMusicQueuePlayback()
-    return
-  }
-  musicQueuePlaybackIndex = nextIndex
-  const nextItem = musicQueuePlaybackItems[nextIndex]
-  musicQueueCurrentItemId = nextItem.id
-  musicPlayerTitleEl.textContent = `Music queue — ${nextIndex + 1} of ${musicQueuePlaybackItems.length}: ${nextItem.title || nextItem.url}`
-  musicQueueStatusEl.textContent = `Playing ${nextIndex + 1} of ${musicQueuePlaybackItems.length}`
+  const failedIndex = musicQueueAwaitingStartIndex
+    ? musicQueuePlaybackIndex
+    : (currentIndex >= 0 && currentIndex < musicQueuePlaybackItems.length
+    ? currentIndex
+    : musicQueuePlaybackIndex)
+  const failedItem = musicQueuePlaybackItems[failedIndex]
+  const errorCode = Number(event && event.data)
+  musicQueueCurrentItemId = failedItem.id
+  musicQueuePlaybackIndex = -1
+  musicQueuePlaybackItems = []
+  musicQueueAwaitingStartIndex = false
+  musicQueueUsingIframeFallback = false
+  musicQueuePlayBtn.textContent = 'Continue from current'
   renderMusicQueuePreview()
-  musicYouTubePlayer.playVideoAt(nextIndex)
+  musicQueueStatusEl.textContent = `YouTube could not play queue item ${failedIndex + 1} (${failedItem.title || failedItem.url}; error ${errorCode}). Queue stopped to preserve order.`
+  console.error('YouTube could not play a queued music item:', {
+    itemId:failedItem.id,
+    title:failedItem.title || failedItem.url,
+    errorCode
+  })
 }
 
 function openMusicPlayer(item, useSavedStart=false){
@@ -6465,6 +6488,7 @@ function closeMusicPlayer(){
   musicPlayerItemId = null
   musicQueuePlaybackItems = []
   musicQueuePlaybackIndex = -1
+  musicQueueAwaitingStartIndex = false
   musicQueueMode = false
   musicQueueUsingIframeFallback = false
   musicQueuePlayBtn.textContent = 'Continue from current'
