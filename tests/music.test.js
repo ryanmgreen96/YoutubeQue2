@@ -154,8 +154,19 @@ test('continuing queue starts at the current item without shuffling its order', 
   context.continueMusicQueue()
 
   assert.deepEqual(queuePlayerCalls, [
-    ['loadPlaylist', ['video-one', 'video-two', 'video-three'], 1, 31],
-    ['setShuffle', false]
+    ['setShuffle', false],
+    ['loadPlaylist', ['video-one', 'video-two', 'video-three'], 1, 31]
   ])
   assert.equal(context.musicQueueCurrentItemId, 'two')
+})
+
+test('starting from first loads playlist index zero after disabling shuffle', () => {
+  queuePlayerCalls.length = 0
+  context.startMusicQueue(0)
+
+  assert.deepEqual(queuePlayerCalls, [
+    ['setShuffle', false],
+    ['loadPlaylist', ['video-one', 'video-two', 'video-three'], 0, 0]
+  ])
+  assert.equal(context.musicQueueCurrentItemId, 'one')
 })

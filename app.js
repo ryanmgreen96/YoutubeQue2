@@ -6360,12 +6360,12 @@ function startMusicQueue(startIndex=0){
   }else{
     musicPlayerTitleEl.textContent = `Music queue — ${startAt + 1} of ${musicQueuePlaybackItems.length}: ${currentItem.title || currentItem.url}`
     musicQueueStatusEl.textContent = `Playing ${startAt + 1} of ${musicQueuePlaybackItems.length}`
+    musicYouTubePlayer.setShuffle(false)
     musicYouTubePlayer.loadPlaylist(
       musicQueuePlaybackItems.map((item)=>getMusicVideoId(item)),
       startAt,
       Math.max(0, Number(currentItem.startSeconds) || 0)
     )
-    musicYouTubePlayer.setShuffle(false)
   }
 }
 
