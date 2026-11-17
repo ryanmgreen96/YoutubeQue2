@@ -211,6 +211,7 @@ let musicQueuePlaybackIndex = -1
 let musicQueueCurrentItemId = null
 let musicQueueAwaitingStartIndex = false
 let musicQueueUsingIframeFallback = false
+let musicQueuePlayerPreparing = false
 let musicYouTubePlayer = null
 let musicYouTubePlayerReady = false
 let musicYouTubeApiPromise = null
@@ -6202,13 +6203,20 @@ function loadMusicYouTubeApi(){
 
 async function prepareMusicQueuePlayer(){
   if(!musicQueueStatusEl || !musicQueuePlayBtn) return
+  musicQueuePlayerPreparing = true
   musicQueueStatusEl.textContent = 'Preparing the YouTube player…'
   const hasPlayableItems = getMusicQueueItems().some((item)=>getMusicVideoId(item))
-  musicQueuePlayBtn.disabled = !hasPlayableItems
-  musicQueueStartFirstBtn.disabled = !hasPlayableItems
+  musicQueuePlayBtn.disabled = true
+  musicQueueStartFirstBtn.disabled = true
   try{
     await loadMusicYouTubeApi()
-    if(musicQueuePlaybackIndex >= 0 && musicQueueUsingIframeFallback) return
+    if(musicQueuePlaybackIndex >= 0 && musicQueueUsingIframeFallback){
+      musicQueuePlayerPreparing = false
+      const hasPlayableItems = getMusicQueueItems().some((item)=>getMusicVideoId(item))
+      musicQueuePlayBtn.disabled = !hasPlayableItems
+      musicQueueStartFirstBtn.disabled = !hasPlayableItems
+      return
+    }
     if(!musicYouTubePlayer){
       await new Promise((resolve, reject)=>{
         const playerVars = {autoplay:0, enablejsapi:1}
@@ -6227,6 +6235,7 @@ async function prepareMusicQueuePlayer(){
       })
     }
     const queueItems = getMusicQueueItems()
+    musicQueuePlayerPreparing = false
     musicQueueStatusEl.textContent = musicQueuePlaybackIndex >= 0
       ? `Playing ${musicQueuePlaybackIndex + 1} of ${musicQueuePlaybackItems.length}`
       : (queueItems.length
@@ -6236,6 +6245,7 @@ async function prepareMusicQueuePlayer(){
     musicQueueStartFirstBtn.disabled = musicQueuePlayBtn.disabled
   }catch(error){
     console.error('Could not prepare the music queue player:', error)
+    musicQueuePlayerPreparing = false
     musicQueueStatusEl.textContent = getMusicQueueItems().length
       ? 'Player API unavailable; the queue will use YouTube’s embedded playlist.'
       : 'The YouTube player could not be loaded. Close and reopen the queue to retry.'
@@ -6302,8 +6312,8 @@ function renderMusicQueuePreview(){
     musicQueueItemsEl.appendChild(itemRow)
   })
   const hasPlayableItems = queueItems.some((item)=>getMusicVideoId(item))
-  musicQueuePlayBtn.disabled = !hasPlayableItems
-  musicQueueStartFirstBtn.disabled = !hasPlayableItems
+  musicQueuePlayBtn.disabled = !hasPlayableItems || musicQueuePlayerPreparing
+  musicQueueStartFirstBtn.disabled = !hasPlayableItems || musicQueuePlayerPreparing
   if(musicQueuePlaybackIndex < 0){
     musicQueueStatusEl.textContent = queueItems.length
       ? 'Click a video to move it up; right-click to move it down.'
