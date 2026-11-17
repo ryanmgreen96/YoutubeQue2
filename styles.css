@@ -473,9 +473,13 @@ body.pdf-mode .theme-switcher{max-width:calc(100% - 12px)}
 .music-queue-preview.hidden{display:none}
 .music-queue-status{margin:0 0 8px;color:var(--text-soft);font-size:11px}
 .music-queue-items{display:grid;gap:5px;max-height:210px;margin-bottom:10px;overflow:auto}
-.music-queue-item{width:100%;padding:7px 9px;border:1px solid rgba(255,255,255,0.12);border-radius:6px;background:rgba(255,255,255,0.04);color:var(--text);font-size:12px;line-height:1.35;text-align:left;overflow-wrap:anywhere}
+.music-queue-item-row{display:flex;align-items:stretch;gap:4px;min-width:0}
+.music-queue-item{flex:1;min-width:0;width:auto;padding:7px 9px;border:1px solid rgba(255,255,255,0.12);border-radius:6px;background:rgba(255,255,255,0.04);color:var(--text);font-size:12px;line-height:1.35;text-align:left;overflow-wrap:anywhere}
 .music-queue-item:hover:not(:disabled){background:rgba(255,255,255,0.1)}
 .music-queue-item:disabled{opacity:0.7}
+.music-queue-remove{flex:0 0 30px;padding:0;border:1px solid rgba(255,150,140,0.35);border-radius:6px;background:rgba(120,40,35,0.24);color:#ffd7d7;font-size:16px;line-height:1}
+.music-queue-remove:hover:not(:disabled){background:rgba(180,55,50,0.45)}
+.music-queue-remove:disabled{opacity:0.55;cursor:not-allowed}
 .music-queue-play-btn{min-height:34px;margin-bottom:12px;padding:7px 14px;border:1px solid color-mix(in srgb, var(--accent) 42%, transparent);border-radius:7px;background:color-mix(in srgb, var(--accent) 15%, transparent);color:#fff2d8}
 .music-queue-play-btn:disabled{opacity:0.55;cursor:not-allowed}
 .music-player-frame-wrap{width:100%;aspect-ratio:16 / 9;background:#000}

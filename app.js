@@ -6021,6 +6021,10 @@ function moveMusicQueueItem(queueIds, itemId, direction){
   return moved
 }
 
+function removeMusicQueueItem(queueIds, itemId){
+  return queueIds.filter((queuedId)=>queuedId !== itemId)
+}
+
 function addMusicItemToQueue(item){
   if(!item || !isMusicPage(item.pageId) || musicQueueIds.includes(item.id)) return
   musicQueueIds.push(item.id)
@@ -6193,12 +6197,8 @@ async function prepareMusicQueuePlayer(){
               musicYouTubePlayerReady = true
               resolve()
             },
-            onStateChange:(event)=>{
-              if(event.data === window.YT.PlayerState.ENDED) playNextMusicQueueItem()
-            },
-            onError:()=>{
-              if(musicQueuePlaybackIndex >= 0) playNextMusicQueueItem()
-            }
+            onStateChange:handleMusicQueuePlayerStateChange,
+            onError:handleMusicQueuePlayerError
           }
         })
       })
@@ -6229,6 +6229,8 @@ function renderMusicQueuePreview(){
   }
   musicQueueItemsEl.replaceChildren()
   queueItems.forEach((item, index)=>{
+    const itemRow = document.createElement('div')
+    itemRow.className = 'music-queue-item-row'
     const row = document.createElement('button')
     row.type = 'button'
     row.className = 'music-queue-item'
@@ -6250,7 +6252,22 @@ function renderMusicQueuePreview(){
       saveMusicQueue()
       renderMusicQueuePreview()
     })
-    musicQueueItemsEl.appendChild(row)
+    const removeButton = document.createElement('button')
+    removeButton.type = 'button'
+    removeButton.className = 'music-queue-remove'
+    removeButton.textContent = '×'
+    removeButton.title = `Remove ${item.title || item.url} from queue`
+    removeButton.setAttribute('aria-label', removeButton.title)
+    removeButton.disabled = musicQueuePlaybackIndex >= 0
+    removeButton.addEventListener('click', (event)=>{
+      event.stopPropagation()
+      musicQueueIds = removeMusicQueueItem(musicQueueIds, item.id)
+      saveMusicQueue()
+      musicPlayerTitleEl.textContent = `Music queue (${getMusicQueueItems().length})`
+      renderMusicQueuePreview()
+    })
+    itemRow.append(row, removeButton)
+    musicQueueItemsEl.appendChild(itemRow)
   })
   musicQueuePlayBtn.disabled = !queueItems.length || musicQueuePlaybackIndex >= 0
   if(musicQueuePlaybackIndex < 0){
@@ -6293,10 +6310,25 @@ function openMusicQueuePreview(){
 }
 
 function startMusicQueue(){
-  musicQueuePlaybackItems = getMusicQueueItems()
+  musicQueuePlaybackItems = getMusicQueueItems().filter((item)=>item.videoId || extractVideoId(item.url))
   if(!musicQueuePlaybackItems.length) return
   musicQueueUsingIframeFallback = !musicYouTubePlayerReady || !musicYouTubePlayer
   musicQueuePlaybackIndex = 0
+  if(!musicQueueUsingIframeFallback){
+    const firstItem = musicQueuePlaybackItems[0]
+    musicQueuePlayBtn.disabled = true
+    musicQueuePlayBtn.textContent = 'Playing…'
+    musicPlayerItemId = firstItem.id
+    musicPlayerTitleEl.textContent = `Music queue — 1 of ${musicQueuePlaybackItems.length}: ${firstItem.title || firstItem.url}`
+    musicQueueStatusEl.textContent = `Playing 1 of ${musicQueuePlaybackItems.length}`
+    renderMusicQueuePreview()
+    musicYouTubePlayer.loadPlaylist(
+      musicQueuePlaybackItems.map((item)=>item.videoId || extractVideoId(item.url)),
+      0,
+      Math.max(0, Number(firstItem.startSeconds) || 0)
+    )
+    return
+  }
   playMusicQueueItem(musicQueuePlaybackIndex)
 }
 
@@ -6316,14 +6348,7 @@ function scheduleMusicQueueFallbackAdvance(item){
 
 function playMusicQueueItem(index){
   if(index < 0 || index >= musicQueuePlaybackItems.length){
-    musicQueuePlaybackIndex = -1
-    musicQueuePlaybackItems = []
-    musicQueueUsingIframeFallback = false
-    clearTimeout(musicQueueAdvanceTimer)
-    musicQueueAdvanceTimer = null
-    musicQueuePlayBtn.textContent = 'Play queue'
-    renderMusicQueuePreview()
-    musicQueueStatusEl.textContent = 'Queue finished.'
+    finishMusicQueuePlayback()
     return
   }
   const item = musicQueuePlaybackItems[index]
@@ -6355,6 +6380,49 @@ function playNextMusicQueueItem(){
   clearTimeout(musicQueueAdvanceTimer)
   musicQueueAdvanceTimer = null
   playMusicQueueItem(musicQueuePlaybackIndex + 1)
+}
+
+function finishMusicQueuePlayback(){
+  musicQueuePlaybackIndex = -1
+  musicQueuePlaybackItems = []
+  musicQueueUsingIframeFallback = false
+  clearTimeout(musicQueueAdvanceTimer)
+  musicQueueAdvanceTimer = null
+  musicQueuePlayBtn.textContent = 'Play queue'
+  renderMusicQueuePreview()
+  musicQueueStatusEl.textContent = 'Queue finished.'
+}
+
+function handleMusicQueuePlayerStateChange(event){
+  if(musicQueuePlaybackIndex < 0 || musicQueueUsingIframeFallback) return
+  if(event.data === window.YT.PlayerState.ENDED){
+    const index = musicYouTubePlayer.getPlaylistIndex()
+    if(index >= musicQueuePlaybackItems.length - 1) finishMusicQueuePlayback()
+    return
+  }
+  if(event.data !== window.YT.PlayerState.PLAYING) return
+  const index = musicYouTubePlayer.getPlaylistIndex()
+  if(index < 0 || index >= musicQueuePlaybackItems.length || index === musicQueuePlaybackIndex) return
+  musicQueuePlaybackIndex = index
+  const item = musicQueuePlaybackItems[index]
+  musicPlayerItemId = item.id
+  musicPlayerTitleEl.textContent = `Music queue — ${index + 1} of ${musicQueuePlaybackItems.length}: ${item.title || item.url}`
+  musicQueueStatusEl.textContent = `Playing ${index + 1} of ${musicQueuePlaybackItems.length}`
+  renderMusicQueuePreview()
+  const startSeconds = Math.max(0, Number(item.startSeconds) || 0)
+  if(startSeconds > 0) musicYouTubePlayer.seekTo(startSeconds, true)
+}
+
+function handleMusicQueuePlayerError(){
+  if(musicQueuePlaybackIndex < 0) return
+  const currentIndex = musicYouTubePlayer.getPlaylistIndex()
+  const nextIndex = (currentIndex >= 0 ? currentIndex : musicQueuePlaybackIndex) + 1
+  if(nextIndex >= musicQueuePlaybackItems.length){
+    finishMusicQueuePlayback()
+    return
+  }
+  musicQueuePlaybackIndex = nextIndex
+  musicYouTubePlayer.playVideoAt(nextIndex)
 }
 
 function openMusicPlayer(item, useSavedStart=false){

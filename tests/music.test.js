@@ -70,6 +70,16 @@ test('moving a queued item at an edge keeps the same order', () => {
   assert.deepEqual(Array.from(context.moveMusicQueueItem(queue, 'second', 1)), queue)
 })
 
+test('removing a queued item preserves the order of the remaining items', () => {
+  const queue = ['first', 'second', 'third']
+
+  assert.deepEqual(
+    Array.from(context.removeMusicQueueItem(queue, 'second')),
+    ['first', 'third']
+  )
+  assert.deepEqual(queue, ['first', 'second', 'third'])
+})
+
 const durationFunction = appSource.match(/function formatMusicDuration\(seconds\)\{[\s\S]*?\n\}/)
 assert.ok(durationFunction)
 vm.runInContext(durationFunction[0], context)
