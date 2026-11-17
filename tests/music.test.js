@@ -89,3 +89,27 @@ test('music durations use total minutes and two-digit seconds', () => {
   assert.equal(context.formatMusicDuration(86), '1:26')
   assert.equal(context.formatMusicDuration(3602), '60:02')
 })
+
+const queueEmbedFunction = appSource.match(/function getMusicQueueEmbedUrl\(queueItems\)\{[\s\S]*?\n\}/)
+const musicVideoIdFunction = appSource.match(/function getMusicVideoId\(item\)\{[\s\S]*?\n\}/)
+assert.ok(queueEmbedFunction)
+assert.ok(musicVideoIdFunction)
+context.extractVideoId = (url)=>url && url.includes('youtube.com/watch?v=') ? new URL(url).searchParams.get('v') : null
+context.URL = URL
+context.URLSearchParams = URLSearchParams
+context.window = {location:{origin:'https://example.test'}}
+vm.runInContext(musicVideoIdFunction[0], context)
+vm.runInContext(queueEmbedFunction[0], context)
+
+test('fallback queue embed plays ordered videos without duration metadata', () => {
+  const embedUrl = new URL(context.getMusicQueueEmbedUrl([
+    {videoId:'first', startSeconds:17},
+    {url:'https://youtu.be/second'},
+    {videoId:'third'}
+  ]))
+
+  assert.equal(embedUrl.pathname, '/embed/first')
+  assert.equal(embedUrl.searchParams.get('playlist'), 'second,third')
+  assert.equal(embedUrl.searchParams.get('autoplay'), '1')
+  assert.equal(embedUrl.searchParams.get('start'), '17')
+})

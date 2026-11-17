@@ -207,7 +207,6 @@ let musicQueueMode = false
 let musicQueueIds = loadMusicQueue()
 let musicQueuePlaybackItems = []
 let musicQueuePlaybackIndex = -1
-let musicQueueAdvanceTimer = null
 let musicQueueUsingIframeFallback = false
 let musicYouTubePlayer = null
 let musicYouTubePlayerReady = false
@@ -4279,10 +4278,6 @@ function requestMusicItemDurations(musicItems){
         if(item && Number.isFinite(seconds) && seconds > 0) item.durationSeconds = Math.round(seconds)
       })
       if(durations.some((result)=>Number(result.durationSeconds) > 0)) save()
-      if(musicQueueUsingIframeFallback && musicQueuePlaybackIndex >= 0){
-        const playingItem = musicQueuePlaybackItems[musicQueuePlaybackIndex]
-        if(playingItem) scheduleMusicQueueFallbackAdvance(playingItem)
-      }
       if(currentPageId === MUSIC_PAGE_ID) renderPreservingSectionScroll()
     }).catch((error)=>{
       batch.forEach((item)=>musicDurationPending.delete(item.id))
@@ -6123,17 +6118,39 @@ function saveMusicItemSettings(){
 }
 
 function getMusicEmbedUrl(item, seconds=0){
-  let videoId = item && (item.videoId || extractVideoId(item.url))
-  if(!videoId && item && item.url){
-    try{
-      const url = new URL(item.url)
-      if(url.hostname === 'youtu.be') videoId = url.pathname.split('/').filter(Boolean)[0]
-    }catch(e){}
-  }
+  const videoId = getMusicVideoId(item)
   if(!videoId) return ''
   const start = Math.max(0, Math.floor(Number(seconds) || 0))
   const params = new URLSearchParams({autoplay:'1', start:String(start)})
   return `https://www.youtube-nocookie.com/embed/${encodeURIComponent(videoId)}?${params.toString()}`
+}
+
+function getMusicVideoId(item){
+  const videoId = item && (item.videoId || extractVideoId(item.url))
+  if(videoId) return videoId
+  if(item && item.url){
+    try{
+      const url = new URL(item.url)
+      if(url.hostname.replace(/^www\./, '') === 'youtu.be'){
+        return url.pathname.split('/').filter(Boolean)[0] || null
+      }
+    }catch(e){}
+  }
+  return null
+}
+
+function getMusicQueueEmbedUrl(queueItems){
+  const videos = queueItems
+    .map((item)=>({item, videoId:getMusicVideoId(item)}))
+    .filter((video)=>video.videoId)
+  if(!videos.length) return ''
+  const firstVideo = videos[0]
+  const params = new URLSearchParams({
+    autoplay:'1',
+    start:String(Math.max(0, Number(firstVideo.item.startSeconds) || 0))
+  })
+  if(videos.length > 1) params.set('playlist', videos.slice(1).map((video)=>video.videoId).join(','))
+  return `https://www.youtube-nocookie.com/embed/${encodeURIComponent(firstVideo.videoId)}?${params.toString()}`
 }
 
 function loadMusicYouTubeApi(){
@@ -6213,7 +6230,7 @@ async function prepareMusicQueuePlayer(){
   }catch(error){
     console.error('Could not prepare the music queue player:', error)
     musicQueueStatusEl.textContent = getMusicQueueItems().length
-      ? 'YouTube’s player is unavailable; Play queue will use duration-based playback.'
+      ? 'Player API unavailable; Play queue will use YouTube’s embedded playlist.'
       : 'The YouTube player could not be loaded. Close and reopen the queue to retry.'
     musicQueuePlayBtn.disabled = !getMusicQueueItems().length || musicQueuePlaybackIndex >= 0
   }
@@ -6294,8 +6311,6 @@ function openMusicQueuePreview(){
   musicQueuePlaybackItems = []
   musicQueuePlaybackIndex = -1
   musicQueueUsingIframeFallback = false
-  clearTimeout(musicQueueAdvanceTimer)
-  musicQueueAdvanceTimer = null
   musicPlayerItemId = null
   musicQueuePlayBtn.textContent = 'Play queue'
   musicPlayerTitleEl.textContent = `Music queue (${getMusicQueueItems().length})`
@@ -6310,84 +6325,37 @@ function openMusicQueuePreview(){
 }
 
 function startMusicQueue(){
-  musicQueuePlaybackItems = getMusicQueueItems().filter((item)=>item.videoId || extractVideoId(item.url))
-  if(!musicQueuePlaybackItems.length) return
+  musicQueuePlaybackItems = getMusicQueueItems().filter((item)=>getMusicVideoId(item))
+  if(!musicQueuePlaybackItems.length){
+    musicQueueStatusEl.textContent = 'This queue has no playable YouTube videos.'
+    return
+  }
   musicQueueUsingIframeFallback = !musicYouTubePlayerReady || !musicYouTubePlayer
   musicQueuePlaybackIndex = 0
-  if(!musicQueueUsingIframeFallback){
-    const firstItem = musicQueuePlaybackItems[0]
-    musicQueuePlayBtn.disabled = true
-    musicQueuePlayBtn.textContent = 'Playing…'
-    musicPlayerItemId = firstItem.id
+  const firstItem = musicQueuePlaybackItems[0]
+  musicQueuePlayBtn.disabled = true
+  musicQueuePlayBtn.textContent = 'Playing…'
+  musicPlayerItemId = firstItem.id
+  renderMusicQueuePreview()
+  if(musicQueueUsingIframeFallback){
+    musicPlayerTitleEl.textContent = `Music queue (${musicQueuePlaybackItems.length} videos)`
+    musicQueueStatusEl.textContent = 'Playing queue; YouTube will advance through the videos automatically.'
+    musicPlayerFrameEl.src = getMusicQueueEmbedUrl(musicQueuePlaybackItems)
+  }else{
     musicPlayerTitleEl.textContent = `Music queue — 1 of ${musicQueuePlaybackItems.length}: ${firstItem.title || firstItem.url}`
     musicQueueStatusEl.textContent = `Playing 1 of ${musicQueuePlaybackItems.length}`
-    renderMusicQueuePreview()
     musicYouTubePlayer.loadPlaylist(
-      musicQueuePlaybackItems.map((item)=>item.videoId || extractVideoId(item.url)),
+      musicQueuePlaybackItems.map((item)=>getMusicVideoId(item)),
       0,
       Math.max(0, Number(firstItem.startSeconds) || 0)
     )
-    return
   }
-  playMusicQueueItem(musicQueuePlaybackIndex)
-}
-
-function scheduleMusicQueueFallbackAdvance(item){
-  clearTimeout(musicQueueAdvanceTimer)
-  musicQueueAdvanceTimer = null
-  if(!musicQueueUsingIframeFallback || musicQueuePlaybackIndex < 0) return
-  const durationSeconds = Number(item && item.durationSeconds)
-  const startSeconds = Math.max(0, Number(item && item.startSeconds) || 0)
-  if(!Number.isFinite(durationSeconds) || durationSeconds <= startSeconds){
-    musicQueueStatusEl.textContent = `Playing ${musicQueuePlaybackIndex + 1} of ${musicQueuePlaybackItems.length}; waiting for video duration.`
-    return
-  }
-  musicQueueStatusEl.textContent = `Playing ${musicQueuePlaybackIndex + 1} of ${musicQueuePlaybackItems.length}`
-  musicQueueAdvanceTimer = setTimeout(playNextMusicQueueItem, (durationSeconds - startSeconds) * 1000)
-}
-
-function playMusicQueueItem(index){
-  if(index < 0 || index >= musicQueuePlaybackItems.length){
-    finishMusicQueuePlayback()
-    return
-  }
-  const item = musicQueuePlaybackItems[index]
-  const videoId = item.videoId || extractVideoId(item.url)
-  if(!videoId){
-    playNextMusicQueueItem()
-    return
-  }
-  musicQueuePlaybackIndex = index
-  musicPlayerItemId = item.id
-  musicPlayerTitleEl.textContent = `Music queue — ${index + 1} of ${musicQueuePlaybackItems.length}: ${item.title || item.url}`
-  musicQueueStatusEl.textContent = `Playing ${index + 1} of ${musicQueuePlaybackItems.length}`
-  musicQueuePlayBtn.disabled = true
-  musicQueuePlayBtn.textContent = 'Playing…'
-  renderMusicQueuePreview()
-  if(musicYouTubePlayerReady && musicYouTubePlayer && !musicQueueUsingIframeFallback){
-    musicYouTubePlayer.loadVideoById({
-      videoId,
-      startSeconds:Math.max(0, Number(item.startSeconds) || 0)
-    })
-  }else{
-    musicPlayerFrameEl.src = getMusicEmbedUrl(item, item.startSeconds)
-    scheduleMusicQueueFallbackAdvance(item)
-  }
-}
-
-function playNextMusicQueueItem(){
-  if(musicQueuePlaybackIndex < 0) return
-  clearTimeout(musicQueueAdvanceTimer)
-  musicQueueAdvanceTimer = null
-  playMusicQueueItem(musicQueuePlaybackIndex + 1)
 }
 
 function finishMusicQueuePlayback(){
   musicQueuePlaybackIndex = -1
   musicQueuePlaybackItems = []
   musicQueueUsingIframeFallback = false
-  clearTimeout(musicQueueAdvanceTimer)
-  musicQueueAdvanceTimer = null
   musicQueuePlayBtn.textContent = 'Play queue'
   renderMusicQueuePreview()
   musicQueueStatusEl.textContent = 'Queue finished.'
@@ -6430,8 +6398,6 @@ function openMusicPlayer(item, useSavedStart=false){
   musicQueuePlaybackItems = []
   musicQueuePlaybackIndex = -1
   musicQueueUsingIframeFallback = false
-  clearTimeout(musicQueueAdvanceTimer)
-  musicQueueAdvanceTimer = null
   musicQueuePreviewEl.classList.add('hidden')
   musicPlayerOverlayEl.classList.remove('queue-previewing')
   const startSeconds = useSavedStart ? Number(item.startSeconds) || 0 : 0
@@ -6445,7 +6411,7 @@ function openMusicPlayer(item, useSavedStart=false){
   musicPlayerTimeInputEl.value = item.startSeconds ? formatMusicStartTime(item.startSeconds) : ''
   if(musicYouTubePlayerReady && musicYouTubePlayer){
     musicYouTubePlayer.loadVideoById({
-      videoId:item.videoId || extractVideoId(item.url),
+      videoId:getMusicVideoId(item),
       startSeconds
     })
   }else{
@@ -6463,8 +6429,6 @@ function closeMusicPlayer(){
   musicQueuePlaybackIndex = -1
   musicQueueMode = false
   musicQueueUsingIframeFallback = false
-  clearTimeout(musicQueueAdvanceTimer)
-  musicQueueAdvanceTimer = null
   musicQueuePlayBtn.textContent = 'Play queue'
   musicPlayerOverlayEl.classList.remove('queue-previewing')
   musicQueuePreviewEl.classList.add('hidden')
@@ -6508,7 +6472,7 @@ function startMusicPlayerAtEnteredTime(){
   save()
   if(musicYouTubePlayerReady && musicYouTubePlayer){
     musicYouTubePlayer.loadVideoById({
-      videoId:item.videoId || extractVideoId(item.url),
+      videoId:getMusicVideoId(item),
       startSeconds
     })
   }else{
