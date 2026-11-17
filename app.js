@@ -6146,15 +6146,14 @@ function getMusicVideoId(item){
 function getMusicQueueEmbedUrl(queueItems, startIndex=0){
   const videos = queueItems
     .map((item)=>({item, videoId:getMusicVideoId(item)}))
-    .filter((video)=>video.videoId)
-  if(!videos.length) return ''
+  if(!videos.length || videos.some((video)=>!video.videoId)) return ''
   const startAt = Math.max(0, Math.min(videos.length - 1, Math.floor(Number(startIndex) || 0)))
   const currentVideo = videos[startAt]
   const params = new URLSearchParams({
     autoplay:'1',
     start:String(Math.max(0, Number(currentVideo.item.startSeconds) || 0))
   })
-  if(startAt < videos.length - 1) params.set('playlist', videos.slice(startAt + 1).map((video)=>video.videoId).join(','))
+  params.set('playlist', videos.slice(startAt).map((video)=>video.videoId).join(','))
   return `https://www.youtube-nocookie.com/embed/${encodeURIComponent(currentVideo.videoId)}?${params.toString()}`
 }
 
@@ -6353,9 +6352,14 @@ function openMusicQueuePreview(){
 }
 
 function startMusicQueue(startIndex=0){
-  musicQueuePlaybackItems = getMusicQueueItems().filter((item)=>getMusicVideoId(item))
+  musicQueuePlaybackItems = getMusicQueueItems()
   if(!musicQueuePlaybackItems.length){
     musicQueueStatusEl.textContent = 'This queue has no playable YouTube videos.'
+    return
+  }
+  const invalidIndex = musicQueuePlaybackItems.findIndex((item)=>!getMusicVideoId(item))
+  if(invalidIndex >= 0){
+    musicQueueStatusEl.textContent = `Queue item ${invalidIndex + 1} has no playable YouTube video ID. Fix or remove it before starting the queue.`
     return
   }
   const startAt = Math.max(0, Math.min(musicQueuePlaybackItems.length - 1, Math.floor(Number(startIndex) || 0)))
@@ -6392,7 +6396,7 @@ function continueMusicQueue(){
     }
     return
   }
-  const queueItems = getMusicQueueItems().filter((item)=>getMusicVideoId(item))
+  const queueItems = getMusicQueueItems()
   const currentIndex = queueItems.findIndex((item)=>item.id === musicQueueCurrentItemId)
   startMusicQueue(currentIndex >= 0 ? currentIndex : 0)
 }

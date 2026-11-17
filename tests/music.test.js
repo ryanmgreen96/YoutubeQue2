@@ -90,7 +90,7 @@ test('music durations use total minutes and two-digit seconds', () => {
   assert.equal(context.formatMusicDuration(3602), '60:02')
 })
 
-const queueEmbedFunction = appSource.match(/function getMusicQueueEmbedUrl\(queueItems\)\{[\s\S]*?\n\}/)
+const queueEmbedFunction = appSource.match(/function getMusicQueueEmbedUrl\(queueItems(?:, startIndex=0)?\)\{[\s\S]*?\n\}/)
 const musicVideoIdFunction = appSource.match(/function getMusicVideoId\(item\)\{[\s\S]*?\n\}/)
 assert.ok(queueEmbedFunction)
 assert.ok(musicVideoIdFunction)
@@ -110,14 +110,23 @@ test('fallback queue embed plays ordered videos without duration metadata', () =
   const embedUrl = new URL(context.getMusicQueueEmbedUrl(queue))
 
   assert.equal(embedUrl.pathname, '/embed/first')
-  assert.equal(embedUrl.searchParams.get('playlist'), 'second,third')
+  assert.equal(embedUrl.searchParams.get('playlist'), 'first,second,third')
   assert.equal(embedUrl.searchParams.get('autoplay'), '1')
   assert.equal(embedUrl.searchParams.get('start'), '17')
 
   const currentUrl = new URL(context.getMusicQueueEmbedUrl(queue, 1))
   assert.equal(currentUrl.pathname, '/embed/second')
-  assert.equal(currentUrl.searchParams.get('playlist'), 'third')
+  assert.equal(currentUrl.searchParams.get('playlist'), 'second,third')
   assert.equal(currentUrl.searchParams.get('start'), '31')
+})
+
+test('fallback queue embed refuses to silently skip an item without a video ID', () => {
+  const queue = [
+    {url:'https://example.test/not-a-youtube-video'},
+    {videoId:'second'}
+  ]
+
+  assert.equal(context.getMusicQueueEmbedUrl(queue), '')
 })
 
 const startQueueFunction = appSource.match(/function startMusicQueue\(startIndex=0\)\{[\s\S]*?\n\}/)
@@ -152,6 +161,7 @@ context.musicQueueUsingIframeFallback = false
 context.musicQueuePlayBtn = {disabled:false, textContent:''}
 context.musicPlayerTitleEl = {textContent:''}
 context.musicQueueStatusEl = {textContent:''}
+context.musicPlayerFrameEl = {src:''}
 context.renderMusicQueuePreview = ()=>{}
 context.console = {error:()=>{}}
 vm.runInContext(startQueueFunction[0], context)
@@ -180,6 +190,22 @@ test('starting from first loads playlist index zero after disabling shuffle', ()
     ['loadPlaylist', ['video-one', 'video-two', 'video-three'], 0, 0]
   ])
   assert.equal(context.musicQueueCurrentItemId, 'one')
+})
+
+test('starting the queue reports an invalid first item instead of playing the second', () => {
+  queuePlayerCalls.length = 0
+  context.getMusicQueueItems = ()=>[
+    {id:'invalid-first', url:'https://example.test/not-a-youtube-video'},
+    {id:'valid-second', videoId:'video-two'}
+  ]
+  context.musicQueueStatusEl.textContent = ''
+  context.musicPlayerFrameEl.src = ''
+  context.startMusicQueue(0)
+
+  assert.match(context.musicQueueStatusEl.textContent, /queue item 1 has no playable YouTube video ID/i)
+  assert.equal(context.musicPlayerFrameEl.src, '')
+  assert.equal(queuePlayerCalls.length, 0)
+  context.getMusicQueueItems = ()=>playbackQueue
 })
 
 test('player starting at the wrong index is corrected to the requested first item', () => {
