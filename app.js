@@ -170,6 +170,7 @@ const musicQueuePreviewEl = document.getElementById('music-queue-preview')
 const musicQueueItemsEl = document.getElementById('music-queue-items')
 const musicQueueStatusEl = document.getElementById('music-queue-status')
 const musicQueuePlayBtn = document.getElementById('music-queue-play-btn')
+const musicQueueStartFirstBtn = document.getElementById('music-queue-start-first-btn')
 const audioScriptOverlayEl = document.getElementById('audio-script-overlay')
 const audioScriptTitleEl = document.getElementById('audio-script-title')
 const audioItemTitleInputEl = document.getElementById('audio-item-title-input')
@@ -207,6 +208,7 @@ let musicQueueMode = false
 let musicQueueIds = loadMusicQueue()
 let musicQueuePlaybackItems = []
 let musicQueuePlaybackIndex = -1
+let musicQueueCurrentItemId = null
 let musicQueueUsingIframeFallback = false
 let musicYouTubePlayer = null
 let musicYouTubePlayerReady = false
@@ -6139,18 +6141,19 @@ function getMusicVideoId(item){
   return null
 }
 
-function getMusicQueueEmbedUrl(queueItems){
+function getMusicQueueEmbedUrl(queueItems, startIndex=0){
   const videos = queueItems
     .map((item)=>({item, videoId:getMusicVideoId(item)}))
     .filter((video)=>video.videoId)
   if(!videos.length) return ''
-  const firstVideo = videos[0]
+  const startAt = Math.max(0, Math.min(videos.length - 1, Math.floor(Number(startIndex) || 0)))
+  const currentVideo = videos[startAt]
   const params = new URLSearchParams({
     autoplay:'1',
-    start:String(Math.max(0, Number(firstVideo.item.startSeconds) || 0))
+    start:String(Math.max(0, Number(currentVideo.item.startSeconds) || 0))
   })
-  if(videos.length > 1) params.set('playlist', videos.slice(1).map((video)=>video.videoId).join(','))
-  return `https://www.youtube-nocookie.com/embed/${encodeURIComponent(firstVideo.videoId)}?${params.toString()}`
+  if(startAt < videos.length - 1) params.set('playlist', videos.slice(startAt + 1).map((video)=>video.videoId).join(','))
+  return `https://www.youtube-nocookie.com/embed/${encodeURIComponent(currentVideo.videoId)}?${params.toString()}`
 }
 
 function loadMusicYouTubeApi(){
@@ -6199,7 +6202,9 @@ function loadMusicYouTubeApi(){
 async function prepareMusicQueuePlayer(){
   if(!musicQueueStatusEl || !musicQueuePlayBtn) return
   musicQueueStatusEl.textContent = 'Preparing the YouTube player…'
-  musicQueuePlayBtn.disabled = !getMusicQueueItems().length || musicQueuePlaybackIndex >= 0
+  const hasPlayableItems = getMusicQueueItems().some((item)=>getMusicVideoId(item))
+  musicQueuePlayBtn.disabled = !hasPlayableItems
+  musicQueueStartFirstBtn.disabled = !hasPlayableItems
   try{
     await loadMusicYouTubeApi()
     if(musicQueuePlaybackIndex >= 0 && musicQueueUsingIframeFallback) return
@@ -6226,13 +6231,16 @@ async function prepareMusicQueuePlayer(){
       : (queueItems.length
         ? 'Click a video to move it up; right-click to move it down.'
         : 'Your queue is empty. Turn on queue mode and click music videos to add them.')
-    musicQueuePlayBtn.disabled = !queueItems.length || musicQueuePlaybackIndex >= 0
+    musicQueuePlayBtn.disabled = !queueItems.some((item)=>getMusicVideoId(item))
+    musicQueueStartFirstBtn.disabled = musicQueuePlayBtn.disabled
   }catch(error){
     console.error('Could not prepare the music queue player:', error)
     musicQueueStatusEl.textContent = getMusicQueueItems().length
-      ? 'Player API unavailable; Play queue will use YouTube’s embedded playlist.'
+      ? 'Player API unavailable; the queue will use YouTube’s embedded playlist.'
       : 'The YouTube player could not be loaded. Close and reopen the queue to retry.'
-    musicQueuePlayBtn.disabled = !getMusicQueueItems().length || musicQueuePlaybackIndex >= 0
+    const hasPlayableItems = getMusicQueueItems().some((item)=>getMusicVideoId(item))
+    musicQueuePlayBtn.disabled = !hasPlayableItems
+    musicQueueStartFirstBtn.disabled = !hasPlayableItems
   }
 }
 
@@ -6252,12 +6260,17 @@ function renderMusicQueuePreview(){
     row.type = 'button'
     row.className = 'music-queue-item'
     row.disabled = musicQueuePlaybackIndex >= 0
+    const isPlaying = item.id === musicQueueCurrentItemId
+      && musicQueuePlaybackIndex >= 0
+      && !musicQueueUsingIframeFallback
+    row.classList.toggle('is-playing', isPlaying)
     const duration = Number(item.durationSeconds) > 0
       ? formatMusicDuration(item.durationSeconds)
       : 'Duration unavailable'
-    row.textContent = `${index + 1}. ${item.title || item.url} · ${duration}`
+    row.textContent = `${isPlaying ? '▶ ' : ''}${index + 1}. ${item.title || item.url} · ${duration}`
     row.title = 'Left-click to move up; right-click to move down'
-    row.setAttribute('aria-label', `${item.title || item.url}, position ${index + 1} of ${queueItems.length}, ${duration}`)
+    row.setAttribute('aria-label', `${item.title || item.url}, position ${index + 1} of ${queueItems.length}${isPlaying ? ', currently playing' : ''}, ${duration}`)
+    if(isPlaying) row.setAttribute('aria-current', 'true')
     row.addEventListener('click', ()=>{
       musicQueueIds = moveMusicQueueItem(musicQueueIds, item.id, -1)
       saveMusicQueue()
@@ -6279,6 +6292,7 @@ function renderMusicQueuePreview(){
     removeButton.addEventListener('click', (event)=>{
       event.stopPropagation()
       musicQueueIds = removeMusicQueueItem(musicQueueIds, item.id)
+      if(musicQueueCurrentItemId === item.id) musicQueueCurrentItemId = null
       saveMusicQueue()
       musicPlayerTitleEl.textContent = `Music queue (${getMusicQueueItems().length})`
       renderMusicQueuePreview()
@@ -6286,7 +6300,9 @@ function renderMusicQueuePreview(){
     itemRow.append(row, removeButton)
     musicQueueItemsEl.appendChild(itemRow)
   })
-  musicQueuePlayBtn.disabled = !queueItems.length || musicQueuePlaybackIndex >= 0
+  const hasPlayableItems = queueItems.some((item)=>getMusicVideoId(item))
+  musicQueuePlayBtn.disabled = !hasPlayableItems
+  musicQueueStartFirstBtn.disabled = !hasPlayableItems
   if(musicQueuePlaybackIndex < 0){
     musicQueueStatusEl.textContent = queueItems.length
       ? 'Click a video to move it up; right-click to move it down.'
@@ -6312,7 +6328,7 @@ function openMusicQueuePreview(){
   musicQueuePlaybackIndex = -1
   musicQueueUsingIframeFallback = false
   musicPlayerItemId = null
-  musicQueuePlayBtn.textContent = 'Play queue'
+  musicQueuePlayBtn.textContent = 'Continue from current'
   musicPlayerTitleEl.textContent = `Music queue (${getMusicQueueItems().length})`
   musicPlayerTimeInputEl.value = ''
   if(!musicYouTubePlayerReady) musicPlayerFrameEl.src = ''
@@ -6324,39 +6340,54 @@ function openMusicQueuePreview(){
   prepareMusicQueuePlayer()
 }
 
-function startMusicQueue(){
+function startMusicQueue(startIndex=0){
   musicQueuePlaybackItems = getMusicQueueItems().filter((item)=>getMusicVideoId(item))
   if(!musicQueuePlaybackItems.length){
     musicQueueStatusEl.textContent = 'This queue has no playable YouTube videos.'
     return
   }
+  const startAt = Math.max(0, Math.min(musicQueuePlaybackItems.length - 1, Math.floor(Number(startIndex) || 0)))
   musicQueueUsingIframeFallback = !musicYouTubePlayerReady || !musicYouTubePlayer
-  musicQueuePlaybackIndex = 0
-  const firstItem = musicQueuePlaybackItems[0]
-  musicQueuePlayBtn.disabled = true
-  musicQueuePlayBtn.textContent = 'Playing…'
-  musicPlayerItemId = firstItem.id
+  musicQueuePlaybackIndex = startAt
+  const currentItem = musicQueuePlaybackItems[startAt]
+  musicQueueCurrentItemId = currentItem.id
+  musicPlayerItemId = currentItem.id
   renderMusicQueuePreview()
   if(musicQueueUsingIframeFallback){
     musicPlayerTitleEl.textContent = `Music queue (${musicQueuePlaybackItems.length} videos)`
-    musicQueueStatusEl.textContent = 'Playing queue; YouTube will advance through the videos automatically.'
-    musicPlayerFrameEl.src = getMusicQueueEmbedUrl(musicQueuePlaybackItems)
+    musicQueueStatusEl.textContent = 'Playing queue; YouTube advances automatically, but the current item cannot be tracked here.'
+    musicPlayerFrameEl.src = getMusicQueueEmbedUrl(musicQueuePlaybackItems, startAt)
   }else{
-    musicPlayerTitleEl.textContent = `Music queue — 1 of ${musicQueuePlaybackItems.length}: ${firstItem.title || firstItem.url}`
-    musicQueueStatusEl.textContent = `Playing 1 of ${musicQueuePlaybackItems.length}`
+    musicPlayerTitleEl.textContent = `Music queue — ${startAt + 1} of ${musicQueuePlaybackItems.length}: ${currentItem.title || currentItem.url}`
+    musicQueueStatusEl.textContent = `Playing ${startAt + 1} of ${musicQueuePlaybackItems.length}`
     musicYouTubePlayer.loadPlaylist(
       musicQueuePlaybackItems.map((item)=>getMusicVideoId(item)),
-      0,
-      Math.max(0, Number(firstItem.startSeconds) || 0)
+      startAt,
+      Math.max(0, Number(currentItem.startSeconds) || 0)
     )
+    musicYouTubePlayer.setShuffle(false)
   }
+}
+
+function continueMusicQueue(){
+  if(musicQueuePlaybackIndex >= 0){
+    if(!musicQueueUsingIframeFallback && musicYouTubePlayerReady && musicYouTubePlayer){
+      musicYouTubePlayer.playVideo()
+    }else if(musicQueueUsingIframeFallback){
+      musicQueueStatusEl.textContent = 'The queue is already playing in YouTube.'
+    }
+    return
+  }
+  const queueItems = getMusicQueueItems().filter((item)=>getMusicVideoId(item))
+  const currentIndex = queueItems.findIndex((item)=>item.id === musicQueueCurrentItemId)
+  startMusicQueue(currentIndex >= 0 ? currentIndex : 0)
 }
 
 function finishMusicQueuePlayback(){
   musicQueuePlaybackIndex = -1
   musicQueuePlaybackItems = []
   musicQueueUsingIframeFallback = false
-  musicQueuePlayBtn.textContent = 'Play queue'
+  musicQueuePlayBtn.textContent = 'Continue from current'
   renderMusicQueuePreview()
   musicQueueStatusEl.textContent = 'Queue finished.'
 }
@@ -6373,6 +6404,7 @@ function handleMusicQueuePlayerStateChange(event){
   if(index < 0 || index >= musicQueuePlaybackItems.length || index === musicQueuePlaybackIndex) return
   musicQueuePlaybackIndex = index
   const item = musicQueuePlaybackItems[index]
+  musicQueueCurrentItemId = item.id
   musicPlayerItemId = item.id
   musicPlayerTitleEl.textContent = `Music queue — ${index + 1} of ${musicQueuePlaybackItems.length}: ${item.title || item.url}`
   musicQueueStatusEl.textContent = `Playing ${index + 1} of ${musicQueuePlaybackItems.length}`
@@ -6390,11 +6422,17 @@ function handleMusicQueuePlayerError(){
     return
   }
   musicQueuePlaybackIndex = nextIndex
+  const nextItem = musicQueuePlaybackItems[nextIndex]
+  musicQueueCurrentItemId = nextItem.id
+  musicPlayerTitleEl.textContent = `Music queue — ${nextIndex + 1} of ${musicQueuePlaybackItems.length}: ${nextItem.title || nextItem.url}`
+  musicQueueStatusEl.textContent = `Playing ${nextIndex + 1} of ${musicQueuePlaybackItems.length}`
+  renderMusicQueuePreview()
   musicYouTubePlayer.playVideoAt(nextIndex)
 }
 
 function openMusicPlayer(item, useSavedStart=false){
   if(!musicPlayerOverlayEl || !item) return
+  musicQueueCurrentItemId = item.id
   musicQueuePlaybackItems = []
   musicQueuePlaybackIndex = -1
   musicQueueUsingIframeFallback = false
@@ -6429,7 +6467,7 @@ function closeMusicPlayer(){
   musicQueuePlaybackIndex = -1
   musicQueueMode = false
   musicQueueUsingIframeFallback = false
-  musicQueuePlayBtn.textContent = 'Play queue'
+  musicQueuePlayBtn.textContent = 'Continue from current'
   musicPlayerOverlayEl.classList.remove('queue-previewing')
   musicQueuePreviewEl.classList.add('hidden')
   if(musicYouTubePlayerReady && musicYouTubePlayer){
@@ -7791,7 +7829,8 @@ if(musicItemCancelBtn) musicItemCancelBtn.addEventListener('click', closeMusicIt
 if(musicPlayerCloseBtn) musicPlayerCloseBtn.addEventListener('click', closeMusicPlayer)
 if(musicPlayerFavoriteBtn) musicPlayerFavoriteBtn.addEventListener('click', toggleMusicPlayerFavorite)
 if(musicPlayerStartBtn) musicPlayerStartBtn.addEventListener('click', startMusicPlayerAtEnteredTime)
-if(musicQueuePlayBtn) musicQueuePlayBtn.addEventListener('click', startMusicQueue)
+if(musicQueuePlayBtn) musicQueuePlayBtn.addEventListener('click', continueMusicQueue)
+if(musicQueueStartFirstBtn) musicQueueStartFirstBtn.addEventListener('click', ()=>startMusicQueue(0))
 if(musicPlayerOverlayEl){
   const backdrop = musicPlayerOverlayEl.querySelector('.music-player-backdrop')
   if(backdrop) backdrop.addEventListener('click', closeMusicPlayer)

@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width,initial-scale=1" />
   <title>YouTube Queue</title>
   <meta name="build" content="staged-push-20260831" />
-  <link rel="stylesheet" href="styles.css?v=20261116c">
+  <link rel="stylesheet" href="styles.css?v=20261116d">
 </head>
 <body>
   <header>
@@ -248,7 +248,10 @@
       <div id="music-queue-preview" class="music-queue-preview hidden">
         <p id="music-queue-status" class="music-queue-status" aria-live="polite"></p>
         <div id="music-queue-items" class="music-queue-items"></div>
-        <button id="music-queue-play-btn" class="music-queue-play-btn" type="button" disabled>Play queue</button>
+        <div class="music-queue-actions">
+          <button id="music-queue-start-first-btn" type="button" disabled>Start from first</button>
+          <button id="music-queue-play-btn" class="music-queue-play-btn" type="button" disabled>Continue from current</button>
+        </div>
       </div>
       <div class="music-player-frame-wrap">
         <iframe id="music-player-frame" title="Music video player" allow="autoplay; encrypted-media; picture-in-picture" allowfullscreen></iframe>
@@ -299,6 +302,6 @@
   <script src="https://cdn.jsdelivr.net/npm/astronomy-engine@2.1.19/astronomy.browser.min.js" defer></script>
   <script src="https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/build/pdf.min.js" defer></script>
   <script src="astronomy-widget.js?v=20261021b" defer></script>
-  <script src="app.js?v=20261116c" defer></script>
+  <script src="app.js?v=20261116d" defer></script>
 </body>
 </html>

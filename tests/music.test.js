@@ -102,14 +102,60 @@ vm.runInContext(musicVideoIdFunction[0], context)
 vm.runInContext(queueEmbedFunction[0], context)
 
 test('fallback queue embed plays ordered videos without duration metadata', () => {
-  const embedUrl = new URL(context.getMusicQueueEmbedUrl([
+  const queue = [
     {videoId:'first', startSeconds:17},
-    {url:'https://youtu.be/second'},
+    {url:'https://youtu.be/second', startSeconds:31},
     {videoId:'third'}
-  ]))
+  ]
+  const embedUrl = new URL(context.getMusicQueueEmbedUrl(queue))
 
   assert.equal(embedUrl.pathname, '/embed/first')
   assert.equal(embedUrl.searchParams.get('playlist'), 'second,third')
   assert.equal(embedUrl.searchParams.get('autoplay'), '1')
   assert.equal(embedUrl.searchParams.get('start'), '17')
+
+  const currentUrl = new URL(context.getMusicQueueEmbedUrl(queue, 1))
+  assert.equal(currentUrl.pathname, '/embed/second')
+  assert.equal(currentUrl.searchParams.get('playlist'), 'third')
+  assert.equal(currentUrl.searchParams.get('start'), '31')
+})
+
+const startQueueFunction = appSource.match(/function startMusicQueue\(startIndex=0\)\{[\s\S]*?\n\}/)
+const continueQueueFunction = appSource.match(/function continueMusicQueue\(\)\{[\s\S]*?\n\}/)
+assert.ok(startQueueFunction)
+assert.ok(continueQueueFunction)
+const queuePlayerCalls = []
+const queuePlayer = {
+  loadPlaylist:(...args)=>queuePlayerCalls.push(['loadPlaylist', ...args]),
+  setShuffle:(shuffle)=>queuePlayerCalls.push(['setShuffle', shuffle])
+}
+const playbackQueue = [
+  {id:'one', videoId:'video-one'},
+  {id:'two', videoId:'video-two', startSeconds:31},
+  {id:'three', videoId:'video-three'}
+]
+context.getMusicQueueItems = ()=>playbackQueue
+context.musicYouTubePlayer = queuePlayer
+context.musicYouTubePlayerReady = true
+context.musicQueuePlaybackItems = []
+context.musicQueuePlaybackIndex = -1
+context.musicQueueCurrentItemId = null
+context.musicQueueUsingIframeFallback = false
+context.musicQueuePlayBtn = {disabled:false, textContent:''}
+context.musicPlayerTitleEl = {textContent:''}
+context.musicQueueStatusEl = {textContent:''}
+context.renderMusicQueuePreview = ()=>{}
+vm.runInContext(startQueueFunction[0], context)
+vm.runInContext(continueQueueFunction[0], context)
+
+test('continuing queue starts at the current item without shuffling its order', () => {
+  queuePlayerCalls.length = 0
+  context.musicQueueCurrentItemId = 'two'
+  context.continueMusicQueue()
+
+  assert.deepEqual(queuePlayerCalls, [
+    ['loadPlaylist', ['video-one', 'video-two', 'video-three'], 1, 31],
+    ['setShuffle', false]
+  ])
+  assert.equal(context.musicQueueCurrentItemId, 'two')
 })
