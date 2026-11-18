@@ -156,6 +156,8 @@ const carbItemSaveBtn = document.getElementById('carb-item-save-btn')
 const carbItemCancelBtn = document.getElementById('carb-item-cancel-btn')
 const musicItemDialogEl = document.getElementById('music-item-dialog')
 const musicStartTimeInputEl = document.getElementById('music-start-time-input')
+const musicZonesListEl = document.getElementById('music-zones-list')
+const musicZoneAddBtn = document.getElementById('music-zone-add-btn')
 const musicFavoriteCheckboxEl = document.getElementById('music-favorite-checkbox')
 const musicItemSaveBtn = document.getElementById('music-item-save-btn')
 const musicItemCancelBtn = document.getElementById('music-item-cancel-btn')
@@ -215,6 +217,9 @@ let musicQueuePlayerPreparing = false
 let musicYouTubePlayer = null
 let musicYouTubePlayerReady = false
 let musicYouTubeApiPromise = null
+let musicYouTubePlayerCreatePromise = null
+let musicZonePlayback = null
+let musicZonePlaybackTimer = null
 const musicDurationLookups = new Set()
 const musicDurationPending = new Set()
 const musicFavoriteModeTabs = new Set()
@@ -6031,6 +6036,24 @@ function addMusicItemToQueue(item){
   renderPreservingSectionScroll()
 }
 
+function clearMusicQueue(){
+  musicQueueIds = []
+  saveMusicQueue()
+  if(musicZonePlayback && musicZonePlayback.isQueue){
+    clearMusicZonePlayback()
+    musicQueuePlaybackItems = []
+    musicQueuePlaybackIndex = -1
+    musicQueueAwaitingStartIndex = false
+    musicQueueUsingIframeFallback = false
+    if(musicYouTubePlayerReady && musicYouTubePlayer) musicYouTubePlayer.stopVideo()
+  }
+  if(musicPlayerOverlayEl && !musicPlayerOverlayEl.classList.contains('hidden') && musicQueuePreviewEl && !musicQueuePreviewEl.classList.contains('hidden')){
+    musicPlayerTitleEl.textContent = 'Music queue (0)'
+    renderMusicQueuePreview()
+  }
+  renderPreservingSectionScroll()
+}
+
 function moveItemToTopWithinPageTab(list, itemId, pageId, tabId){
   const item = list.find((entry)=>entry.id===itemId)
   if(!item) return list.slice()
@@ -6087,10 +6110,82 @@ function formatMusicDuration(seconds){
   return `${Math.floor(safe / 60)}:${String(safe % 60).padStart(2, '0')}`
 }
 
+function getMusicZones(item){
+  if(!item || !Array.isArray(item.zones)) return []
+  return item.zones.filter((zone)=>{
+    if(!zone || !Number.isInteger(zone.startSeconds) || zone.startSeconds < 0) return false
+    if(zone.endSeconds === null || zone.endSeconds === undefined || zone.endSeconds === '') return true
+    return Number.isInteger(zone.endSeconds) && zone.endSeconds > zone.startSeconds
+  }).map((zone)=>({
+    startSeconds:zone.startSeconds,
+    endSeconds:zone.endSeconds === null || zone.endSeconds === undefined || zone.endSeconds === ''
+      ? null
+      : zone.endSeconds
+  }))
+}
+
+function getMusicPlaybackSegments(item){
+  const zones = getMusicZones(item)
+  return zones.length
+    ? zones
+    : [{startSeconds:Math.max(0, Number(item && item.startSeconds) || 0), endSeconds:null}]
+}
+
+function createMusicZoneRow(zone={}){
+  const row = document.createElement('div')
+  row.className = 'music-zone-row'
+  const startLabel = document.createElement('label')
+  startLabel.className = 'hold-link-field'
+  const startText = document.createElement('span')
+  startText.textContent = 'From'
+  const startInput = document.createElement('input')
+  startInput.type = 'text'
+  startInput.inputMode = 'text'
+  startInput.autocomplete = 'off'
+  startInput.placeholder = '0:10'
+  startInput.setAttribute('aria-label', 'Zone start time')
+  startInput.value = Number.isInteger(Number(zone.startSeconds))
+    ? formatMusicStartTime(zone.startSeconds)
+    : ''
+  startLabel.append(startText, startInput)
+
+  const endLabel = document.createElement('label')
+  endLabel.className = 'hold-link-field'
+  const endText = document.createElement('span')
+  endText.textContent = 'To'
+  const endInput = document.createElement('input')
+  endInput.type = 'text'
+  endInput.inputMode = 'text'
+  endInput.autocomplete = 'off'
+  endInput.placeholder = '0:40'
+  endInput.setAttribute('aria-label', 'Zone end time')
+  endInput.value = zone.endSeconds === null || zone.endSeconds === undefined
+    ? ''
+    : formatMusicStartTime(zone.endSeconds)
+  endLabel.append(endText, endInput)
+
+  const removeButton = document.createElement('button')
+  removeButton.type = 'button'
+  removeButton.className = 'music-zone-remove'
+  removeButton.textContent = '×'
+  removeButton.title = 'Remove zone'
+  removeButton.setAttribute('aria-label', 'Remove zone')
+  removeButton.addEventListener('click', ()=>row.remove())
+  row.append(startLabel, endLabel, removeButton)
+  return row
+}
+
+function renderMusicZones(zones){
+  if(!musicZonesListEl) return
+  musicZonesListEl.replaceChildren()
+  getMusicZones({zones}).forEach((zone)=>musicZonesListEl.appendChild(createMusicZoneRow(zone)))
+}
+
 function openMusicItemDialog(item){
   if(!musicItemDialogEl || !item) return
   musicDialogItemId = item.id
   musicStartTimeInputEl.value = item.startSeconds ? formatMusicStartTime(item.startSeconds) : ''
+  renderMusicZones(item.zones)
   musicFavoriteCheckboxEl.checked = item.favorite === true
   musicItemDialogEl.classList.remove('hidden')
   musicItemDialogEl.setAttribute('aria-hidden', 'false')
@@ -6114,7 +6209,29 @@ function saveMusicItemSettings(){
     return
   }
   musicStartTimeInputEl.setCustomValidity('')
+  const zones = []
+  for(const row of musicZonesListEl.querySelectorAll('.music-zone-row')){
+    const [startInput, endInput] = row.querySelectorAll('input')
+    startInput.setCustomValidity('')
+    endInput.setCustomValidity('')
+    const startValue = startInput.value.trim()
+    const endValue = endInput.value.trim()
+    const zoneStart = parseMusicStartTime(startValue)
+    const zoneEnd = endValue ? parseMusicStartTime(endValue) : null
+    if(!startValue || zoneStart === null){
+      startInput.setCustomValidity('Enter a valid zone start time.')
+      startInput.reportValidity()
+      return
+    }
+    if(endValue && (zoneEnd === null || zoneEnd <= zoneStart)){
+      endInput.setCustomValidity('Zone end time must be later than its start.')
+      endInput.reportValidity()
+      return
+    }
+    zones.push({startSeconds:zoneStart, endSeconds:zoneEnd})
+  }
   item.startSeconds = startSeconds
+  item.zones = zones
   item.favorite = musicFavoriteCheckboxEl.checked
   save()
   closeMusicItemDialog()
@@ -6200,6 +6317,41 @@ function loadMusicYouTubeApi(){
   return musicYouTubeApiPromise
 }
 
+async function ensureMusicYouTubePlayer(){
+  await loadMusicYouTubeApi()
+  if(musicYouTubePlayerReady && musicYouTubePlayer) return musicYouTubePlayer
+  if(!musicYouTubePlayerCreatePromise){
+    musicYouTubePlayerCreatePromise = new Promise((resolve, reject)=>{
+      const timeoutHandle = setTimeout(()=>{
+        musicYouTubePlayerCreatePromise = null
+        reject(new Error('YouTube player initialization timed out'))
+      }, 15000)
+      try{
+        const playerVars = {autoplay:0, enablejsapi:1}
+        if(window.location.origin && window.location.origin !== 'null') playerVars.origin = window.location.origin
+        musicYouTubePlayer = new window.YT.Player('music-player-frame', {
+          playerVars,
+          events:{
+            onReady:()=>{
+              clearTimeout(timeoutHandle)
+              musicYouTubePlayerReady = true
+              musicYouTubePlayerCreatePromise = null
+              resolve(musicYouTubePlayer)
+            },
+            onStateChange:handleMusicQueuePlayerStateChange,
+            onError:handleMusicQueuePlayerError
+          }
+        })
+      }catch(error){
+        clearTimeout(timeoutHandle)
+        musicYouTubePlayerCreatePromise = null
+        reject(error)
+      }
+    })
+  }
+  return musicYouTubePlayerCreatePromise
+}
+
 async function prepareMusicQueuePlayer(){
   if(!musicQueueStatusEl || !musicQueuePlayBtn) return
   musicQueuePlayerPreparing = true
@@ -6208,7 +6360,6 @@ async function prepareMusicQueuePlayer(){
   musicQueuePlayBtn.disabled = true
   musicQueueStartFirstBtn.disabled = true
   try{
-    await loadMusicYouTubeApi()
     if(musicQueuePlaybackIndex >= 0 && musicQueueUsingIframeFallback){
       musicQueuePlayerPreparing = false
       const hasPlayableItems = getMusicQueueItems().some((item)=>getMusicVideoId(item))
@@ -6216,23 +6367,7 @@ async function prepareMusicQueuePlayer(){
       musicQueueStartFirstBtn.disabled = !hasPlayableItems
       return
     }
-    if(!musicYouTubePlayer){
-      await new Promise((resolve, reject)=>{
-        const playerVars = {autoplay:0, enablejsapi:1}
-        if(window.location.origin && window.location.origin !== 'null') playerVars.origin = window.location.origin
-        musicYouTubePlayer = new window.YT.Player('music-player-frame', {
-          playerVars,
-          events:{
-            onReady:()=>{
-              musicYouTubePlayerReady = true
-              resolve()
-            },
-            onStateChange:handleMusicQueuePlayerStateChange,
-            onError:handleMusicQueuePlayerError
-          }
-        })
-      })
-    }
+    await ensureMusicYouTubePlayer()
     const queueItems = getMusicQueueItems()
     musicQueuePlayerPreparing = false
     musicQueueStatusEl.textContent = musicQueuePlaybackIndex >= 0
@@ -6351,6 +6486,138 @@ function openMusicQueuePreview(){
   prepareMusicQueuePlayer()
 }
 
+function clearMusicZonePlayback(){
+  if(musicZonePlaybackTimer){
+    clearInterval(musicZonePlaybackTimer)
+    musicZonePlaybackTimer = null
+  }
+  musicZonePlayback = null
+}
+
+function loadCurrentMusicZoneSegment(){
+  const playback = musicZonePlayback
+  if(!playback) return
+  const item = playback.items[playback.itemIndex]
+  if(!item) return finishMusicZonePlayback()
+  const segments = getMusicPlaybackSegments(item)
+  const segment = segments[playback.segmentIndex]
+  if(!segment) return finishMusicZonePlayback()
+  const videoId = getMusicVideoId(item)
+  if(!videoId){
+    const message = 'A video in this playback sequence has no playable YouTube video ID.'
+    if(playback.isQueue) musicQueueStatusEl.textContent = message
+    else musicPlayerTitleEl.textContent = message
+    return finishMusicZonePlayback()
+  }
+  playback.transitioning = true
+  musicPlayerItemId = item.id
+  musicQueueCurrentItemId = item.id
+  if(playback.isQueue){
+    musicQueuePlaybackIndex = playback.itemIndex
+    musicPlayerTitleEl.textContent = `Music queue — ${playback.itemIndex + 1} of ${playback.items.length}: ${item.title || item.url}`
+    musicQueueStatusEl.textContent = `Playing ${playback.itemIndex + 1} of ${playback.items.length}${segments.length > 1 ? ` · zone ${playback.segmentIndex + 1} of ${segments.length}` : ''}`
+    renderMusicQueuePreview()
+  }else{
+    musicPlayerTitleEl.textContent = item.title || item.url || 'Music video'
+  }
+  musicYouTubePlayer.loadVideoById({
+    videoId,
+    startSeconds:segment.startSeconds
+  })
+}
+
+async function startMusicZonePlayback(queueItems, startIndex=0, isQueue=false){
+  clearMusicZonePlayback()
+  const itemsToPlay = queueItems.slice()
+  const startAt = Math.max(0, Math.min(itemsToPlay.length - 1, Math.floor(Number(startIndex) || 0)))
+  musicZonePlayback = {
+    items:itemsToPlay,
+    itemIndex:startAt,
+    segmentIndex:0,
+    isQueue,
+    transitioning:false
+  }
+  if(isQueue){
+    musicQueuePlaybackItems = itemsToPlay
+    musicQueuePlaybackIndex = startAt
+    musicQueueAwaitingStartIndex = false
+    musicQueueUsingIframeFallback = false
+    musicQueueCurrentItemId = itemsToPlay[startAt] && itemsToPlay[startAt].id
+  }
+  try{
+    await ensureMusicYouTubePlayer()
+    if(!musicZonePlayback || musicZonePlayback.items !== itemsToPlay) return
+    loadCurrentMusicZoneSegment()
+  }catch(error){
+    if(musicZonePlayback && musicZonePlayback.items === itemsToPlay) clearMusicZonePlayback()
+    if(isQueue){
+      musicQueuePlaybackItems = []
+      musicQueuePlaybackIndex = -1
+      musicQueueStatusEl.textContent = 'Could not load the YouTube player for saved playback zones.'
+    }else{
+      musicPlayerTitleEl.textContent = 'Could not load the YouTube player for saved playback zones.'
+    }
+    console.error('Could not start saved music zones:', error)
+  }
+}
+
+function advanceMusicZonePlayback(){
+  const playback = musicZonePlayback
+  if(!playback || playback.transitioning) return
+  playback.transitioning = true
+  const segments = getMusicPlaybackSegments(playback.items[playback.itemIndex])
+  if(playback.segmentIndex + 1 < segments.length){
+    playback.segmentIndex += 1
+    loadCurrentMusicZoneSegment()
+    return
+  }
+  if(playback.isQueue && playback.itemIndex + 1 < playback.items.length){
+    playback.itemIndex += 1
+    playback.segmentIndex = 0
+    loadCurrentMusicZoneSegment()
+    return
+  }
+  finishMusicZonePlayback()
+}
+
+function finishMusicZonePlayback(){
+  const wasQueue = !!(musicZonePlayback && musicZonePlayback.isQueue)
+  clearMusicZonePlayback()
+  if(!wasQueue) return
+  musicQueuePlaybackIndex = -1
+  musicQueuePlaybackItems = []
+  musicQueueAwaitingStartIndex = false
+  musicQueueUsingIframeFallback = false
+  musicQueuePlayBtn.textContent = 'Continue from current'
+  renderMusicQueuePreview()
+  musicQueueStatusEl.textContent = 'Queue finished.'
+}
+
+function handleMusicZonePlaybackStateChange(event){
+  if(!musicZonePlayback) return
+  if(event.data === window.YT.PlayerState.ENDED){
+    if(musicZonePlayback.transitioning) return
+    advanceMusicZonePlayback()
+    return
+  }
+  if(event.data === window.YT.PlayerState.PLAYING){
+    musicZonePlayback.transitioning = false
+    if(musicZonePlaybackTimer) clearInterval(musicZonePlaybackTimer)
+    musicZonePlaybackTimer = setInterval(()=>{
+      if(!musicZonePlayback || musicZonePlayback.transitioning) return
+      const segment = getMusicPlaybackSegments(musicZonePlayback.items[musicZonePlayback.itemIndex])[musicZonePlayback.segmentIndex]
+      if(!segment || segment.endSeconds === null) return
+      const currentTime = Number(musicYouTubePlayer.getCurrentTime())
+      if(Number.isFinite(currentTime) && currentTime >= segment.endSeconds - 0.1) advanceMusicZonePlayback()
+    }, 250)
+    return
+  }
+  if(musicZonePlaybackTimer){
+    clearInterval(musicZonePlaybackTimer)
+    musicZonePlaybackTimer = null
+  }
+}
+
 function startMusicQueue(startIndex=0){
   musicQueuePlaybackItems = getMusicQueueItems()
   if(!musicQueuePlaybackItems.length){
@@ -6363,6 +6630,10 @@ function startMusicQueue(startIndex=0){
     return
   }
   const startAt = Math.max(0, Math.min(musicQueuePlaybackItems.length - 1, Math.floor(Number(startIndex) || 0)))
+  if(musicQueuePlaybackItems.some((item)=>getMusicZones(item).length)){
+    startMusicZonePlayback(musicQueuePlaybackItems, startAt, true)
+    return
+  }
   musicQueueUsingIframeFallback = !musicYouTubePlayerReady || !musicYouTubePlayer
   musicQueuePlaybackIndex = startAt
   const currentItem = musicQueuePlaybackItems[startAt]
@@ -6412,6 +6683,10 @@ function finishMusicQueuePlayback(){
 }
 
 function handleMusicQueuePlayerStateChange(event){
+  if(typeof musicZonePlayback !== 'undefined' && musicZonePlayback){
+    handleMusicZonePlaybackStateChange(event)
+    return
+  }
   if(musicQueuePlaybackIndex < 0 || musicQueueUsingIframeFallback) return
   if(event.data === window.YT.PlayerState.ENDED){
     const index = musicYouTubePlayer.getPlaylistIndex()
@@ -6443,6 +6718,25 @@ function handleMusicQueuePlayerStateChange(event){
 }
 
 function handleMusicQueuePlayerError(event){
+  if(typeof musicZonePlayback !== 'undefined' && musicZonePlayback){
+    const playback = musicZonePlayback
+    const failedItem = playback.items[playback.itemIndex]
+    const errorCode = Number(event && event.data)
+    clearMusicZonePlayback()
+    if(playback.isQueue){
+      musicQueuePlaybackIndex = -1
+      musicQueuePlaybackItems = []
+      musicQueueStatusEl.textContent = `YouTube could not play ${failedItem.title || failedItem.url} (error ${errorCode}). Queue stopped.`
+    }else{
+      musicPlayerTitleEl.textContent = `YouTube could not play this video (error ${errorCode}).`
+    }
+    console.error('YouTube could not play a saved music zone:', {
+      itemId:failedItem.id,
+      title:failedItem.title || failedItem.url,
+      errorCode
+    })
+    return
+  }
   if(musicQueuePlaybackIndex < 0) return
   const currentIndex = musicYouTubePlayer.getPlaylistIndex()
   const failedIndex = musicQueueAwaitingStartIndex
@@ -6469,13 +6763,15 @@ function handleMusicQueuePlayerError(event){
 
 function openMusicPlayer(item, useSavedStart=false){
   if(!musicPlayerOverlayEl || !item) return
+  clearMusicZonePlayback()
   musicQueueCurrentItemId = item.id
   musicQueuePlaybackItems = []
   musicQueuePlaybackIndex = -1
   musicQueueUsingIframeFallback = false
   musicQueuePreviewEl.classList.add('hidden')
   musicPlayerOverlayEl.classList.remove('queue-previewing')
-  const startSeconds = useSavedStart ? Number(item.startSeconds) || 0 : 0
+  const savedZones = useSavedStart ? getMusicZones(item) : []
+  const startSeconds = useSavedStart && !savedZones.length ? Number(item.startSeconds) || 0 : 0
   const embedUrl = getMusicEmbedUrl(item, startSeconds)
   if(!embedUrl){
     alert('This item does not have a playable YouTube video.')
@@ -6485,12 +6781,20 @@ function openMusicPlayer(item, useSavedStart=false){
   musicPlayerTitleEl.textContent = item.title || item.url || 'Music video'
   musicPlayerTimeInputEl.value = item.startSeconds ? formatMusicStartTime(item.startSeconds) : ''
   if(musicYouTubePlayerReady && musicYouTubePlayer){
-    musicYouTubePlayer.loadVideoById({
-      videoId:getMusicVideoId(item),
-      startSeconds
-    })
+    if(savedZones.length){
+      startMusicZonePlayback([item], 0, false)
+    }else{
+      musicYouTubePlayer.loadVideoById({
+        videoId:getMusicVideoId(item),
+        startSeconds
+      })
+    }
   }else{
-    musicPlayerFrameEl.src = embedUrl
+    if(savedZones.length){
+      startMusicZonePlayback([item], 0, false)
+    }else{
+      musicPlayerFrameEl.src = embedUrl
+    }
   }
   syncMusicPlayerFavoriteButton(item)
   musicPlayerOverlayEl.classList.remove('hidden')
@@ -6499,6 +6803,7 @@ function openMusicPlayer(item, useSavedStart=false){
 
 function closeMusicPlayer(){
   if(!musicPlayerOverlayEl) return
+  clearMusicZonePlayback()
   musicPlayerItemId = null
   musicQueuePlaybackItems = []
   musicQueuePlaybackIndex = -1
@@ -6546,14 +6851,6 @@ function startMusicPlayerAtEnteredTime(){
   musicPlayerTimeInputEl.setCustomValidity('')
   item.startSeconds = startSeconds
   save()
-  if(musicYouTubePlayerReady && musicYouTubePlayer){
-    musicYouTubePlayer.loadVideoById({
-      videoId:getMusicVideoId(item),
-      startSeconds
-    })
-  }else{
-    musicPlayerFrameEl.src = getMusicEmbedUrl(item, startSeconds)
-  }
   render()
 }
 
@@ -7238,11 +7535,15 @@ function renderTabBar(pageId){
     queueToggle.className = `main-tab title-filter-toggle music-queue-toggle${musicQueueMode ? ' selected' : ''}`
     queueToggle.textContent = '▶'
     queueToggle.title = musicQueueMode
-      ? 'Queue mode ON: click to preview the queue'
-      : `Build music queue (${getMusicQueueItems().length} items)`
+      ? 'Queue mode ON: click to preview; right-click to clear the queue'
+      : `Build music queue (${getMusicQueueItems().length} items); right-click to clear`
     queueToggle.setAttribute('aria-label', queueToggle.title)
     queueToggle.setAttribute('aria-pressed', String(musicQueueMode))
     queueToggle.addEventListener('click', toggleMusicQueueMode)
+    queueToggle.addEventListener('contextmenu', (event)=>{
+      event.preventDefault()
+      clearMusicQueue()
+    })
     row.appendChild(queueToggle)
   }
 
@@ -7734,10 +8035,6 @@ function renderSection(title, list, showHomeControls = false, hideGrid = false){
         return
       }
       if(editMode){ selectItem(it.id, list); return }
-      if(isMusicPage(currentPageId) && musicQueueMode && event.button===0){
-        addMusicItemToQueue(it)
-        return
-      }
       if(isMusicPage(currentPageId) && event.button !== 0) return
       if(isMusicPage(currentPageId)){
         markLastViewedItem(it.id)
@@ -7757,6 +8054,7 @@ function renderSection(title, list, showHomeControls = false, hideGrid = false){
         if(event.button !== 2 || editMode) return
         suppressAudioMusicContextMenuUntil = Date.now() + 5000
         rightPressHandled = false
+        if(musicQueueMode) return
         if(favoriteModeEnabled){
           rightPressHandled = true
           return
@@ -7770,6 +8068,11 @@ function renderSection(title, list, showHomeControls = false, hideGrid = false){
         if(event.button !== 2) return
         clearTimeout(rightPressTimer)
         suppressAudioMusicContextMenuUntil = Date.now() + 1500
+        if(musicQueueMode && !editMode){
+          rightPressHandled = true
+          addMusicItemToQueue(it)
+          return
+        }
         if(favoriteModeEnabled && !editMode){
           promoteMusicItemToTop(it)
           return
@@ -7864,6 +8167,9 @@ if(musicItemDialogEl){
 }
 if(musicItemSaveBtn) musicItemSaveBtn.addEventListener('click', saveMusicItemSettings)
 if(musicItemCancelBtn) musicItemCancelBtn.addEventListener('click', closeMusicItemDialog)
+if(musicZoneAddBtn) musicZoneAddBtn.addEventListener('click', ()=>{
+  if(musicZonesListEl) musicZonesListEl.appendChild(createMusicZoneRow())
+})
 if(musicPlayerCloseBtn) musicPlayerCloseBtn.addEventListener('click', closeMusicPlayer)
 if(musicPlayerFavoriteBtn) musicPlayerFavoriteBtn.addEventListener('click', toggleMusicPlayerFavorite)
 if(musicPlayerStartBtn) musicPlayerStartBtn.addEventListener('click', startMusicPlayerAtEnteredTime)

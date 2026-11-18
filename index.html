@@ -229,6 +229,14 @@
         <span>Start at</span>
         <input id="music-start-time-input" type="text" inputmode="text" autocomplete="off" placeholder="0:00" aria-label="Start time">
       </label>
+      <div class="music-zones-field">
+        <div class="music-zones-heading">
+          <span>Playback zones</span>
+          <button id="music-zone-add-btn" type="button">Add zone</button>
+        </div>
+        <div id="music-zones-list" class="music-zones-list"></div>
+        <p class="music-zones-hint">Play each From time until To, then jump to the next zone. Leave To blank to play to the end.</p>
+      </div>
       <label class="hold-random-row music-favorite-row">
         <input id="music-favorite-checkbox" type="checkbox">
         <span>Favorite</span>
@@ -262,7 +270,7 @@
           <span>Start at</span>
           <input id="music-player-time-input" type="text" inputmode="text" autocomplete="off" placeholder="0:00" aria-label="Start time">
         </label>
-        <button id="music-player-start-btn" type="button">Start</button>
+        <button id="music-player-start-btn" type="button">Save</button>
       </div>
     </section>
   </div>
@@ -299,6 +307,8 @@
     </section>
   </div>
 
+
+ 
   <script src="https://cdn.jsdelivr.net/npm/astronomy-engine@2.1.19/astronomy.browser.min.js" defer></script>
   <script src="https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/build/pdf.min.js" defer></script>
   <script src="astronomy-widget.js?v=20261021b" defer></script>

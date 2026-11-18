@@ -90,6 +90,39 @@ test('music durations use total minutes and two-digit seconds', () => {
   assert.equal(context.formatMusicDuration(3602), '60:02')
 })
 
+const musicZonesFunction = appSource.match(/function getMusicZones\(item\)\{[\s\S]*?\n\}/)
+const musicSegmentsFunction = appSource.match(/function getMusicPlaybackSegments\(item\)\{[\s\S]*?\n\}/)
+assert.ok(musicZonesFunction)
+assert.ok(musicSegmentsFunction)
+vm.runInContext(musicZonesFunction[0], context)
+vm.runInContext(musicSegmentsFunction[0], context)
+
+test('saved music zones play in order and allow a final open-ended zone', () => {
+  const item = {
+    startSeconds:12,
+    zones:[
+      {startSeconds:10,endSeconds:40},
+      {startSeconds:60,endSeconds:null}
+    ]
+  }
+
+  assert.deepEqual(Array.from(context.getMusicPlaybackSegments(item), (zone)=>({...zone})), [
+    {startSeconds:10,endSeconds:40},
+    {startSeconds:60,endSeconds:null}
+  ])
+})
+
+test('music playback falls back to the saved start when no valid zones exist', () => {
+  assert.deepEqual(
+    {...context.getMusicPlaybackSegments({startSeconds:12,zones:[{startSeconds:20,endSeconds:10}]})[0]},
+    {startSeconds:12,endSeconds:null}
+  )
+  assert.deepEqual(
+    {...context.getMusicPlaybackSegments({startSeconds:0,zones:[]})[0]},
+    {startSeconds:0,endSeconds:null}
+  )
+})
+
 const queueEmbedFunction = appSource.match(/function getMusicQueueEmbedUrl\(queueItems(?:, startIndex=0)?\)\{[\s\S]*?\n\}/)
 const musicVideoIdFunction = appSource.match(/function getMusicVideoId\(item\)\{[\s\S]*?\n\}/)
 assert.ok(queueEmbedFunction)

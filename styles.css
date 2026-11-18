@@ -463,6 +463,15 @@ body.pdf-mode .theme-switcher{max-width:calc(100% - 12px)}
 .music-favorite-row{padding:6px 8px;font-size:12px}
 .music-dialog-actions{grid-template-columns:1fr 1fr}
 .music-dialog-actions button{text-align:center;padding:7px 8px}
+.music-zones-field{display:grid;gap:6px}
+.music-zones-heading{display:flex;align-items:center;justify-content:space-between;color:#9fb3d9;font-size:11px;letter-spacing:0.04em;text-transform:uppercase}
+.music-zones-heading button{padding:4px 7px;border:1px solid rgba(255,255,255,0.14);border-radius:6px;background:rgba(255,255,255,0.04);color:#e6eef8;font-size:10px;text-transform:none;letter-spacing:normal}
+.music-zones-list{display:grid;gap:6px}
+.music-zone-row{display:grid;grid-template-columns:1fr 1fr 26px;align-items:end;gap:5px}
+.music-zone-row .hold-link-field{gap:3px;font-size:9px}
+.music-zone-row .hold-link-field input{padding:6px;font-size:11px}
+.music-zone-remove{height:30px;padding:0;border:1px solid rgba(255,150,140,0.35);border-radius:6px;background:rgba(120,40,35,0.24);color:#ffd7d7}
+.music-zones-hint{margin:0;color:var(--text-soft);font-size:10px;line-height:1.35}
 .music-player-overlay.hidden{display:none}
 .music-player-overlay{position:fixed;inset:0;z-index:2100;display:flex;align-items:center;justify-content:center;padding:20px}
 .music-player-backdrop{position:absolute;inset:0;background:rgba(2,6,14,0.78)}
