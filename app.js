@@ -4281,7 +4281,7 @@ function requestMusicItemDurations(musicItems){
   for(let offset = 0; offset < missingItems.length; offset += 25){
     const batch = missingItems.slice(offset, offset + 25)
     requestExtensionAction('fetch-video-durations', {
-      items:batch.map((item)=>({id:item.id, url:item.url}))
+      items:batch.map((item)=>({id:item.id, url:item.url, videoId:item.videoId || extractVideoId(item.url)}))
     }).then((payload)=>{
       batch.forEach((item)=>musicDurationPending.delete(item.id))
       const durations = Array.isArray(payload && payload.durations) ? payload.durations : []

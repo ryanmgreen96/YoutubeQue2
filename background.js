@@ -226,17 +226,22 @@ function parseIsoDurationToSeconds(raw){
   return (days * 86400) + (hours * 3600) + (minutes * 60) + seconds
 }
 
-async function fetchVideoDurationSeconds(url){
+async function fetchVideoDurationSeconds(url, videoIdOverride=''){
   try{
-    let videoId = ''
-    try{ videoId = safeText(new URL(url).searchParams.get('v')) }catch(e){ }
+    let videoId = safeText(videoIdOverride)
+    if(!videoId){
+      try{ videoId = safeText(new URL(url).searchParams.get('v')) }catch(e){ }
+    }
+    const requestUrl = videoId
+      ? `https://www.youtube.com/watch?v=${encodeURIComponent(videoId)}`
+      : url
     if(videoId){
       const playerData = await fetchYouTubePlayerData(videoId)
       const seconds = Number(playerData && playerData.videoDetails && playerData.videoDetails.lengthSeconds)
       if(Number.isFinite(seconds) && seconds > 0) return Math.round(seconds)
     }
 
-    const res = await fetch(url)
+    const res = await fetch(requestUrl)
     const txt = await res.text()
     let doc
     try{ doc = new DOMParser().parseFromString(txt, 'text/html') }catch(e){ doc = null }
@@ -1422,11 +1427,14 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse)=>{
   if(message.type === 'fetch-video-durations'){
     const incoming = Array.isArray(message.items) ? message.items.slice(0, 25) : []
     Promise.all(incoming.map(async (item)=>{
-      const url = item && typeof item.url === 'string' ? extractVideoUrlFromTab(item.url) : ''
+      const videoId = safeText(item && item.videoId)
+      const url = item && typeof item.url === 'string'
+        ? (extractVideoUrlFromTab(item.url) || (videoId ? `https://www.youtube.com/watch?v=${encodeURIComponent(videoId)}` : ''))
+        : (videoId ? `https://www.youtube.com/watch?v=${encodeURIComponent(videoId)}` : '')
       if(!url) return {id: safeText(item && item.id), durationSeconds: 0}
       return {
         id: safeText(item && item.id),
-        durationSeconds: await fetchVideoDurationSeconds(url)
+        durationSeconds: await fetchVideoDurationSeconds(url, videoId)
       }
     })).then((durations)=>sendResponse({ok:true, durations}))
       .catch(()=>sendResponse({ok:false, durations:[], error:'Could not fetch video durations'}))

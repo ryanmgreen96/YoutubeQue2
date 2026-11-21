@@ -76,6 +76,7 @@ function loadDurationHelpers(html, playerData = null) {
         ? {ok: true, json: async () => playerData}
         : {ok: false}
     }
+    context.requestedPageUrl = url
     return {ok: true, text: async () => html}
   }
   const start = backgroundSource.indexOf('function parseIsoDurationToSeconds')
@@ -108,7 +109,7 @@ test('fetchVideoDurationSeconds reads YouTube player lengthSeconds', async () =>
     videoDetails: {videoId: 'abc', lengthSeconds: '3661'}
   })
 
-  assert.equal(await context.fetchVideoDurationSeconds('https://www.youtube.com/watch?v=abc'), 3661)
+  assert.equal(await context.fetchVideoDurationSeconds('https://www.youtube.com/live/abc', 'abc'), 3661)
   assert.equal(context.requestedVideoId, 'abc')
 })
 
@@ -116,7 +117,8 @@ test('fetchVideoDurationSeconds falls back to lengthSeconds in watch-page HTML',
   const html = '<script>var ytInitialPlayerResponse = {"videoDetails":{"videoId":"abc","lengthSeconds":"3661"}};</script>'
   const context = loadDurationHelpers(html)
 
-  assert.equal(await context.fetchVideoDurationSeconds('https://www.youtube.com/watch?v=abc'), 3661)
+  assert.equal(await context.fetchVideoDurationSeconds('https://www.youtube.com/live/abc', 'abc'), 3661)
+  assert.equal(context.requestedPageUrl, 'https://www.youtube.com/watch?v=abc')
 })
 
 test('findPublishDateInValue extracts nested publish dates', () => {
