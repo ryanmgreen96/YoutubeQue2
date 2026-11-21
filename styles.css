@@ -458,7 +458,7 @@ body.pdf-mode .theme-switcher{max-width:calc(100% - 12px)}
 .hold-exit-btn{margin-top:2px;font-size:12px;padding:7px 10px;border-radius:999px;color:#d8e7ff}
 .gym-note-dialog-panel{width:min(460px,92vw)}
 .gym-note-textarea{width:100%;min-height:180px;resize:vertical;padding:10px;border:1px solid rgba(255,255,255,0.14);border-radius:8px;background:rgba(255,255,255,0.04);color:var(--text);font:13px/1.45 system-ui,-apple-system,Segoe UI,Roboto,sans-serif}
-.music-dialog-panel{width:min(270px,92vw);padding:10px;gap:8px}
+.music-dialog-panel{width:min(360px,94vw);max-height:calc(100vh - 24px);overflow:auto;padding:10px;gap:8px}
 .music-dialog-panel .hold-dialog-title{font-size:13px}
 .music-favorite-row{padding:6px 8px;font-size:12px}
 .music-dialog-actions{grid-template-columns:1fr 1fr}
@@ -466,12 +466,15 @@ body.pdf-mode .theme-switcher{max-width:calc(100% - 12px)}
 .music-zones-field{display:grid;gap:6px}
 .music-zones-heading{display:flex;align-items:center;justify-content:space-between;color:#9fb3d9;font-size:11px;letter-spacing:0.04em;text-transform:uppercase}
 .music-zones-heading button{padding:4px 7px;border:1px solid rgba(255,255,255,0.14);border-radius:6px;background:rgba(255,255,255,0.04);color:#e6eef8;font-size:10px;text-transform:none;letter-spacing:normal}
-.music-zones-list{display:grid;gap:6px}
-.music-zone-row{display:grid;grid-template-columns:1fr 1fr 26px;align-items:end;gap:5px}
+.music-zones-list{display:grid;gap:8px}
+.music-zone-row{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr) 30px;align-items:end;gap:7px;padding:8px;border:1px solid rgba(255,255,255,.12);border-radius:8px;background:rgba(255,255,255,.035)}
+.music-zone-label{grid-column:1/-1;color:#ffe09b;font-size:11px}
 .music-zone-row .hold-link-field{gap:3px;font-size:9px}
 .music-zone-row .hold-link-field input{padding:6px;font-size:11px}
 .music-zone-remove{height:30px;padding:0;border:1px solid rgba(255,150,140,0.35);border-radius:6px;background:rgba(120,40,35,0.24);color:#ffd7d7}
 .music-zones-hint{margin:0;color:var(--text-soft);font-size:10px;line-height:1.35}
+.music-tab-reorder-hint{flex:1 0 100%;color:#ffe09b;font-size:10px;line-height:1.3}
+.music-tab-reorder-mode .main-tab:not(.selected){border-color:rgba(255,224,155,.45)}
 .music-player-overlay.hidden{display:none}
 .music-player-overlay{position:fixed;inset:0;z-index:2100;display:flex;align-items:center;justify-content:center;padding:20px}
 .music-player-backdrop{position:absolute;inset:0;background:rgba(2,6,14,0.78)}

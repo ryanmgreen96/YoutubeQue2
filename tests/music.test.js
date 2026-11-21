@@ -123,6 +123,29 @@ test('music playback falls back to the saved start when no valid zones exist', (
   )
 })
 
+test('full-video queue entries ignore saved starts and zones', () => {
+  const item = {
+    startSeconds:12,
+    zones:[{startSeconds:30,endSeconds:45}],
+    queuePlaybackMode:'full'
+  }
+
+  assert.deepEqual(
+    Array.from(context.getMusicPlaybackSegments(item), (zone)=>({...zone})),
+    [{startSeconds:0,endSeconds:null}]
+  )
+})
+
+const queuePlaybackModeFunction = appSource.match(/function getMusicQueuePlaybackMode\(itemId\)\{[\s\S]*?\n\}/)
+assert.ok(queuePlaybackModeFunction)
+context.musicQueueFullItemIds = ['full-item']
+vm.runInContext(queuePlaybackModeFunction[0], context)
+
+test('music queue entries default to saved playback unless marked full-length', () => {
+  assert.equal(context.getMusicQueuePlaybackMode('full-item'), 'full')
+  assert.equal(context.getMusicQueuePlaybackMode('saved-item'), 'saved')
+})
+
 const queueEmbedFunction = appSource.match(/function getMusicQueueEmbedUrl\(queueItems(?:, startIndex=0)?\)\{[\s\S]*?\n\}/)
 const musicVideoIdFunction = appSource.match(/function getMusicVideoId\(item\)\{[\s\S]*?\n\}/)
 assert.ok(queueEmbedFunction)
@@ -160,6 +183,14 @@ test('fallback queue embed refuses to silently skip an item without a video ID',
   ]
 
   assert.equal(context.getMusicQueueEmbedUrl(queue), '')
+})
+
+test('full-video queue embeds start at zero instead of the saved start', () => {
+  const embedUrl = new URL(context.getMusicQueueEmbedUrl([
+    {videoId:'video', startSeconds:37, queuePlaybackMode:'full'}
+  ]))
+
+  assert.equal(embedUrl.searchParams.get('start'), '0')
 })
 
 const startQueueFunction = appSource.match(/function startMusicQueue\(startIndex=0\)\{[\s\S]*?\n\}/)

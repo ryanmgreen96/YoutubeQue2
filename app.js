@@ -16,6 +16,7 @@ const LAST_VIEWED_KEY = 'ytLastViewedItem_v1'
 const CURRENT_PAGE_KEY = 'ytCurrentPage_v1'
 const RANDOM_PLAYLISTS_KEY = 'ytRandomPlaylists_v1'
 const MUSIC_QUEUE_KEY = 'ytMusicQueue_v1'
+const MUSIC_QUEUE_FULL_ITEMS_KEY = 'ytMusicQueueFullItems_v1'
 const NOTEBOOK_TEXT_KEY = 'ytNotebookText_v1'
 const NOTEBOOK_SCROLL_KEY = 'ytNotebookScroll_v1'
 const NOTEBOOK_CURSOR_KEY = 'ytNotebookCursor_v1'
@@ -208,12 +209,14 @@ let musicDialogItemId = null
 let musicPlayerItemId = null
 let musicQueueMode = false
 let musicQueueIds = loadMusicQueue()
+let musicQueueFullItemIds = loadMusicQueueFullItemIds()
 let musicQueuePlaybackItems = []
 let musicQueuePlaybackIndex = -1
 let musicQueueCurrentItemId = null
 let musicQueueAwaitingStartIndex = false
 let musicQueueUsingIframeFallback = false
 let musicQueuePlayerPreparing = false
+let musicQueuePreparationVersion = 0
 let musicYouTubePlayer = null
 let musicYouTubePlayerReady = false
 let musicYouTubeApiPromise = null
@@ -223,6 +226,7 @@ let musicZonePlaybackTimer = null
 const musicDurationLookups = new Set()
 const musicDurationPending = new Set()
 const musicFavoriteModeTabs = new Set()
+let musicTabReorderMode = false
 let items = load()
 let pages = loadPages()
 let createPages = loadCreatePages()
@@ -5977,6 +5981,7 @@ function renderPreservingSectionScroll(){
 function removeItem(id){
   items = items.filter(i=>i.id!==id)
   musicQueueIds = musicQueueIds.filter((itemId)=>itemId!==id)
+  musicQueueFullItemIds = musicQueueFullItemIds.filter((itemId)=>itemId!==id)
   saveMusicQueue()
   selectedItemIds.delete(id)
   save()
@@ -5988,6 +5993,7 @@ function deleteSelectedItems(){
   const selectedIds = Array.from(selectedItemIds)
   items = items.filter((item)=>!selectedIds.includes(item.id))
   musicQueueIds = musicQueueIds.filter((itemId)=>!selectedIds.includes(itemId))
+  musicQueueFullItemIds = musicQueueFullItemIds.filter((itemId)=>!selectedIds.includes(itemId))
   saveMusicQueue()
   selectedItemIds.clear()
   save()
@@ -6006,13 +6012,33 @@ function loadMusicQueue(){
   }
 }
 
+function loadMusicQueueFullItemIds(){
+  try{
+    const parsed = JSON.parse(localStorage.getItem(MUSIC_QUEUE_FULL_ITEMS_KEY) || '[]')
+    return Array.isArray(parsed)
+      ? Array.from(new Set(parsed.filter((itemId)=>typeof itemId === 'string' && itemId)))
+      : []
+  }catch(e){
+    return []
+  }
+}
+
 function saveMusicQueue(){
   localStorage.setItem(MUSIC_QUEUE_KEY, JSON.stringify(musicQueueIds))
+  musicQueueFullItemIds = musicQueueFullItemIds.filter((itemId)=>musicQueueIds.includes(itemId))
+  localStorage.setItem(MUSIC_QUEUE_FULL_ITEMS_KEY, JSON.stringify(musicQueueFullItemIds))
+}
+
+function getMusicQueuePlaybackMode(itemId){
+  return musicQueueFullItemIds.includes(itemId) ? 'full' : 'saved'
 }
 
 function getMusicQueueItems(){
   return musicQueueIds
-    .map((itemId)=>items.find((item)=>item.id===itemId))
+    .map((itemId)=>{
+      const item = items.find((entry)=>entry.id===itemId)
+      return item ? {...item, queuePlaybackMode:getMusicQueuePlaybackMode(itemId)} : null
+    })
     .filter((item)=>item && isMusicPage(item.pageId))
 }
 
@@ -6029,24 +6055,35 @@ function removeMusicQueueItem(queueIds, itemId){
   return queueIds.filter((queuedId)=>queuedId !== itemId)
 }
 
-function addMusicItemToQueue(item){
-  if(!item || !isMusicPage(item.pageId) || musicQueueIds.includes(item.id)) return
-  musicQueueIds.push(item.id)
+function addMusicItemToQueue(item, playbackMode='saved'){
+  if(!item || !isMusicPage(item.pageId)) return
+  const alreadyQueued = musicQueueIds.includes(item.id)
+  const wasFullItem = musicQueueFullItemIds.includes(item.id)
+  if(!alreadyQueued) musicQueueIds.push(item.id)
+  if(playbackMode === 'full'){
+    if(!wasFullItem) musicQueueFullItemIds.push(item.id)
+  }else{
+    musicQueueFullItemIds = musicQueueFullItemIds.filter((itemId)=>itemId!==item.id)
+  }
   saveMusicQueue()
-  renderPreservingSectionScroll()
+  if(!alreadyQueued || wasFullItem !== (playbackMode === 'full')) renderPreservingSectionScroll()
 }
 
 function clearMusicQueue(){
+  musicQueueMode = false
   musicQueueIds = []
+  musicQueueFullItemIds = []
   saveMusicQueue()
-  if(musicZonePlayback && musicZonePlayback.isQueue){
-    clearMusicZonePlayback()
-    musicQueuePlaybackItems = []
-    musicQueuePlaybackIndex = -1
-    musicQueueAwaitingStartIndex = false
-    musicQueueUsingIframeFallback = false
-    if(musicYouTubePlayerReady && musicYouTubePlayer) musicYouTubePlayer.stopVideo()
-  }
+  musicQueuePreparationVersion += 1
+  musicQueuePlayerPreparing = false
+  clearMusicZonePlayback()
+  musicQueuePlaybackItems = []
+  musicQueuePlaybackIndex = -1
+  musicQueueAwaitingStartIndex = false
+  musicQueueUsingIframeFallback = false
+  musicQueueCurrentItemId = null
+  if(musicYouTubePlayerReady && musicYouTubePlayer) musicYouTubePlayer.stopVideo()
+  else if(musicPlayerFrameEl) musicPlayerFrameEl.src = ''
   if(musicPlayerOverlayEl && !musicPlayerOverlayEl.classList.contains('hidden') && musicQueuePreviewEl && !musicQueuePreviewEl.classList.contains('hidden')){
     musicPlayerTitleEl.textContent = 'Music queue (0)'
     renderMusicQueuePreview()
@@ -6125,19 +6162,25 @@ function getMusicZones(item){
 }
 
 function getMusicPlaybackSegments(item){
+  if(item && item.queuePlaybackMode === 'full'){
+    return [{startSeconds:0,endSeconds:null}]
+  }
   const zones = getMusicZones(item)
   return zones.length
     ? zones
     : [{startSeconds:Math.max(0, Number(item && item.startSeconds) || 0), endSeconds:null}]
 }
 
-function createMusicZoneRow(zone={}){
+function createMusicZoneRow(zone={}, index=1){
   const row = document.createElement('div')
   row.className = 'music-zone-row'
+  const heading = document.createElement('strong')
+  heading.className = 'music-zone-label'
+  heading.textContent = `Zone ${index}`
   const startLabel = document.createElement('label')
   startLabel.className = 'hold-link-field'
   const startText = document.createElement('span')
-  startText.textContent = 'From'
+  startText.textContent = 'Start'
   const startInput = document.createElement('input')
   startInput.type = 'text'
   startInput.inputMode = 'text'
@@ -6152,7 +6195,7 @@ function createMusicZoneRow(zone={}){
   const endLabel = document.createElement('label')
   endLabel.className = 'hold-link-field'
   const endText = document.createElement('span')
-  endText.textContent = 'To'
+  endText.textContent = 'End'
   const endInput = document.createElement('input')
   endInput.type = 'text'
   endInput.inputMode = 'text'
@@ -6168,17 +6211,26 @@ function createMusicZoneRow(zone={}){
   removeButton.type = 'button'
   removeButton.className = 'music-zone-remove'
   removeButton.textContent = '×'
-  removeButton.title = 'Remove zone'
-  removeButton.setAttribute('aria-label', 'Remove zone')
-  removeButton.addEventListener('click', ()=>row.remove())
-  row.append(startLabel, endLabel, removeButton)
+  removeButton.title = `Remove zone ${index}`
+  removeButton.setAttribute('aria-label', removeButton.title)
+  removeButton.addEventListener('click', ()=>{
+    row.remove()
+    musicZonesListEl.querySelectorAll('.music-zone-row').forEach((zoneRow, zoneIndex)=>{
+      const zoneNumber = zoneIndex + 1
+      zoneRow.querySelector('.music-zone-label').textContent = `Zone ${zoneNumber}`
+      const removeZoneButton = zoneRow.querySelector('.music-zone-remove')
+      removeZoneButton.title = `Remove zone ${zoneNumber}`
+      removeZoneButton.setAttribute('aria-label', removeZoneButton.title)
+    })
+  })
+  row.append(heading, startLabel, endLabel, removeButton)
   return row
 }
 
 function renderMusicZones(zones){
   if(!musicZonesListEl) return
   musicZonesListEl.replaceChildren()
-  getMusicZones({zones}).forEach((zone)=>musicZonesListEl.appendChild(createMusicZoneRow(zone)))
+  getMusicZones({zones}).forEach((zone, index)=>musicZonesListEl.appendChild(createMusicZoneRow(zone, index + 1)))
 }
 
 function openMusicItemDialog(item){
@@ -6268,7 +6320,9 @@ function getMusicQueueEmbedUrl(queueItems, startIndex=0){
   const currentVideo = videos[startAt]
   const params = new URLSearchParams({
     autoplay:'1',
-    start:String(Math.max(0, Number(currentVideo.item.startSeconds) || 0))
+    start:String(currentVideo.item.queuePlaybackMode === 'full'
+      ? 0
+      : Math.max(0, Number(currentVideo.item.startSeconds) || 0))
   })
   params.set('playlist', videos.slice(startAt).map((video)=>video.videoId).join(','))
   return `https://www.youtube-nocookie.com/embed/${encodeURIComponent(currentVideo.videoId)}?${params.toString()}`
@@ -6354,6 +6408,7 @@ async function ensureMusicYouTubePlayer(){
 
 async function prepareMusicQueuePlayer(){
   if(!musicQueueStatusEl || !musicQueuePlayBtn) return
+  const preparationVersion = ++musicQueuePreparationVersion
   musicQueuePlayerPreparing = true
   musicQueueStatusEl.textContent = 'Preparing the YouTube player…'
   const hasPlayableItems = getMusicQueueItems().some((item)=>getMusicVideoId(item))
@@ -6368,6 +6423,9 @@ async function prepareMusicQueuePlayer(){
       return
     }
     await ensureMusicYouTubePlayer()
+    if(preparationVersion !== musicQueuePreparationVersion
+      || musicPlayerOverlayEl.classList.contains('hidden')
+      || musicQueuePreviewEl.classList.contains('hidden')) return
     const queueItems = getMusicQueueItems()
     musicQueuePlayerPreparing = false
     musicQueueStatusEl.textContent = musicQueuePlaybackIndex >= 0
@@ -6378,6 +6436,7 @@ async function prepareMusicQueuePlayer(){
     musicQueuePlayBtn.disabled = !queueItems.some((item)=>getMusicVideoId(item))
     musicQueueStartFirstBtn.disabled = musicQueuePlayBtn.disabled
   }catch(error){
+    if(preparationVersion !== musicQueuePreparationVersion) return
     console.error('Could not prepare the music queue player:', error)
     musicQueuePlayerPreparing = false
     musicQueueStatusEl.textContent = getMusicQueueItems().length
@@ -6412,9 +6471,10 @@ function renderMusicQueuePreview(){
     const duration = Number(item.durationSeconds) > 0
       ? formatMusicDuration(item.durationSeconds)
       : 'Duration unavailable'
-    row.textContent = `${isPlaying ? '▶ ' : ''}${index + 1}. ${item.title || item.url} · ${duration}`
+    const playbackDescription = item.queuePlaybackMode === 'full' ? 'Full video' : 'Saved start/zones'
+    row.textContent = `${isPlaying ? '▶ ' : ''}${index + 1}. ${item.title || item.url} · ${playbackDescription} · ${duration}`
     row.title = 'Left-click to move up; right-click to move down'
-    row.setAttribute('aria-label', `${item.title || item.url}, position ${index + 1} of ${queueItems.length}${isPlaying ? ', currently playing' : ''}, ${duration}`)
+    row.setAttribute('aria-label', `${item.title || item.url}, ${playbackDescription}, position ${index + 1} of ${queueItems.length}${isPlaying ? ', currently playing' : ''}, ${duration}`)
     if(isPlaying) row.setAttribute('aria-current', 'true')
     row.addEventListener('click', ()=>{
       musicQueueIds = moveMusicQueueItem(musicQueueIds, item.id, -1)
@@ -6469,15 +6529,18 @@ function toggleMusicQueueMode(){
 function openMusicQueuePreview(){
   if(!musicPlayerOverlayEl || !musicQueuePreviewEl) return
   musicQueueMode = false
+  clearMusicZonePlayback()
   musicQueuePlaybackItems = []
   musicQueuePlaybackIndex = -1
   musicQueueAwaitingStartIndex = false
   musicQueueUsingIframeFallback = false
+  musicQueuePlayerPreparing = false
   musicPlayerItemId = null
   musicQueuePlayBtn.textContent = 'Continue from current'
   musicPlayerTitleEl.textContent = `Music queue (${getMusicQueueItems().length})`
   musicPlayerTimeInputEl.value = ''
-  if(!musicYouTubePlayerReady) musicPlayerFrameEl.src = ''
+  if(musicYouTubePlayerReady && musicYouTubePlayer) musicYouTubePlayer.stopVideo()
+  else musicPlayerFrameEl.src = ''
   musicQueuePreviewEl.classList.remove('hidden')
   musicPlayerOverlayEl.classList.add('queue-previewing')
   musicPlayerOverlayEl.classList.remove('hidden')
@@ -6630,7 +6693,7 @@ function startMusicQueue(startIndex=0){
     return
   }
   const startAt = Math.max(0, Math.min(musicQueuePlaybackItems.length - 1, Math.floor(Number(startIndex) || 0)))
-  if(musicQueuePlaybackItems.some((item)=>getMusicZones(item).length)){
+  if(musicQueuePlaybackItems.some((item)=>item.queuePlaybackMode !== 'full' && getMusicZones(item).length)){
     startMusicZonePlayback(musicQueuePlaybackItems, startAt, true)
     return
   }
@@ -6653,7 +6716,7 @@ function startMusicQueue(startIndex=0){
     musicYouTubePlayer.loadPlaylist(
       musicQueuePlaybackItems.map((item)=>getMusicVideoId(item)),
       startAt,
-      Math.max(0, Number(currentItem.startSeconds) || 0)
+      currentItem.queuePlaybackMode === 'full' ? 0 : Math.max(0, Number(currentItem.startSeconds) || 0)
     )
   }
 }
@@ -6713,7 +6776,7 @@ function handleMusicQueuePlayerStateChange(event){
   musicPlayerTitleEl.textContent = `Music queue — ${index + 1} of ${musicQueuePlaybackItems.length}: ${item.title || item.url}`
   musicQueueStatusEl.textContent = `Playing ${index + 1} of ${musicQueuePlaybackItems.length}`
   renderMusicQueuePreview()
-  const startSeconds = Math.max(0, Number(item.startSeconds) || 0)
+  const startSeconds = item.queuePlaybackMode === 'full' ? 0 : Math.max(0, Number(item.startSeconds) || 0)
   if(startSeconds > 0) musicYouTubePlayer.seekTo(startSeconds, true)
 }
 
@@ -6803,6 +6866,8 @@ function openMusicPlayer(item, useSavedStart=false){
 
 function closeMusicPlayer(){
   if(!musicPlayerOverlayEl) return
+  musicQueuePreparationVersion += 1
+  musicQueuePlayerPreparing = false
   clearMusicZonePlayback()
   musicPlayerItemId = null
   musicQueuePlaybackItems = []
@@ -7463,7 +7528,8 @@ function renderTabBar(pageId){
   const tabs = getPageTabs(pid)
   const activeTabId = getActiveTabId(pid)
   const row = document.createElement('div')
-  row.className = `tab-row${isJournalPage(pid) ? ' journal-tab-row' : ''}`
+  const musicReordering = isMusicPage(pid) && musicTabReorderMode
+  row.className = `tab-row${isJournalPage(pid) ? ' journal-tab-row' : ''}${musicReordering ? ' music-tab-reorder-mode' : ''}`
   if(isJournalPage(pid)) row.style.justifyContent = 'center'
 
   tabs.forEach(tab=>{
@@ -7476,11 +7542,32 @@ function renderTabBar(pageId){
     const tabLabel = (pid!=='home' && tab.id==='default') ? getPageTitle(pid) : tab.title
     button.textContent = tabLabel
     button.title = tabLabel
-    const holdPress = attachLongPress(button, ()=>openTabHoldDialog(pid, tab.id))
+    const holdPress = attachLongPress(button, ()=>{
+      if(isMusicPage(pid)){
+        musicTabReorderMode = !musicTabReorderMode
+        render()
+      }else{
+        openTabHoldDialog(pid, tab.id)
+      }
+    })
     button.addEventListener('click', ()=>{
       if(holdPress.consume()) return
+      if(musicReordering){
+        moveTabInPage(pid, tab.id, -1)
+        return
+      }
       setActiveTab(pid, tab.id)
     })
+    if(isMusicPage(pid)){
+      button.title = musicReordering
+        ? `${tabLabel} — left-click to move left; right-click to move right; hold to exit reorder mode`
+        : `${tabLabel} — hold to enter reorder mode`
+      button.addEventListener('contextmenu', (event)=>{
+        if(!musicTabReorderMode) return
+        event.preventDefault()
+        moveTabInPage(pid, tab.id, 1)
+      })
+    }
 
     wrap.appendChild(button)
     if(!isJournalPage(pid) && !isMusicPage(pid)){
@@ -7535,7 +7622,7 @@ function renderTabBar(pageId){
     queueToggle.className = `main-tab title-filter-toggle music-queue-toggle${musicQueueMode ? ' selected' : ''}`
     queueToggle.textContent = '▶'
     queueToggle.title = musicQueueMode
-      ? 'Queue mode ON: click to preview; right-click to clear the queue'
+      ? 'Queue mode ON: left-click a video for the full video; right-click for its saved start/zones. Click to preview; right-click to clear and exit.'
       : `Build music queue (${getMusicQueueItems().length} items); right-click to clear`
     queueToggle.setAttribute('aria-label', queueToggle.title)
     queueToggle.setAttribute('aria-pressed', String(musicQueueMode))
@@ -7547,7 +7634,14 @@ function renderTabBar(pageId){
     row.appendChild(queueToggle)
   }
 
-  if(pid!=='home'){
+  if(musicReordering){
+    const hint = document.createElement('span')
+    hint.className = 'music-tab-reorder-hint'
+    hint.textContent = 'Reorder: left-click moves left · right-click moves right · hold a tab to exit'
+    row.appendChild(hint)
+  }
+
+  if(pid!=='home' && !isMusicPage(pid)){
     const dividerToggle = document.createElement('button')
     dividerToggle.type = 'button'
     dividerToggle.className = `main-tab title-filter-toggle${dividerInsertMode ? ' selected' : ''}`
@@ -8037,6 +8131,10 @@ function renderSection(title, list, showHomeControls = false, hideGrid = false){
       if(editMode){ selectItem(it.id, list); return }
       if(isMusicPage(currentPageId) && event.button !== 0) return
       if(isMusicPage(currentPageId)){
+        if(musicQueueMode){
+          addMusicItemToQueue(it, 'full')
+          return
+        }
         markLastViewedItem(it.id)
         openMusicPlayer(it, false)
         return
@@ -8070,7 +8168,7 @@ function renderSection(title, list, showHomeControls = false, hideGrid = false){
         suppressAudioMusicContextMenuUntil = Date.now() + 1500
         if(musicQueueMode && !editMode){
           rightPressHandled = true
-          addMusicItemToQueue(it)
+          addMusicItemToQueue(it, 'saved')
           return
         }
         if(favoriteModeEnabled && !editMode){
@@ -8168,7 +8266,10 @@ if(musicItemDialogEl){
 if(musicItemSaveBtn) musicItemSaveBtn.addEventListener('click', saveMusicItemSettings)
 if(musicItemCancelBtn) musicItemCancelBtn.addEventListener('click', closeMusicItemDialog)
 if(musicZoneAddBtn) musicZoneAddBtn.addEventListener('click', ()=>{
-  if(musicZonesListEl) musicZonesListEl.appendChild(createMusicZoneRow())
+  if(musicZonesListEl){
+    const zoneNumber = musicZonesListEl.querySelectorAll('.music-zone-row').length + 1
+    musicZonesListEl.appendChild(createMusicZoneRow({}, zoneNumber))
+  }
 })
 if(musicPlayerCloseBtn) musicPlayerCloseBtn.addEventListener('click', closeMusicPlayer)
 if(musicPlayerFavoriteBtn) musicPlayerFavoriteBtn.addEventListener('click', toggleMusicPlayerFavorite)
