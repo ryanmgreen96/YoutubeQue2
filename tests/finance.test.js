@@ -24,3 +24,26 @@ test('finance entries render newest first without mutating saved order', () => {
   assert.deepEqual(Array.from(sorted, (entry)=>entry.id), ['new', 'middle', 'old'])
   assert.deepEqual(entries.map((entry)=>entry.id), ['old', 'new', 'middle'])
 })
+
+test('finance overview selects the current month instead of a future month', () => {
+  const summaries = [
+    {month:{start:'2026-11-01'}, endBalance:2400},
+    {month:{start:'2026-12-01'}, endBalance:3100}
+  ]
+
+  const current = context.getCurrentFinanceMonthSummary(summaries, new Date(2026, 10, 21))
+
+  assert.equal(current.month.start, '2026-11-01')
+  assert.equal(current.endBalance, 2400)
+})
+
+test('monthly Grocery and Amazon totals exclude voided expenses', () => {
+  const totals = context.getFinanceCategoryTotals([
+    {category:'grocery', amount:35},
+    {category:'grocery', amount:10, voided:true},
+    {category:'amazon', amount:24},
+    {category:'living', amount:80}
+  ])
+
+  assert.deepEqual({...totals}, {grocery:35, amazon:24})
+})

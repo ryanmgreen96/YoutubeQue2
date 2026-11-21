@@ -1362,6 +1362,16 @@ function financeEntryEarnings(entry){
 function sortFinanceEntriesNewestFirst(entries){
   return entries.slice().sort((a, b)=>b.date.localeCompare(a.date))
 }
+function getCurrentFinanceMonthSummary(summaries, today=new Date()){
+  const monthStart = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-01`
+  return summaries.find((summary)=>summary.month.start === monthStart) || null
+}
+function getFinanceCategoryTotals(expenses){
+  const totalFor = (category)=>expenses.reduce((sum, entry)=>{
+    return sum + (entry.category === category && !entry.voided ? entry.amount : 0)
+  }, 0)
+  return {grocery:totalFor('grocery'), amazon:totalFor('amazon')}
+}
 function renderFinanceWorkForm(period){
   const details = document.createElement('details')
   details.className = 'finance-work-details'
@@ -1550,7 +1560,8 @@ function renderFinances(view){
     const expenses = data.expenses.filter((entry)=>entry.date >= month.start && entry.date <= month.end)
     const income = paychecks.reduce((sum, paycheck)=>sum + paycheck.income, 0)
     const spending = expenses.reduce((sum, entry)=>sum + (entry.voided ? 0 : entry.amount), 0)
-    const summary = {month, paychecks, expenses, income, spending, startBalance:runningBalance, endBalance:runningBalance + income - spending}
+    const categoryTotals = getFinanceCategoryTotals(expenses)
+    const summary = {month, paychecks, expenses, income, spending, categoryTotals, startBalance:runningBalance, endBalance:runningBalance + income - spending}
     runningBalance = summary.endBalance
     return summary
   })
@@ -1580,13 +1591,13 @@ function renderFinances(view){
   })
   startingField.appendChild(startingInput)
   overview.appendChild(startingField)
-  const current = summaries[summaries.length - 1]
+  const current = getCurrentFinanceMonthSummary(summaries)
   const balance = document.createElement('div')
   balance.className = 'finance-current-balance'
   const balanceLabel = document.createElement('span')
-  balanceLabel.textContent = 'Projected balance'
+  balanceLabel.textContent = 'Projected balance through current month'
   const balanceValue = document.createElement('strong')
-  balanceValue.textContent = formatFinanceMoney(current.endBalance)
+  balanceValue.textContent = formatFinanceMoney(current ? current.endBalance : data.startingBalance)
   balance.append(balanceLabel, balanceValue)
   overview.appendChild(balance)
   const schedule = document.createElement('p')
@@ -1623,7 +1634,10 @@ function renderFinances(view){
     title.textContent = parseFinanceDate(summary.month.start).toLocaleDateString(undefined, {month:'long', year:'numeric'})
     const monthRange = document.createElement('span')
     monthRange.textContent = `${formatFinanceDate(summary.month.start)} – ${formatFinanceDate(summary.month.end)}`
-    heading.append(title, monthRange)
+    const categoryTotals = document.createElement('span')
+    categoryTotals.className = 'finance-month-category-totals'
+    categoryTotals.textContent = `Groceries ${formatFinanceMoney(summary.categoryTotals.grocery)} · Amazon ${formatFinanceMoney(summary.categoryTotals.amazon)}`
+    heading.append(title, categoryTotals, monthRange)
     block.appendChild(heading)
 
     const columns = document.createElement('div')
