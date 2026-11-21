@@ -252,6 +252,12 @@ async function fetchVideoDurationSeconds(url){
       if(parsed > 0) return parsed
     }
 
+    const playerDuration = txt.match(/"lengthSeconds"\s*:\s*"?(\d+)"?/i)
+    if(playerDuration){
+      const seconds = Number(playerDuration[1])
+      if(Number.isFinite(seconds) && seconds > 0) return seconds
+    }
+
     const jsonLdBlocks = doc
       ? Array.from(doc.querySelectorAll('script[type="application/ld+json"]')).map(node=>node.textContent || '')
       : Array.from(txt.matchAll(/<script\b[^>]*type\s*=\s*["']application\/ld\+json["'][^>]*>([\s\S]*?)<\/script>/gi), (match)=>match[1])

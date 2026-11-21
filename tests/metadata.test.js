@@ -90,6 +90,13 @@ test('fetchVideoDurationSeconds reads JSON-LD durations without DOMParser', asyn
   assert.equal(await context.fetchVideoDurationSeconds('https://www.youtube.com/watch?v=abc'), 123)
 })
 
+test('fetchVideoDurationSeconds reads YouTube player lengthSeconds', async () => {
+  const html = '<script>var ytInitialPlayerResponse = {"videoDetails":{"videoId":"abc","lengthSeconds":"3661"}};</script>'
+  const context = loadDurationHelpers(html)
+
+  assert.equal(await context.fetchVideoDurationSeconds('https://www.youtube.com/watch?v=abc'), 3661)
+})
+
 test('findPublishDateInValue extracts nested publish dates', () => {
   const context = loadDateHelpersForFeed()
   const payload = {
