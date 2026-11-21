@@ -6372,10 +6372,11 @@ function loadMusicYouTubeApi(){
   return musicYouTubeApiPromise
 }
 
-async function ensureMusicYouTubePlayer(){
+async function ensureMusicYouTubePlayer(videoId){
   await loadMusicYouTubeApi()
   if(musicYouTubePlayerReady && musicYouTubePlayer) return musicYouTubePlayer
   if(!musicYouTubePlayerCreatePromise){
+    if(!videoId) throw new Error('A video ID is required to initialize the YouTube player')
     musicYouTubePlayerCreatePromise = new Promise((resolve, reject)=>{
       const timeoutHandle = setTimeout(()=>{
         musicYouTubePlayerCreatePromise = null
@@ -6383,7 +6384,13 @@ async function ensureMusicYouTubePlayer(){
       }, 15000)
       try{
         const playerVars = {autoplay:0, enablejsapi:1}
-        if(window.location.origin && window.location.origin !== 'null') playerVars.origin = window.location.origin
+        const embedUrl = new URL(`https://www.youtube.com/embed/${encodeURIComponent(videoId)}`)
+        embedUrl.searchParams.set('enablejsapi', '1')
+        if(window.location.origin && window.location.origin !== 'null'){
+          playerVars.origin = window.location.origin
+          embedUrl.searchParams.set('origin', window.location.origin)
+        }
+        musicPlayerFrameEl.src = embedUrl.href
         musicYouTubePlayer = new window.YT.Player('music-player-frame', {
           playerVars,
           events:{
@@ -6409,7 +6416,7 @@ async function ensureMusicYouTubePlayer(){
 
 function warmMusicYouTubePlayer(){
   if(musicYouTubePlayerReady || musicYouTubePlayerCreatePromise) return
-  ensureMusicYouTubePlayer().catch((error)=>{
+  loadMusicYouTubeApi().catch((error)=>{
     console.error('Could not pre-initialize the YouTube player on the Music page:', error)
   })
 }
@@ -6430,7 +6437,9 @@ async function prepareMusicQueuePlayer(){
       musicQueueStartFirstBtn.disabled = !hasPlayableItems
       return
     }
-    await ensureMusicYouTubePlayer()
+    const firstPlayableItem = getMusicQueueItems().find((item)=>getMusicVideoId(item))
+    if(firstPlayableItem) await ensureMusicYouTubePlayer(getMusicVideoId(firstPlayableItem))
+    else await loadMusicYouTubeApi()
     if(preparationVersion !== musicQueuePreparationVersion
       || musicPlayerOverlayEl.classList.contains('hidden')
       || musicQueuePreviewEl.classList.contains('hidden')) return
@@ -6616,17 +6625,18 @@ async function startMusicZonePlayback(queueItems, startIndex=0, isQueue=false){
     musicQueueCurrentItemId = itemsToPlay[startAt] && itemsToPlay[startAt].id
   }
   try{
-    await ensureMusicYouTubePlayer()
+    await ensureMusicYouTubePlayer(getMusicVideoId(itemsToPlay[startAt]))
     if(!musicZonePlayback || musicZonePlayback.items !== itemsToPlay) return
     loadCurrentMusicZoneSegment()
   }catch(error){
     if(musicZonePlayback && musicZonePlayback.items === itemsToPlay) clearMusicZonePlayback()
+    const reason = error && error.message ? ` (${error.message})` : ''
     if(isQueue){
       musicQueuePlaybackItems = []
       musicQueuePlaybackIndex = -1
-      musicQueueStatusEl.textContent = 'Could not load the YouTube player for saved playback zones.'
+      musicQueueStatusEl.textContent = `Could not load the YouTube player for saved playback zones.${reason}`
     }else{
-      musicPlayerTitleEl.textContent = 'Could not load the YouTube player for saved playback zones.'
+      musicPlayerTitleEl.textContent = `Could not load the YouTube player for saved playback zones.${reason}`
     }
     console.error('Could not start saved music zones:', error)
   }

@@ -67,14 +67,27 @@ function loadDateHelpersForHtmlExtraction() {
   return loadDateHelpers('function parseYouTubeRelativeDate', 'async function fetchPagePublishedAt')
 }
 
-function loadDurationHelpers(html) {
+function loadDurationHelpers(html, playerData = null) {
   const context = buildContext()
-  context.fetch = async () => ({text: async () => html})
+  context.fetch = async (url, options) => {
+    if(url.includes('/youtubei/v1/player')){
+      context.requestedVideoId = JSON.parse(options.body).videoId
+      return playerData
+        ? {ok: true, json: async () => playerData}
+        : {ok: false}
+    }
+    return {ok: true, text: async () => html}
+  }
   const start = backgroundSource.indexOf('function parseIsoDurationToSeconds')
   const end = backgroundSource.indexOf('async function extractSavedLinkFromTabWithDuration', start)
+  const playerStart = backgroundSource.indexOf('async function fetchYouTubePlayerData')
+  const playerEnd = backgroundSource.indexOf('function normalizeDateCandidate', playerStart)
   assert.notEqual(start, -1)
   assert.notEqual(end, -1)
+  assert.notEqual(playerStart, -1)
+  assert.notEqual(playerEnd, -1)
   vm.runInContext(backgroundSource.slice(start, end), context)
+  vm.runInContext(backgroundSource.slice(playerStart, playerEnd), context)
   return context
 }
 
@@ -91,6 +104,15 @@ test('fetchVideoDurationSeconds reads JSON-LD durations without DOMParser', asyn
 })
 
 test('fetchVideoDurationSeconds reads YouTube player lengthSeconds', async () => {
+  const context = loadDurationHelpers('', {
+    videoDetails: {videoId: 'abc', lengthSeconds: '3661'}
+  })
+
+  assert.equal(await context.fetchVideoDurationSeconds('https://www.youtube.com/watch?v=abc'), 3661)
+  assert.equal(context.requestedVideoId, 'abc')
+})
+
+test('fetchVideoDurationSeconds falls back to lengthSeconds in watch-page HTML', async () => {
   const html = '<script>var ytInitialPlayerResponse = {"videoDetails":{"videoId":"abc","lengthSeconds":"3661"}};</script>'
   const context = loadDurationHelpers(html)
 

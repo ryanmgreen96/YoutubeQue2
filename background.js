@@ -228,6 +228,14 @@ function parseIsoDurationToSeconds(raw){
 
 async function fetchVideoDurationSeconds(url){
   try{
+    let videoId = ''
+    try{ videoId = safeText(new URL(url).searchParams.get('v')) }catch(e){ }
+    if(videoId){
+      const playerData = await fetchYouTubePlayerData(videoId)
+      const seconds = Number(playerData && playerData.videoDetails && playerData.videoDetails.lengthSeconds)
+      if(Number.isFinite(seconds) && seconds > 0) return Math.round(seconds)
+    }
+
     const res = await fetch(url)
     const txt = await res.text()
     let doc

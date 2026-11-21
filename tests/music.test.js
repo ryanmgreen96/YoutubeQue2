@@ -90,6 +90,72 @@ test('music durations use total minutes and two-digit seconds', () => {
   assert.equal(context.formatMusicDuration(3602), '60:02')
 })
 
+const ensureMusicYouTubePlayerFunction = appSource.match(/async function ensureMusicYouTubePlayer\(videoId\)\{[\s\S]*?\n\}/)
+const warmMusicYouTubePlayerFunction = appSource.match(/function warmMusicYouTubePlayer\(\)\{[\s\S]*?\n\}/)
+assert.ok(ensureMusicYouTubePlayerFunction)
+assert.ok(warmMusicYouTubePlayerFunction)
+
+test('YouTube player initialization starts from a video-specific API-enabled iframe', async () => {
+  const playerSetup = {}
+  const playerContext = vm.createContext({
+    URL,
+    setTimeout,
+    clearTimeout,
+    loadMusicYouTubeApi: async () => {},
+    musicYouTubePlayerReady: false,
+    musicYouTubePlayerCreatePromise: null,
+    musicYouTubePlayer: null,
+    musicPlayerFrameEl: {src: ''},
+    handleMusicQueuePlayerStateChange: () => {},
+    handleMusicQueuePlayerError: () => {},
+    window: {
+      location: {origin: 'https://queue.example'},
+      YT: {
+        Player: (target, options) => {
+          playerSetup.target = target
+          playerSetup.options = options
+          Promise.resolve().then(() => options.events.onReady())
+          return {ready: true}
+        }
+      }
+    }
+  })
+  vm.runInContext(ensureMusicYouTubePlayerFunction[0], playerContext)
+
+  await playerContext.ensureMusicYouTubePlayer('video-id')
+
+  const iframeUrl = new URL(playerContext.musicPlayerFrameEl.src)
+  assert.equal(playerSetup.target, 'music-player-frame')
+  assert.equal(iframeUrl.pathname, '/embed/video-id')
+  assert.equal(iframeUrl.searchParams.get('enablejsapi'), '1')
+  assert.equal(iframeUrl.searchParams.get('origin'), 'https://queue.example')
+  assert.equal(playerSetup.options.playerVars.origin, 'https://queue.example')
+})
+
+test('music-page warmup loads the player API without creating an empty player', () => {
+  let apiLoadCount = 0
+  let playerCreateCount = 0
+  const warmContext = vm.createContext({
+    musicYouTubePlayerReady: false,
+    musicYouTubePlayerCreatePromise: null,
+    loadMusicYouTubeApi: () => {
+      apiLoadCount += 1
+      return Promise.resolve()
+    },
+    ensureMusicYouTubePlayer: () => {
+      playerCreateCount += 1
+      return Promise.resolve()
+    },
+    console: {error: () => {}}
+  })
+  vm.runInContext(warmMusicYouTubePlayerFunction[0], warmContext)
+
+  warmContext.warmMusicYouTubePlayer()
+
+  assert.equal(apiLoadCount, 1)
+  assert.equal(playerCreateCount, 0)
+})
+
 const musicZonesFunction = appSource.match(/function getMusicZones\(item\)\{[\s\S]*?\n\}/)
 const musicSegmentsFunction = appSource.match(/function getMusicPlaybackSegments\(item\)\{[\s\S]*?\n\}/)
 assert.ok(musicZonesFunction)
