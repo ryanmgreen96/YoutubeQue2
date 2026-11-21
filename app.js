@@ -5810,6 +5810,7 @@ function setCurrentPage(pageId){
   dividerInsertMode = false
   currentPageId = known ? pid : 'home'
   saveCurrentPageId()
+  if(isMusicPage(currentPageId)) warmMusicYouTubePlayer()
   savedPagesPanelOpen = false
   getPageTabs(currentPageId)
   getActiveTabId(currentPageId)
@@ -6404,6 +6405,13 @@ async function ensureMusicYouTubePlayer(){
     })
   }
   return musicYouTubePlayerCreatePromise
+}
+
+function warmMusicYouTubePlayer(){
+  if(musicYouTubePlayerReady || musicYouTubePlayerCreatePromise) return
+  ensureMusicYouTubePlayer().catch((error)=>{
+    console.error('Could not pre-initialize the YouTube player on the Music page:', error)
+  })
 }
 
 async function prepareMusicQueuePlayer(){
