@@ -178,6 +178,53 @@ test('saved music zones play in order and allow a final open-ended zone', () => 
   ])
 })
 
+const loadCurrentMusicZoneSegmentFunction = appSource.match(/function loadCurrentMusicZoneSegment\(\)\{[\s\S]*?\n\}/)
+assert.ok(loadCurrentMusicZoneSegmentFunction)
+
+test('moving to the next saved zone seeks the current video instead of reloading it', () => {
+  const playerCalls = []
+  const playback = {
+    items: [{
+      id:'zoned-video',
+      videoId:'video',
+      title:'Zoned video',
+      zones:[
+        {startSeconds:0,endSeconds:50},
+        {startSeconds:60,endSeconds:90}
+      ]
+    }],
+    itemIndex:0,
+    segmentIndex:1,
+    isQueue:false,
+    transitioning:true
+  }
+  const zoneContext = vm.createContext({
+    musicZonePlayback:playback,
+    musicYouTubePlayer:{
+      seekTo:(...args)=>playerCalls.push(['seekTo', ...args]),
+      playVideo:()=>playerCalls.push(['playVideo']),
+      loadVideoById:(...args)=>playerCalls.push(['loadVideoById', ...args])
+    },
+    getMusicPlaybackSegments:(item)=>item.zones,
+    getMusicVideoId:(item)=>item.videoId,
+    musicPlayerItemId:null,
+    musicQueueCurrentItemId:null,
+    musicPlayerTitleEl:{textContent:''},
+    musicQueueStatusEl:{textContent:''},
+    musicQueuePlaybackIndex:-1,
+    renderMusicQueuePreview:()=>{}
+  })
+  vm.runInContext(loadCurrentMusicZoneSegmentFunction[0], zoneContext)
+
+  zoneContext.loadCurrentMusicZoneSegment()
+
+  assert.deepEqual(playerCalls, [
+    ['seekTo', 60, true],
+    ['playVideo']
+  ])
+  assert.equal(playback.transitioning, false)
+})
+
 test('music playback falls back to the saved start when no valid zones exist', () => {
   assert.deepEqual(
     {...context.getMusicPlaybackSegments({startSeconds:12,zones:[{startSeconds:20,endSeconds:10}]})[0]},

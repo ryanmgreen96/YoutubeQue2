@@ -6600,6 +6600,12 @@ function loadCurrentMusicZoneSegment(){
   }else{
     musicPlayerTitleEl.textContent = item.title || item.url || 'Music video'
   }
+  if(playback.segmentIndex > 0){
+    musicYouTubePlayer.seekTo(segment.startSeconds, true)
+    musicYouTubePlayer.playVideo()
+    playback.transitioning = false
+    return
+  }
   musicYouTubePlayer.loadVideoById({
     videoId,
     startSeconds:segment.startSeconds
