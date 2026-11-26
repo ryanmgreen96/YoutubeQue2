@@ -7561,6 +7561,21 @@ function renderLeftNav(){
   })
 }
 
+function createTitleFilterToggle(pageId){
+  const info = document.createElement('button')
+  info.type = 'button'
+  info.className = `main-tab title-filter-toggle${titleFilterOverlayPageId===pageId ? ' selected' : ''}`
+  info.title = 'Manage hidden title phrases'
+  info.setAttribute('aria-label', 'Manage hidden title phrases')
+  info.textContent = 'i'
+  info.addEventListener('click', (event)=>{
+    event.stopPropagation()
+    titleFilterOverlayPageId = titleFilterOverlayPageId===pageId ? null : pageId
+    render()
+  })
+  return info
+}
+
 function renderTabBar(pageId){
   const pid = normalizePageId(pageId)
   const tabs = getPageTabs(pid)
@@ -7608,6 +7623,7 @@ function renderTabBar(pageId){
     }
 
     wrap.appendChild(button)
+    if(musicReordering) wrap.appendChild(createTitleFilterToggle(pid))
     if(!isJournalPage(pid) && !isMusicPage(pid)){
       const thumbnailBtn = document.createElement('button')
       thumbnailBtn.type = 'button'
@@ -7701,17 +7717,7 @@ function renderTabBar(pageId){
     randomPlaylistToggle.addEventListener('click', ()=>{ configureRandomPlaylistSlot(pid) })
     row.appendChild(randomPlaylistToggle)
 
-    const info = document.createElement('button')
-    info.type = 'button'
-    info.className = `main-tab title-filter-toggle${titleFilterOverlayPageId===pid ? ' selected' : ''}`
-    info.title = 'Manage hidden title phrases'
-    info.setAttribute('aria-label', 'Manage hidden title phrases')
-    info.textContent = 'i'
-    info.addEventListener('click', ()=>{
-      titleFilterOverlayPageId = titleFilterOverlayPageId===pid ? null : pid
-      render()
-    })
-    row.appendChild(info)
+    row.appendChild(createTitleFilterToggle(pid))
   }
 
   sections.appendChild(row)

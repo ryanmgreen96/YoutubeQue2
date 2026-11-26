@@ -90,6 +90,70 @@ test('music durations use total minutes and two-digit seconds', () => {
   assert.equal(context.formatMusicDuration(3602), '60:02')
 })
 
+const titleFilterToggleFunction = appSource.match(/function createTitleFilterToggle\(pageId\)\{[\s\S]*?\n\}/)
+const renderTabBarFunction = appSource.match(/function renderTabBar\(pageId\)\{[\s\S]*?\n\}\n\nfunction render\(\)/)
+assert.ok(titleFilterToggleFunction)
+assert.ok(renderTabBarFunction)
+
+test('Music tab title-filter info controls appear only in reorder mode', () => {
+  class FakeElement {
+    constructor(tagName){
+      this.tagName = tagName
+      this.children = []
+      this.listeners = {}
+      this.style = {}
+      this.attributes = {}
+    }
+    appendChild(child){ this.children.push(child); return child }
+    addEventListener(type, handler){ this.listeners[type] = handler }
+    setAttribute(name, value){ this.attributes[name] = value }
+  }
+  const sections = new FakeElement('sections')
+  let renderCount = 0
+  const tabContext = vm.createContext({
+    document: {createElement:(tagName)=>new FakeElement(tagName)},
+    sections,
+    isMusicPage:(pageId)=>pageId==='music',
+    isJournalPage:()=>false,
+    normalizePageId:(pageId)=>pageId,
+    getPageTabs:()=>[{id:'default',title:'Songs'}],
+    getActiveTabId:()=> 'default',
+    getPageTitle:()=> 'Music',
+    attachLongPress:()=>({consume:()=>false}),
+    musicTabReorderMode:false,
+    titleFilterOverlayPageId:null,
+    musicQueueMode:false,
+    isMusicFavoriteModeEnabled:()=>false,
+    getMusicQueueItems:()=>[],
+    render:()=>{renderCount += 1},
+    toggleMusicFavoriteMode:()=>{},
+    toggleMusicQueueMode:()=>{},
+    clearMusicQueue:()=>{},
+    openCreateForm:()=>{},
+    addTabToPage:()=>{},
+    setActiveTab:()=>{},
+    moveTabInPage:()=>{}
+  })
+  vm.runInContext(titleFilterToggleFunction[0], tabContext)
+  vm.runInContext(renderTabBarFunction[0].replace(/\n\nfunction render\(\)$/, ''), tabContext)
+
+  tabContext.renderTabBar('music')
+  const normalTabWrap = sections.children[0].children[0]
+  assert.equal(normalTabWrap.children.length, 1)
+
+  sections.children = []
+  tabContext.musicTabReorderMode = true
+  tabContext.renderTabBar('music')
+  const reorderTabWrap = sections.children[0].children[0]
+  const infoButton = reorderTabWrap.children[1]
+  assert.equal(infoButton.textContent, 'i')
+  assert.equal(infoButton.title, 'Manage hidden title phrases')
+
+  infoButton.listeners.click({stopPropagation:()=>{}})
+  assert.equal(tabContext.titleFilterOverlayPageId, 'music')
+  assert.equal(renderCount, 1)
+})
+
 const ensureMusicYouTubePlayerFunction = appSource.match(/async function ensureMusicYouTubePlayer\(videoId\)\{[\s\S]*?\n\}/)
 const warmMusicYouTubePlayerFunction = appSource.match(/function warmMusicYouTubePlayer\(\)\{[\s\S]*?\n\}/)
 assert.ok(ensureMusicYouTubePlayerFunction)
